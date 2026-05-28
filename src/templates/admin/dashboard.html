@@ -1,0 +1,79 @@
+{% extends "admin/base.html" %}
+
+{% block title %}ダッシュボード{% endblock %}
+{% block nav_dashboard %}active{% endblock %}
+{% block heading %}ダッシュボード{% endblock %}
+
+{% block content %}
+<style>
+  .welcome {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px 24px;
+    margin-bottom: 24px;
+  }
+  .welcome h2 { margin: 0 0 6px; font-size: 20px; }
+  .welcome p { margin: 0; color: var(--muted); }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 18px 20px;
+    text-decoration: none;
+    color: var(--text);
+    display: block;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .card:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .card h3 { margin: 0 0 6px; font-size: 16px; }
+  .card p { margin: 0; color: var(--muted); font-size: 13px; }
+  .badge {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1px 8px;
+    vertical-align: middle;
+  }
+</style>
+
+<section class="welcome">
+  <h2>rust-sqlite-cms へようこそ</h2>
+  <p>これは管理画面のスケルトンです。各機能は今後のフェーズで実装されます。</p>
+</section>
+
+<div class="cards">
+  <a class="card" href="/admin/posts">
+    <h3>投稿 <span class="badge">未実装</span></h3>
+    <p>記事の作成・編集・公開を管理します。</p>
+  </a>
+  <a class="card" href="/admin/pages">
+    <h3>固定ページ <span class="badge">未実装</span></h3>
+    <p>会社概要などの固定ページを管理します。</p>
+  </a>
+  <a class="card" href="/admin/media">
+    <h3>メディア <span class="badge">未実装</span></h3>
+    <p>画像やファイルのアップロードを管理します。</p>
+  </a>
+  <a class="card" href="/admin/comments">
+    <h3>コメント <span class="badge">未実装</span></h3>
+    <p>コメントの承認・モデレーションを行います。</p>
+  </a>
+  <a class="card" href="/admin/users">
+    <h3>ユーザー <span class="badge">未実装</span></h3>
+    <p>アカウントとロールを管理します。</p>
+  </a>
+  <a class="card" href="/admin/settings">
+    <h3>設定 <span class="badge">未実装</span></h3>
+    <p>サイト名やテーマなどの設定を行います。</p>
+  </a>
+</div>
+{% endblock %}

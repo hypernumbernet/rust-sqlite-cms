@@ -1,0 +1,35 @@
+# config.example.toml
+# このファイルを config.toml にコピーして編集してください。
+# 値は環境変数（CMS_ プレフィックス）で上書きできます。
+
+[server]
+# リッスンアドレス（例: "127.0.0.1:3000"）。環境変数: CMS_BIND_ADDR
+bind_addr = "127.0.0.1:3000"
+
+[database]
+# SQLite データベースファイルのパス。環境変数: CMS_DATABASE_PATH
+path = "data/cms.db"
+
+[paths]
+# メディアのアップロード先
+uploads_dir = "uploads"
+# テーマのルートディレクトリ
+themes_dir = "themes"
+
+[site]
+# 表示名・説明（options テーブルの blogname / blogdescription 既定値）
+title = "My Site"
+tagline = "Just another rust-sqlite-cms site"
+
+[theme]
+# 有効テーマ名（themes/ 以下のディレクトリ名）
+active = "default"
+
+[session]
+# セッション Cookie 名・有効期限（秒）
+cookie_name = "cms_session"
+max_age_secs = 604800
+
+[security]
+# 本番では必ず環境変数 CMS_SESSION_SECRET 等で上書きすること
+# session_secret = "change-me-in-production"

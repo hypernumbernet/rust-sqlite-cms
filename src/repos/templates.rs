@@ -6,7 +6,7 @@ use crate::models::template::{Template, TemplateInput};
 /// 管理画面向けに、全テンプレートを更新日時の新しい順で取得する。
 pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Template>> {
     Ok(sqlx::query_as::<_, Template>(
-        "SELECT id, name, url_path, content, is_published, created_at, updated_at
+        "SELECT id, name, url_path, file_name, is_published, created_at, updated_at
          FROM templates
          ORDER BY datetime(updated_at) DESC, id DESC",
     )
@@ -17,7 +17,7 @@ pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Template>> {
 /// ID でテンプレートを取得する。存在しなければ `NotFound`。
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Template> {
     sqlx::query_as::<_, Template>(
-        "SELECT id, name, url_path, content, is_published, created_at, updated_at
+        "SELECT id, name, url_path, file_name, is_published, created_at, updated_at
          FROM templates
          WHERE id = ?",
     )
@@ -30,7 +30,7 @@ pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Template> {
 /// 公開サイト向けに、公開済みかつ URL が一致するテンプレートを取得する。
 pub async fn find_published_by_path(pool: &SqlitePool, path: &str) -> AppResult<Option<Template>> {
     Ok(sqlx::query_as::<_, Template>(
-        "SELECT id, name, url_path, content, is_published, created_at, updated_at
+        "SELECT id, name, url_path, file_name, is_published, created_at, updated_at
          FROM templates
          WHERE is_published = 1 AND url_path = ?",
     )
@@ -39,26 +39,36 @@ pub async fn find_published_by_path(pool: &SqlitePool, path: &str) -> AppResult<
     .await?)
 }
 
-/// テンプレートを作成する。`url_path` が他と衝突する場合は `Conflict`。
-pub async fn insert(pool: &SqlitePool, input: &TemplateInput) -> AppResult<i64> {
+/// メタ情報を作成し、`id` から確定したファイル名（`page-{id}.html`）を
+/// 行へ反映して `(id, file_name)` を返す。本文ファイルの書き込みは呼び出し側で行う。
+/// `url_path` が他と衝突する場合は `Conflict`。
+pub async fn insert(pool: &SqlitePool, input: &TemplateInput) -> AppResult<(i64, String)> {
     ensure_path_available(pool, input.url_path.as_deref(), None).await?;
 
     let row: (i64,) = sqlx::query_as(
-        "INSERT INTO templates (name, url_path, content, is_published)
-         VALUES (?, ?, ?, ?)
+        "INSERT INTO templates (name, url_path, is_published)
+         VALUES (?, ?, ?)
          RETURNING id",
     )
     .bind(&input.name)
     .bind(&input.url_path)
-    .bind(&input.content)
     .bind(input.is_published)
     .fetch_one(pool)
     .await?;
 
-    Ok(row.0)
+    let id = row.0;
+    let file_name = format!("page-{id}.html");
+
+    sqlx::query("UPDATE templates SET file_name = ? WHERE id = ?")
+        .bind(&file_name)
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok((id, file_name))
 }
 
-/// テンプレートを更新する。`url_path` が他と衝突する場合は `Conflict`。
+/// テンプレートのメタ情報を更新する。`url_path` が他と衝突する場合は `Conflict`。
 pub async fn update(pool: &SqlitePool, id: i64, input: &TemplateInput) -> AppResult<()> {
     ensure_path_available(pool, input.url_path.as_deref(), Some(id)).await?;
 
@@ -66,14 +76,12 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &TemplateInput) -> AppRes
         "UPDATE templates
          SET name = ?,
              url_path = ?,
-             content = ?,
              is_published = ?,
              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
          WHERE id = ?",
     )
     .bind(&input.name)
     .bind(&input.url_path)
-    .bind(&input.content)
     .bind(input.is_published)
     .bind(id)
     .execute(pool)
@@ -86,7 +94,7 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &TemplateInput) -> AppRes
     Ok(())
 }
 
-/// テンプレートを削除する。
+/// テンプレートのメタ行を削除する。本文ファイルの削除は呼び出し側で行う。
 pub async fn delete(pool: &SqlitePool, id: i64) -> AppResult<()> {
     let result = sqlx::query("DELETE FROM templates WHERE id = ?")
         .bind(id)

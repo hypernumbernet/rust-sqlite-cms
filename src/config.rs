@@ -17,18 +17,14 @@ pub struct DatabaseConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathsConfig {
     pub uploads_dir: String,
-    pub themes_dir: String,
+    /// テンプレート・静的アセットを置くステートフルな作業ディレクトリ。
+    pub work_dir: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SiteConfig {
     pub title: String,
     pub tagline: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThemeConfig {
-    pub active: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +46,6 @@ pub struct AppConfig {
     pub database: DatabaseConfig,
     pub paths: PathsConfig,
     pub site: SiteConfig,
-    pub theme: ThemeConfig,
     pub session: SessionConfig,
     #[serde(default)]
     pub security: SecurityConfig,
@@ -67,14 +62,11 @@ impl Default for AppConfig {
             },
             paths: PathsConfig {
                 uploads_dir: "uploads".to_string(),
-                themes_dir: "themes".to_string(),
+                work_dir: "work".to_string(),
             },
             site: SiteConfig {
                 title: "My Site".to_string(),
                 tagline: "Just another rust-sqlite-cms site".to_string(),
-            },
-            theme: ThemeConfig {
-                active: "default".to_string(),
             },
             session: SessionConfig {
                 cookie_name: "cms_session".to_string(),

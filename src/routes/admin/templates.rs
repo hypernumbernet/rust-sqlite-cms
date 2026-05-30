@@ -12,6 +12,7 @@ use crate::models::template::{Template as TemplateRow, TemplateInput};
 use crate::presets;
 use crate::repos::templates;
 use crate::state::AppState;
+use crate::theme;
 
 #[derive(Debug, Deserialize)]
 struct TemplateForm {
@@ -134,19 +135,33 @@ async fn create(
     Form(form): Form<TemplateForm>,
 ) -> AppResult<Redirect> {
     let input = form.into_input()?;
-    templates::insert(&state.pool, &input).await?;
+    let (id, file_name) = templates::insert(&state.pool, &input).await?;
+
+    // 本文ファイルの書き込みに失敗した場合はメタ行を削除して整合を保つ。
+    if let Err(err) = theme::write_source(&state.config.paths.work_dir, &file_name, &input.content) {
+        let _ = templates::delete(&state.pool, id).await;
+        return Err(err.into());
+    }
+
     Ok(Redirect::to("/admin/templates"))
 }
 
 async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<impl IntoResponse> {
     let template = templates::find(&state.pool, id).await?;
+    let content = match &template.file_name {
+        Some(file_name) => {
+            theme::read_source(&state.config.paths.work_dir, file_name).unwrap_or_default()
+        }
+        None => String::new(),
+    };
+
     let html = TemplateFormTemplate {
         heading: "テンプレートを編集".to_string(),
         action: format!("/admin/templates/{id}/edit"),
         submit_label: "更新する".to_string(),
         name: template.name,
         url_path: template.url_path.unwrap_or_default(),
-        content: template.content,
+        content,
         is_published: template.is_published,
         is_edit: true,
         delete_action: format!("/admin/templates/{id}/delete"),
@@ -161,13 +176,25 @@ async fn update(
     Path(id): Path<i64>,
     Form(form): Form<TemplateForm>,
 ) -> AppResult<Redirect> {
+    let template = templates::find(&state.pool, id).await?;
+    let file_name = template
+        .file_name
+        .unwrap_or_else(|| format!("page-{id}.html"));
     let input = form.into_input()?;
+
     templates::update(&state.pool, id, &input).await?;
+    theme::write_source(&state.config.paths.work_dir, &file_name, &input.content)?;
+
     Ok(Redirect::to("/admin/templates"))
 }
 
 async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<Redirect> {
+    let template = templates::find(&state.pool, id).await?;
     templates::delete(&state.pool, id).await?;
+    if let Some(file_name) = template.file_name {
+        theme::remove_source(&state.config.paths.work_dir, &file_name)?;
+    }
+
     Ok(Redirect::to("/admin/templates"))
 }
 
@@ -245,8 +272,12 @@ fn normalize_url_path(raw: &str) -> Option<String> {
 }
 
 /// システム（公開トップ・管理画面）が使用する予約済みパスかどうか。
-/// 公開トップ `/` はテーマで描画し、`/admin` 配下は管理画面に割り当てているため、
-/// テンプレートの URL としては使用できない。
+/// 公開トップ `/` は index.html で描画し、`/admin` 配下は管理画面、`/static` 配下は
+/// 静的配信に割り当てているため、テンプレートの URL としては使用できない。
 fn is_reserved_path(path: &str) -> bool {
-    path == "/" || path == "/admin" || path.starts_with("/admin/")
+    path == "/"
+        || path == "/admin"
+        || path.starts_with("/admin/")
+        || path == "/static"
+        || path.starts_with("/static/")
 }

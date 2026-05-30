@@ -4,7 +4,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 use rust_sqlite_cms::{
     config::AppConfig, db, error::AppResult, repos::options, routes, state::AppState,
-    theme::Templates,
+    theme::{self, Templates},
 };
 
 #[tokio::main]
@@ -26,15 +26,19 @@ async fn main() -> AppResult<()> {
     options::ensure_defaults(&pool, &config).await?;
     tracing::info!("既定の options を確認しました");
 
+    theme::ensure_seeded(&config.paths.work_dir)?;
+    tracing::info!("作業ディレクトリを初期化しました");
+
     let bind_addr = config.server.bind_addr.clone();
-    let templates = Arc::new(Templates::new(config.paths.themes_dir.clone().into()));
+    let templates = Arc::new(Templates::new(theme::templates_dir(&config.paths.work_dir)));
+    let static_dir = theme::static_dir(&config.paths.work_dir);
     let state = AppState {
         pool,
         config: Arc::new(config),
         templates,
     };
 
-    let app = routes::router().with_state(state);
+    let app = routes::router(static_dir).with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!("公開サイト: http://{bind_addr}/");

@@ -34,13 +34,9 @@ pub fn router() -> Router<AppState> {
 
 async fn home(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let ctx = build_site_context(&state).await?;
-    let theme = options::get(&state.pool, "active_theme")
-        .await?
-        .unwrap_or_else(|| state.config.theme.active.clone());
-
     let html = state
         .templates
-        .render(&theme, "index.html", Value::from_serialize(&ctx))?;
+        .render("index.html", Value::from_serialize(&ctx))?;
 
     Ok(Html(html))
 }
@@ -52,19 +48,24 @@ pub async fn serve_template(
 ) -> AppResult<impl IntoResponse> {
     let path = normalize_path(uri.path());
 
-    // 管理画面の名前空間はテンプレート配信の対象外にする。
-    if path == "/admin" || path.starts_with("/admin/") {
+    // システム名前空間（管理画面・静的配信）はテンプレート配信の対象外にする。
+    if path == "/admin"
+        || path.starts_with("/admin/")
+        || path == "/static"
+        || path.starts_with("/static/")
+    {
         return Err(AppError::NotFound);
     }
 
     let template = templates::find_published_by_path(&state.pool, &path)
         .await?
         .ok_or(AppError::NotFound)?;
+    let file_name = template.file_name.ok_or(AppError::NotFound)?;
 
     let ctx = build_site_context(&state).await?;
     let html = state
         .templates
-        .render_str("page.html", &template.content, Value::from_serialize(&ctx))?;
+        .render(&file_name, Value::from_serialize(&ctx))?;
 
     Ok(Html(html))
 }

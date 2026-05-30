@@ -1,16 +1,19 @@
-/// `templates` テーブルのユーザー編集可能な HTML テンプレート行に対応する。
+/// `templates` テーブルの行に対応する。本文は `file_name` が指す
+/// `work/templates/` 配下のファイルに保持し、DB にはメタ情報のみを持つ。
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct Template {
     pub id: i64,
     pub name: String,
     pub url_path: Option<String>,
-    pub content: String,
+    /// 本文 HTML を保持するファイル名（例: `page-3.html`）。
+    pub file_name: Option<String>,
     pub is_published: bool,
     pub created_at: String,
     pub updated_at: String,
 }
 
-/// テンプレート作成・更新時にリポジトリへ渡す入力値。
+/// テンプレート作成・更新時にリポジトリ／ストアへ渡す入力値。
+/// `content` は DB ではなくファイルへ書き込む。
 #[derive(Debug, Clone)]
 pub struct TemplateInput {
     pub name: String,

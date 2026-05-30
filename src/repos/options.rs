@@ -61,7 +61,6 @@ pub async fn ensure_defaults(pool: &SqlitePool, config: &AppConfig) -> AppResult
         &format!("http://{}", config.server.bind_addr),
     )
     .await?;
-    set_default(pool, "active_theme", &config.theme.active).await?;
     set_default(
         pool,
         "permalink_structure",

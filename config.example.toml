@@ -13,17 +13,13 @@ path = "data/cms.db"
 [paths]
 # メディアのアップロード先
 uploads_dir = "uploads"
-# テーマのルートディレクトリ
-themes_dir = "themes"
+# テンプレート・静的アセットのステートフルな作業ディレクトリ（work/templates/, work/templates/static/）
+work_dir = "work"
 
 [site]
 # 表示名・説明（options テーブルの blogname / blogdescription 既定値）
 title = "My Site"
 tagline = "Just another rust-sqlite-cms site"
-
-[theme]
-# 有効テーマ名（themes/ 以下のディレクトリ名）
-active = "default"
 
 [session]
 # セッション Cookie 名・有効期限（秒）

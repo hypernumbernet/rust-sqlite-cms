@@ -1,5 +1,9 @@
 //! 同梱のスターターデザイン。新規テンプレート作成時に複製元として選択する。
 
+/// 公開トップ `/` の初期テンプレート。`work/templates/index.html` が無い場合に
+/// このソースから生成する（seed）。
+pub const HOME_INDEX: &str = include_str!("../presets/index.html");
+
 /// 1 つのプリセットデザイン。
 pub struct Preset {
     /// URL や選択に使う一意キー。

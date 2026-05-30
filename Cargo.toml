@@ -15,5 +15,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "derive", "chrono"] }
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["full"] }
+tower-http = { version = "0.6.11", features = ["fs"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }

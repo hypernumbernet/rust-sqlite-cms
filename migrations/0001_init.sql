@@ -1,5 +1,6 @@
--- 初期スキーマ: Phase 1/2 のコアテーブル。
--- 日時はすべて UTC の ISO8601 文字列(TEXT)で保持する想定。
+-- 統合初期スキーマ
+-- 元々は 0001/0002/0003 に分割されていたが、単一ファイルに統合した。
+-- 日時はすべて UTC の ISO8601 文字列(TEXT)で保持する。
 
 -- ユーザーアカウント -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
@@ -21,25 +22,45 @@ CREATE TABLE IF NOT EXISTS usermeta (
 );
 CREATE INDEX IF NOT EXISTS idx_usermeta_user_key ON usermeta(user_id, meta_key);
 
+-- ウィジェットタイプ（コードレジストリと 1:1、設定のみ DB 保持） -------------
+CREATE TABLE IF NOT EXISTS widget_types (
+    id         INTEGER PRIMARY KEY,
+    type_key   TEXT NOT NULL UNIQUE,
+    config     TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+-- プレースホルダー（テンプレート参照名） ------------------------------------
+CREATE TABLE IF NOT EXISTS placeholders (
+    id             INTEGER PRIMARY KEY,
+    name           TEXT NOT NULL UNIQUE,
+    widget_type_id INTEGER NOT NULL REFERENCES widget_types(id),
+    created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_placeholders_widget_type ON placeholders(widget_type_id);
+
 -- 投稿・固定ページ・添付の共通テーブル -------------------------------------
 CREATE TABLE IF NOT EXISTS posts (
-    id           INTEGER PRIMARY KEY,
-    post_author  INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    post_type    TEXT    NOT NULL DEFAULT 'post',   -- post / page / attachment ...
-    post_status  TEXT    NOT NULL DEFAULT 'draft',  -- draft / publish / future / trash
-    post_parent  INTEGER REFERENCES posts(id) ON DELETE SET NULL,
-    post_name    TEXT,                              -- スラッグ
-    title        TEXT    NOT NULL DEFAULT '',
-    content      TEXT    NOT NULL DEFAULT '',
-    excerpt      TEXT    NOT NULL DEFAULT '',
-    menu_order   INTEGER NOT NULL DEFAULT 0,
-    published_at TEXT,                              -- 公開日時(予約投稿で利用)
-    created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    id             INTEGER PRIMARY KEY,
+    post_author    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    post_type      TEXT    NOT NULL DEFAULT 'post',   -- post / page / attachment ...
+    post_status    TEXT    NOT NULL DEFAULT 'draft',  -- draft / publish / future / trash
+    post_parent    INTEGER REFERENCES posts(id) ON DELETE SET NULL,
+    post_name      TEXT,                              -- スラッグ
+    title          TEXT    NOT NULL DEFAULT '',
+    content        TEXT    NOT NULL DEFAULT '',
+    excerpt        TEXT    NOT NULL DEFAULT '',
+    menu_order     INTEGER NOT NULL DEFAULT 0,
+    published_at   TEXT,                              -- 公開日時(予約投稿で利用)
+    placeholder_id INTEGER REFERENCES placeholders(id),
+    created_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_posts_type_status ON posts(post_type, post_status);
 CREATE INDEX IF NOT EXISTS idx_posts_name ON posts(post_name);
 CREATE INDEX IF NOT EXISTS idx_posts_parent ON posts(post_parent);
+CREATE INDEX IF NOT EXISTS idx_posts_placeholder ON posts(placeholder_id);
 
 CREATE TABLE IF NOT EXISTS postmeta (
     id         INTEGER PRIMARY KEY,
@@ -110,3 +131,11 @@ CREATE TABLE IF NOT EXISTS pages (
     updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_pages_published ON pages(is_published);
+
+-- 初期シードデータ ---------------------------------------------------------
+-- テンプレート（presets/index.html など）が参照する "news" プレースホルダー
+INSERT INTO widget_types (type_key, config)
+VALUES ('news', '{"limit":5}');
+
+INSERT INTO placeholders (name, widget_type_id)
+SELECT 'news', id FROM widget_types WHERE type_key = 'news';

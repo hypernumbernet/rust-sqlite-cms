@@ -3,56 +3,81 @@ use sqlx::SqlitePool;
 use crate::error::{AppError, AppResult};
 use crate::models::post::{Post, PostInput};
 
-/// 管理画面向けに、お知らせを公開状態にかかわらず新しい順で取得する。
-pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Post>> {
+/// 指定プレースホルダー配下の投稿を、公開状態にかかわらず新しい順で取得する。
+pub async fn list_all_for_placeholder(pool: &SqlitePool, placeholder_id: i64) -> AppResult<Vec<Post>> {
     Ok(sqlx::query_as::<_, Post>(
-        "SELECT id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
+        "SELECT id, placeholder_id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
          FROM posts
-         WHERE post_type = 'post' AND post_status != 'trash'
+         WHERE post_type = 'post' AND post_status != 'trash' AND placeholder_id = ?
          ORDER BY datetime(COALESCE(published_at, created_at)) DESC, id DESC",
     )
+    .bind(placeholder_id)
     .fetch_all(pool)
     .await?)
 }
 
-/// 公開サイト向けに、公開済みのお知らせだけを新しい順で取得する。
-pub async fn list_published(pool: &SqlitePool, limit: i64) -> AppResult<Vec<Post>> {
+/// 指定プレースホルダー配下の公開済み投稿を新しい順で取得する。
+pub async fn list_published_for_placeholder(
+    pool: &SqlitePool,
+    placeholder_id: i64,
+    limit: i64,
+) -> AppResult<Vec<Post>> {
     Ok(sqlx::query_as::<_, Post>(
-        "SELECT id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
+        "SELECT id, placeholder_id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
          FROM posts
-         WHERE post_type = 'post' AND post_status = 'publish'
+         WHERE post_type = 'post' AND post_status = 'publish' AND placeholder_id = ?
          ORDER BY datetime(COALESCE(published_at, created_at)) DESC, id DESC
          LIMIT ?",
     )
-        .bind(limit)
-        .fetch_all(pool)
-        .await?)
+    .bind(placeholder_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?)
 }
 
 /// ID でお知らせを取得する。存在しなければ `NotFound`。
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Post> {
     sqlx::query_as::<_, Post>(
-        "SELECT id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
+        "SELECT id, placeholder_id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
          FROM posts
          WHERE id = ? AND post_type = 'post'",
     )
-        .bind(id)
-        .fetch_optional(pool)
-        .await?
-        .ok_or(AppError::NotFound)
+    .bind(id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AppError::NotFound)
+}
+
+/// 指定プレースホルダー配下の投稿を取得する。
+pub async fn find_in_placeholder(
+    pool: &SqlitePool,
+    placeholder_id: i64,
+    id: i64,
+) -> AppResult<Post> {
+    sqlx::query_as::<_, Post>(
+        "SELECT id, placeholder_id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
+         FROM posts
+         WHERE id = ? AND post_type = 'post' AND placeholder_id = ?",
+    )
+    .bind(id)
+    .bind(placeholder_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or(AppError::NotFound)
 }
 
 /// お知らせを作成する。
 pub async fn insert(pool: &SqlitePool, input: &PostInput) -> AppResult<i64> {
     let row: (i64,) = sqlx::query_as(
         "INSERT INTO posts (
-            post_type, post_status, post_name, title, content, excerpt, published_at
+            post_type, placeholder_id, post_status, post_name, title, content, excerpt, published_at
          ) VALUES (
-            'post', ?, ?, ?, ?, ?,
+            'post', ?, ?, ?, ?, ?, ?,
             CASE WHEN ? = 'publish' THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ELSE NULL END
          )
          RETURNING id",
     )
+    .bind(input.placeholder_id)
     .bind(&input.post_status)
     .bind(&input.post_name)
     .bind(&input.title)
@@ -82,7 +107,7 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PostInput) -> AppResult<
                  ELSE published_at
              END,
              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-         WHERE id = ? AND post_type = 'post'",
+         WHERE id = ? AND post_type = 'post' AND placeholder_id = ?",
     )
     .bind(&input.post_status)
     .bind(&input.post_name)
@@ -92,6 +117,7 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PostInput) -> AppResult<
     .bind(&input.post_status)
     .bind(&input.post_status)
     .bind(id)
+    .bind(input.placeholder_id)
     .execute(pool)
     .await?;
 

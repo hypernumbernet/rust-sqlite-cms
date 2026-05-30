@@ -12,6 +12,7 @@ use crate::state::AppState;
 
 pub mod pages;
 pub mod posts;
+pub mod widgets;
 
 #[derive(Template)]
 #[template(path = "admin/dashboard.html")]
@@ -25,6 +26,7 @@ pub fn router() -> Router<AppState> {
         .route("/admin", get(dashboard))
         .merge(posts::router())
         .merge(pages::router())
+        .merge(widgets::router())
 }
 
 async fn dashboard(State(state): State<AppState>) -> AppResult<impl IntoResponse> {

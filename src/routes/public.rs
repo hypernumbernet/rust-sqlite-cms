@@ -5,30 +5,13 @@ use axum::{
     routing::get,
 };
 use minijinja::Value;
-use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 use crate::models::page::Page;
-use crate::models::post::Post;
-use crate::repos::{options, pages, posts};
+use crate::repos::{options, pages};
 use crate::state::AppState;
 use crate::theme;
-
-#[derive(Debug, Clone, Serialize)]
-struct NewsItem {
-    title: String,
-    excerpt: String,
-    display_date: String,
-}
-
-/// 公開サイトの描画で共通利用するコンテキスト。
-#[derive(Debug, Clone, Serialize)]
-struct SiteContext {
-    blogname: String,
-    blogdescription: String,
-    has_news: bool,
-    news: Vec<NewsItem>,
-}
+use crate::widgets;
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/", get(home))
@@ -78,9 +61,7 @@ async fn render_page(state: &AppState, page: &Page) -> AppResult<Html<String>> {
     }
 
     let ctx = build_site_context(state).await?;
-    let html = state
-        .templates
-        .render(file_name, Value::from_serialize(&ctx))?;
+    let html = state.templates.render(file_name, ctx)?;
 
     Ok(Html(html))
 }
@@ -94,40 +75,13 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
-async fn build_site_context(state: &AppState) -> AppResult<SiteContext> {
+async fn build_site_context(state: &AppState) -> AppResult<Value> {
     let blogname = options::get(&state.pool, "blogname")
         .await?
         .unwrap_or_else(|| state.config.site.title.clone());
     let blogdescription = options::get(&state.pool, "blogdescription")
         .await?
         .unwrap_or_else(|| state.config.site.tagline.clone());
-    let news = posts::list_published(&state.pool, 5)
-        .await?
-        .into_iter()
-        .map(NewsItem::from)
-        .collect::<Vec<_>>();
 
-    Ok(SiteContext {
-        blogname,
-        blogdescription,
-        has_news: !news.is_empty(),
-        news,
-    })
-}
-
-impl From<Post> for NewsItem {
-    fn from(post: Post) -> Self {
-        let display_date = post.published_at.unwrap_or(post.created_at);
-        let excerpt = if post.excerpt.trim().is_empty() {
-            post.content
-        } else {
-            post.excerpt
-        };
-
-        Self {
-            title: post.title,
-            excerpt,
-            display_date,
-        }
-    }
+    widgets::build_render_context(&state.pool, blogname, blogdescription).await
 }

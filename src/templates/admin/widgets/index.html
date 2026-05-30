@@ -1,0 +1,71 @@
+{% extends "admin/base.html" %}
+
+{% block title %}ウィジェット{% endblock %}
+{% block nav_widgets %}active{% endblock %}
+{% block heading %}ウィジェット{% endblock %}
+
+{% block content %}
+<style>
+  .toolbar { margin-bottom: 16px; }
+  .toolbar p { margin: 0; color: var(--muted); }
+  .button {
+    display: inline-block;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: #fff;
+    color: var(--accent);
+    padding: 8px 12px;
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+    text-align: left;
+    vertical-align: top;
+    font-size: 14px;
+  }
+  th { background: #f6f7f7; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  .type-name { font-weight: 600; }
+  .type-key { color: var(--muted); font-size: 12px; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+</style>
+
+<div class="toolbar">
+  <p>ウィジェットタイプの共通設定を管理します。プレースホルダー名は <a href="/admin/posts">投稿</a> 画面で定義します。</p>
+</div>
+
+<section class="panel">
+  <table>
+    <thead>
+      <tr>
+        <th>タイプ</th>
+        <th>設定</th>
+        <th>更新日</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for widget_type in widget_types %}
+      <tr>
+        <td>
+          <div class="type-name">{{ widget_type.type_label }}</div>
+          <div class="type-key">{{ widget_type.type_key }}</div>
+        </td>
+        <td>{{ widget_type.config_summary }}</td>
+        <td>{{ widget_type.updated_at }}</td>
+        <td><a class="button" href="/admin/widgets/{{ widget_type.type_key }}/edit">編集</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

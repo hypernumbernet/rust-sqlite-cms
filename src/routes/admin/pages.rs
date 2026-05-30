@@ -352,7 +352,7 @@ fn static_help_text(is_static: bool) -> String {
     if is_static {
         "完成した HTML をそのまま保存します。MiniJinja の構文は展開されません。".to_string()
     } else {
-        "MiniJinja の構文（{{ blogname }} など）が使えます。利用可能: blogname / blogdescription / news。".to_string()
+        "MiniJinja の構文（{{ blogname }} など）が使えます。サイト変数: blogname / blogdescription。プレースホルダー名は /admin/posts で定義し、テンプレートではその名前（例: news, has_news）を参照できます。".to_string()
     }
 }
 

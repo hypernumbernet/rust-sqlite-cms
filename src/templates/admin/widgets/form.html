@@ -1,0 +1,88 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_widgets %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<style>
+  .form-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 20px;
+    align-items: start;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; margin-bottom: 6px; font-weight: 600; }
+  input[type="number"] {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 9px 10px;
+    font: inherit;
+    background: #fff;
+  }
+  .readonly {
+    margin: 0;
+    padding: 9px 10px;
+    background: #f6f7f7;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+  .button {
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 9px 14px;
+    text-decoration: none;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .button.secondary { background: #fff; color: var(--accent); }
+</style>
+
+<form method="post" action="{{ action }}" class="form-layout">
+  <section class="panel">
+    <div class="field">
+      <label>説明</label>
+      <p class="help">{{ description }}</p>
+      <p class="help">このタイプを使うプレースホルダーは <a href="/admin/posts">投稿</a> 画面で追加します。</p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="field">
+      <label>ウィジェットタイプ</label>
+      <p class="readonly">{{ type_label }}</p>
+      <p class="help"><code>{{ type_key }}</code></p>
+    </div>
+
+    <div class="field">
+      <label for="limit">表示件数</label>
+      <input id="limit" name="limit" type="number" min="1" max="50" value="{{ limit }}">
+      <p class="help">このタイプのプレースホルダー共通の表示件数（1〜50）。</p>
+    </div>
+
+    <div class="actions">
+      <button class="button" type="submit">{{ submit_label }}</button>
+      <a class="button secondary" href="/admin/widgets">戻る</a>
+    </div>
+  </aside>
+</form>
+
+{% if !error_message.is_empty() %}
+<script>alert("{{ error_message }}");</script>
+{% endif %}
+{% endblock %}

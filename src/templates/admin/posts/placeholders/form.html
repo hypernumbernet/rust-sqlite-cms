@@ -1,0 +1,110 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_posts %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<style>
+  .form-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 20px;
+    align-items: start;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; margin-bottom: 6px; font-weight: 600; }
+  input[type="text"], select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 9px 10px;
+    font: inherit;
+    background: #fff;
+  }
+  .help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  .example {
+    margin: 0;
+    padding: 12px;
+    background: #f6f7f7;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; flex-wrap: wrap; }
+  .button {
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 9px 14px;
+    text-decoration: none;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .button.secondary { background: #fff; color: var(--accent); }
+  .button.danger { background: #fff; color: #b32d2e; border-color: #b32d2e; }
+  .delete-form { margin: 18px 0 0; }
+</style>
+
+<form method="post" action="{{ action }}" class="form-layout">
+  <section class="panel">
+    <div class="field">
+      <label>テンプレートでの利用例</label>
+      <pre class="example">{% raw %}{% if has_NAME %}
+  {% for item in NAME %}
+    {{ item.title }}
+  {% endfor %}
+{% endif %}{% endraw %}</pre>
+      <p class="help"><code>NAME</code> をプレースホルダー名に置き換えてください。</p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="field">
+      <label for="name">プレースホルダー名</label>
+      <input id="name" name="name" type="text" value="{{ name }}" required pattern="[A-Za-z_][A-Za-z0-9_]*">
+      <p class="help">英字またはアンダースコアで始まる識別子（例: <code>news</code>）。</p>
+    </div>
+
+    <div class="field">
+      <label for="widget_type_id">ウィジェットタイプ</label>
+      <select id="widget_type_id" name="widget_type_id" required>
+        {% for widget_type in widget_types %}
+        <option value="{{ widget_type.id }}"{% if widget_type.selected %} selected{% endif %}>{{ widget_type.label }}</option>
+        {% endfor %}
+      </select>
+      <p class="help">タイプの詳細設定は <a href="/admin/widgets">ウィジェット</a> 画面で編集します。</p>
+    </div>
+
+    <div class="actions">
+      <button class="button" type="submit">{{ submit_label }}</button>
+      {% if is_edit %}
+      <a class="button secondary" href="{{ entries_url }}">投稿一覧</a>
+      {% endif %}
+      <a class="button secondary" href="/admin/posts">戻る</a>
+    </div>
+  </aside>
+</form>
+
+{% if is_edit %}
+<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('このプレースホルダーを削除しますか？');">
+  <button class="button danger" type="submit">削除する</button>
+</form>
+{% endif %}
+
+{% if !error_message.is_empty() %}
+<script>alert("{{ error_message }}");</script>
+{% endif %}
+{% endblock %}

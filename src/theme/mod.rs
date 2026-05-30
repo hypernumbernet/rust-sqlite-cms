@@ -79,3 +79,32 @@ pub fn remove_source(work_dir: &str, file_name: &str) -> std::io::Result<()> {
         Err(err) => Err(err),
     }
 }
+
+/// `work/pages` ディレクトリのパス。
+pub fn pages_dir(work_dir: &str) -> PathBuf {
+    Path::new(work_dir).join("pages")
+}
+
+/// 固定ページ用ディレクトリを作成する。
+pub fn ensure_pages_dir(work_dir: &str) -> std::io::Result<()> {
+    std::fs::create_dir_all(pages_dir(work_dir))
+}
+
+/// 編集フォーム向けに固定ページファイルの生ソースを読み込む。
+pub fn read_page_source(work_dir: &str, file_name: &str) -> std::io::Result<String> {
+    std::fs::read_to_string(pages_dir(work_dir).join(file_name))
+}
+
+/// 固定ページファイルへ生ソースを書き込む。
+pub fn write_page_source(work_dir: &str, file_name: &str, content: &str) -> std::io::Result<()> {
+    std::fs::write(pages_dir(work_dir).join(file_name), content)
+}
+
+/// 固定ページファイルを削除する。既に無い場合は無視する。
+pub fn remove_page_source(work_dir: &str, file_name: &str) -> std::io::Result<()> {
+    match std::fs::remove_file(pages_dir(work_dir).join(file_name)) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}

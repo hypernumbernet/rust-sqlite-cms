@@ -27,6 +27,7 @@ async fn main() -> AppResult<()> {
     tracing::info!("既定の options を確認しました");
 
     theme::ensure_seeded(&config.paths.work_dir)?;
+    theme::ensure_pages_dir(&config.paths.work_dir)?;
     tracing::info!("作業ディレクトリを初期化しました");
 
     let bind_addr = config.server.bind_addr.clone();

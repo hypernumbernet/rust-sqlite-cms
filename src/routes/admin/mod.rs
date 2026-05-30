@@ -10,6 +10,7 @@ use crate::error::AppResult;
 use crate::repos::options;
 use crate::state::AppState;
 
+pub mod pages;
 pub mod posts;
 pub mod templates;
 
@@ -25,6 +26,7 @@ pub fn router() -> Router<AppState> {
         .route("/admin", get(dashboard))
         .merge(posts::router())
         .merge(templates::router())
+        .merge(pages::router())
 }
 
 async fn dashboard(State(state): State<AppState>) -> AppResult<impl IntoResponse> {

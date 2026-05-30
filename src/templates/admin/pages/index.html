@@ -1,0 +1,113 @@
+{% extends "admin/base.html" %}
+
+{% block title %}固定ページ{% endblock %}
+{% block nav_pages %}active{% endblock %}
+{% block heading %}固定ページ{% endblock %}
+
+{% block content %}
+<style>
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .toolbar p { margin: 0; color: var(--muted); }
+  .button {
+    display: inline-block;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 8px 12px;
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .button.secondary { background: #fff; color: var(--accent); }
+  .button.danger { background: #fff; color: #b32d2e; border-color: #b32d2e; }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; }
+  th, td {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+    text-align: left;
+    vertical-align: middle;
+    font-size: 14px;
+  }
+  th { background: #f6f7f7; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  .name { font-weight: 600; }
+  .url { color: var(--muted); font-size: 13px; }
+  .status {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 12px;
+  }
+  .status.published { border-color: #1b8a4b; color: #1b8a4b; }
+  .ops { display: flex; gap: 8px; align-items: center; }
+  .ops form { margin: 0; }
+  .empty { padding: 28px; color: var(--muted); }
+</style>
+
+<div class="toolbar">
+  <p>静的 HTML を編集し、URL に割り当てて公開します。MiniJinja は使われず、ファイル内容がそのまま返されます。</p>
+  <a class="button" href="/admin/pages/new">新規追加</a>
+</div>
+
+<section class="panel">
+  {% if has_pages %}
+  <table>
+    <thead>
+      <tr>
+        <th>名前</th>
+        <th>URL</th>
+        <th>状態</th>
+        <th>更新日</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for page in pages %}
+      <tr>
+        <td><div class="name">{{ page.name }}</div></td>
+        <td><span class="url">{{ page.url_path }}</span></td>
+        <td>
+          {% if page.is_published %}
+          <span class="status published">{{ page.status_label }}</span>
+          {% else %}
+          <span class="status">{{ page.status_label }}</span>
+          {% endif %}
+        </td>
+        <td>{{ page.updated_at }}</td>
+        <td>
+          <div class="ops">
+            {% if page.is_published && page.has_url %}
+            <a class="button secondary" href="{{ page.url_path }}" target="_blank" rel="noopener">表示</a>
+            {% endif %}
+            <a class="button secondary" href="/admin/pages/{{ page.id }}/edit">編集</a>
+            <form method="post" action="/admin/pages/{{ page.id }}/delete" onsubmit="return confirm('この固定ページを削除しますか？');">
+              <button class="button danger" type="submit">削除</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    まだ固定ページはありません。「新規追加」からデザインを選んで作成してください。
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -9,8 +9,9 @@ use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
 use crate::models::post::Post;
-use crate::repos::{options, posts, templates};
+use crate::repos::{options, pages, posts, templates};
 use crate::state::AppState;
+use crate::theme;
 
 #[derive(Debug, Clone, Serialize)]
 struct NewsItem {
@@ -41,20 +42,26 @@ async fn home(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     Ok(Html(html))
 }
 
-/// 既存ルートに一致しなかったパスを、公開済みテンプレートとして配信する。
-pub async fn serve_template(
+/// 既存ルートに一致しなかったパスを、公開済み固定ページまたはテンプレートとして配信する。
+pub async fn serve_fallback(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
 ) -> AppResult<impl IntoResponse> {
     let path = normalize_path(uri.path());
 
-    // システム名前空間（管理画面・静的配信）はテンプレート配信の対象外にする。
+    // システム名前空間（管理画面・静的配信）は配信の対象外にする。
     if path == "/admin"
         || path.starts_with("/admin/")
         || path == "/static"
         || path.starts_with("/static/")
     {
         return Err(AppError::NotFound);
+    }
+
+    if let Some(page) = pages::find_published_by_path(&state.pool, &path).await? {
+        let file_name = page.file_name.ok_or(AppError::NotFound)?;
+        let html = theme::read_page_source(&state.config.paths.work_dir, &file_name)?;
+        return Ok(Html(html));
     }
 
     let template = templates::find_published_by_path(&state.pool, &path)

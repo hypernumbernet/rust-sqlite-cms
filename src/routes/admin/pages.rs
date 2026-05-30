@@ -8,15 +8,15 @@ use axum::{
 use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
-use crate::models::template::{Template as TemplateRow, TemplateInput};
+use crate::models::page::{Page as PageRow, PageInput};
 use crate::presets;
-use crate::repos::templates;
+use crate::repos::pages;
 use crate::routes::url::{is_reserved_path, normalize_url_path};
 use crate::state::AppState;
 use crate::theme;
 
 #[derive(Debug, Deserialize)]
-struct TemplateForm {
+struct PageForm {
     name: String,
     url_path: String,
     content: String,
@@ -25,7 +25,7 @@ struct TemplateForm {
 }
 
 #[derive(Debug, Clone)]
-struct TemplateListItem {
+struct PageListItem {
     id: i64,
     name: String,
     url_path: String,
@@ -43,21 +43,21 @@ struct PresetCard {
 }
 
 #[derive(Template)]
-#[template(path = "admin/templates/index.html")]
-struct TemplateIndexTemplate {
-    templates: Vec<TemplateListItem>,
-    has_templates: bool,
+#[template(path = "admin/pages/index.html")]
+struct PageIndexTemplate {
+    pages: Vec<PageListItem>,
+    has_pages: bool,
 }
 
 #[derive(Template)]
-#[template(path = "admin/templates/gallery.html")]
-struct TemplateGalleryTemplate {
+#[template(path = "admin/pages/gallery.html")]
+struct PageGalleryTemplate {
     presets: Vec<PresetCard>,
 }
 
 #[derive(Template)]
-#[template(path = "admin/templates/form.html")]
-struct TemplateFormTemplate {
+#[template(path = "admin/pages/form.html")]
+struct PageFormTemplate {
     heading: String,
     action: String,
     submit_label: String,
@@ -71,22 +71,22 @@ struct TemplateFormTemplate {
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/admin/templates", get(index).post(create))
-        .route("/admin/templates/new", get(new_gallery))
-        .route("/admin/templates/new/{design}", get(new_form))
-        .route("/admin/templates/{id}/edit", get(edit).post(update))
-        .route("/admin/templates/{id}/delete", post(destroy))
+        .route("/admin/pages", get(index).post(create))
+        .route("/admin/pages/new", get(new_gallery))
+        .route("/admin/pages/new/{design}", get(new_form))
+        .route("/admin/pages/{id}/edit", get(edit).post(update))
+        .route("/admin/pages/{id}/delete", post(destroy))
 }
 
 async fn index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
-    let templates = templates::list_all(&state.pool)
+    let pages = pages::list_all(&state.pool)
         .await?
         .into_iter()
-        .map(TemplateListItem::from)
+        .map(PageListItem::from)
         .collect::<Vec<_>>();
-    let html = TemplateIndexTemplate {
-        has_templates: !templates.is_empty(),
-        templates,
+    let html = PageIndexTemplate {
+        has_pages: !pages.is_empty(),
+        pages,
     }
     .render()?;
 
@@ -102,7 +102,7 @@ async fn new_gallery() -> AppResult<impl IntoResponse> {
             description: preset.description.to_string(),
         })
         .collect::<Vec<_>>();
-    let html = TemplateGalleryTemplate { presets }.render()?;
+    let html = PageGalleryTemplate { presets }.render()?;
 
     Ok(Html(html))
 }
@@ -115,9 +115,9 @@ async fn new_form(Path(design): Path<String>) -> AppResult<impl IntoResponse> {
         (preset.label.to_string(), preset.html.to_string())
     };
 
-    let html = TemplateFormTemplate {
-        heading: "テンプレートを追加".to_string(),
-        action: "/admin/templates".to_string(),
+    let html = PageFormTemplate {
+        heading: "固定ページを追加".to_string(),
+        action: "/admin/pages".to_string(),
         submit_label: "作成する".to_string(),
         name,
         url_path: String::new(),
@@ -133,39 +133,39 @@ async fn new_form(Path(design): Path<String>) -> AppResult<impl IntoResponse> {
 
 async fn create(
     State(state): State<AppState>,
-    Form(form): Form<TemplateForm>,
+    Form(form): Form<PageForm>,
 ) -> AppResult<Redirect> {
     let input = form.into_input()?;
-    let (id, file_name) = templates::insert(&state.pool, &input).await?;
+    let (id, file_name) = pages::insert(&state.pool, &input).await?;
 
-    // 本文ファイルの書き込みに失敗した場合はメタ行を削除して整合を保つ。
-    if let Err(err) = theme::write_source(&state.config.paths.work_dir, &file_name, &input.content) {
-        let _ = templates::delete(&state.pool, id).await;
+    if let Err(err) =
+        theme::write_page_source(&state.config.paths.work_dir, &file_name, &input.content)
+    {
+        let _ = pages::delete(&state.pool, id).await;
         return Err(err.into());
     }
 
-    Ok(Redirect::to("/admin/templates"))
+    Ok(Redirect::to("/admin/pages"))
 }
 
 async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<impl IntoResponse> {
-    let template = templates::find(&state.pool, id).await?;
-    let content = match &template.file_name {
-        Some(file_name) => {
-            theme::read_source(&state.config.paths.work_dir, file_name).unwrap_or_default()
-        }
+    let page = pages::find(&state.pool, id).await?;
+    let content = match &page.file_name {
+        Some(file_name) => theme::read_page_source(&state.config.paths.work_dir, file_name)
+            .unwrap_or_default(),
         None => String::new(),
     };
 
-    let html = TemplateFormTemplate {
-        heading: "テンプレートを編集".to_string(),
-        action: format!("/admin/templates/{id}/edit"),
+    let html = PageFormTemplate {
+        heading: "固定ページを編集".to_string(),
+        action: format!("/admin/pages/{id}/edit"),
         submit_label: "更新する".to_string(),
-        name: template.name,
-        url_path: template.url_path.unwrap_or_default(),
+        name: page.name,
+        url_path: page.url_path.unwrap_or_default(),
         content,
-        is_published: template.is_published,
+        is_published: page.is_published,
         is_edit: true,
-        delete_action: format!("/admin/templates/{id}/delete"),
+        delete_action: format!("/admin/pages/{id}/delete"),
     }
     .render()?;
 
@@ -175,32 +175,32 @@ async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<i
 async fn update(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-    Form(form): Form<TemplateForm>,
+    Form(form): Form<PageForm>,
 ) -> AppResult<Redirect> {
-    let template = templates::find(&state.pool, id).await?;
-    let file_name = template
+    let page = pages::find(&state.pool, id).await?;
+    let file_name = page
         .file_name
         .unwrap_or_else(|| format!("page-{id}.html"));
     let input = form.into_input()?;
 
-    templates::update(&state.pool, id, &input).await?;
-    theme::write_source(&state.config.paths.work_dir, &file_name, &input.content)?;
+    pages::update(&state.pool, id, &input).await?;
+    theme::write_page_source(&state.config.paths.work_dir, &file_name, &input.content)?;
 
-    Ok(Redirect::to("/admin/templates"))
+    Ok(Redirect::to("/admin/pages"))
 }
 
 async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<Redirect> {
-    let template = templates::find(&state.pool, id).await?;
-    templates::delete(&state.pool, id).await?;
-    if let Some(file_name) = template.file_name {
-        theme::remove_source(&state.config.paths.work_dir, &file_name)?;
+    let page = pages::find(&state.pool, id).await?;
+    pages::delete(&state.pool, id).await?;
+    if let Some(file_name) = page.file_name {
+        theme::remove_page_source(&state.config.paths.work_dir, &file_name)?;
     }
 
-    Ok(Redirect::to("/admin/templates"))
+    Ok(Redirect::to("/admin/pages"))
 }
 
-impl TemplateForm {
-    fn into_input(self) -> AppResult<TemplateInput> {
+impl PageForm {
+    fn into_input(self) -> AppResult<PageInput> {
         let url_path = normalize_url_path(&self.url_path);
 
         if let Some(path) = url_path.as_deref()
@@ -219,7 +219,7 @@ impl TemplateForm {
             ));
         }
 
-        Ok(TemplateInput {
+        Ok(PageInput {
             name: self.name.trim().to_string(),
             url_path,
             content: self.content,
@@ -228,10 +228,10 @@ impl TemplateForm {
     }
 }
 
-impl From<TemplateRow> for TemplateListItem {
-    fn from(template: TemplateRow) -> Self {
-        let has_url = template.url_path.is_some();
-        let status_label = if template.is_published {
+impl From<PageRow> for PageListItem {
+    fn from(page: PageRow) -> Self {
+        let has_url = page.url_path.is_some();
+        let status_label = if page.is_published {
             "公開"
         } else {
             "非公開"
@@ -239,17 +239,17 @@ impl From<TemplateRow> for TemplateListItem {
         .to_string();
 
         Self {
-            id: template.id,
-            name: if template.name.trim().is_empty() {
+            id: page.id,
+            name: if page.name.trim().is_empty() {
                 "（無題）".to_string()
             } else {
-                template.name
+                page.name
             },
-            url_path: template.url_path.unwrap_or_else(|| "（未設定）".to_string()),
+            url_path: page.url_path.unwrap_or_else(|| "（未設定）".to_string()),
             has_url,
-            is_published: template.is_published,
+            is_published: page.is_published,
             status_label,
-            updated_at: template.updated_at,
+            updated_at: page.updated_at,
         }
     }
 }

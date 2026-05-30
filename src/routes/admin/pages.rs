@@ -2,7 +2,7 @@ use askama::Template;
 use axum::{
     Form, Router,
     extract::{Path, State},
-    response::{Html, IntoResponse, Redirect},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
 use serde::Deserialize;
@@ -74,6 +74,7 @@ struct PageFormTemplate {
     show_is_static: bool,
     static_help: String,
     delete_action: String,
+    error_message: String,
 }
 
 pub fn router() -> Router<AppState> {
@@ -119,21 +120,21 @@ async fn new_form(Path(design): Path<String>) -> AppResult<impl IntoResponse> {
         (preset.label.to_string(), preset.html.to_string(), is_static)
     };
 
-    let html = PageFormTemplate {
-        heading: "ページを追加".to_string(),
-        action: "/admin/pages".to_string(),
-        submit_label: "作成する".to_string(),
+    let html = page_form_template(
+        "ページを追加",
+        "/admin/pages",
+        "作成する",
         name,
-        url_path: String::new(),
+        String::new(),
         content,
         is_static,
-        is_published: false,
-        is_edit: false,
-        is_home: false,
-        show_is_static: true,
-        static_help: static_help_text(is_static),
-        delete_action: String::new(),
-    }
+        false,
+        false,
+        false,
+        true,
+        "",
+        "",
+    )
     .render()?;
 
     Ok(Html(html))
@@ -142,9 +143,24 @@ async fn new_form(Path(design): Path<String>) -> AppResult<impl IntoResponse> {
 async fn create(
     State(state): State<AppState>,
     Form(form): Form<PageForm>,
-) -> AppResult<Redirect> {
-    let input = form.into_input(false)?;
-    let (id, file_name) = pages::insert(&state.pool, &input).await?;
+) -> AppResult<Response> {
+    let input = match form.into_input(false) {
+        Ok(input) => input,
+        Err(AppError::Conflict(message)) => {
+            let html = conflict_form_response(&form, false, None, message)?.render()?;
+            return Ok(Html(html).into_response());
+        }
+        Err(err) => return Err(err),
+    };
+
+    let (id, file_name) = match pages::insert(&state.pool, &input).await {
+        Ok(pair) => pair,
+        Err(AppError::Conflict(message)) => {
+            let html = conflict_form_response(&form, false, None, message)?.render()?;
+            return Ok(Html(html).into_response());
+        }
+        Err(err) => return Err(err),
+    };
 
     if let Err(err) = theme::write_page_content(
         &state.config.paths.work_dir,
@@ -156,7 +172,7 @@ async fn create(
         return Err(err.into());
     }
 
-    Ok(Redirect::to("/admin/pages"))
+    Ok(Redirect::to("/admin/pages").into_response())
 }
 
 async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<impl IntoResponse> {
@@ -172,25 +188,25 @@ async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<i
     };
 
     let is_home = page.is_home();
-    let html = PageFormTemplate {
-        heading: if is_home {
-            "トップページを編集".to_string()
+    let html = page_form_template(
+        if is_home {
+            "トップページを編集"
         } else {
-            "ページを編集".to_string()
+            "ページを編集"
         },
-        action: format!("/admin/pages/{id}/edit"),
-        submit_label: "更新する".to_string(),
-        name: page.name,
-        url_path: page.url_path.unwrap_or_default(),
+        &format!("/admin/pages/{id}/edit"),
+        "更新する",
+        page.name,
+        page.url_path.unwrap_or_default(),
         content,
-        is_static: page.is_static,
-        is_published: page.is_published,
-        is_edit: true,
+        page.is_static,
+        page.is_published,
+        true,
         is_home,
-        show_is_static: !is_home,
-        static_help: static_help_text(page.is_static),
-        delete_action: format!("/admin/pages/{id}/delete"),
-    }
+        !is_home,
+        "",
+        &format!("/admin/pages/{id}/delete"),
+    )
     .render()?;
 
     Ok(Html(html))
@@ -200,15 +216,28 @@ async fn update(
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Form(form): Form<PageForm>,
-) -> AppResult<Redirect> {
+) -> AppResult<Response> {
     let page = pages::find(&state.pool, id).await?;
+    let is_home = page.is_home();
     let file_name = page
         .file_name
         .clone()
         .unwrap_or_else(|| format!("page-{id}.html"));
-    let input = form.into_input(page.is_home())?;
 
-    pages::update(&state.pool, id, &input).await?;
+    let input = match form.into_input(is_home) {
+        Ok(input) => input,
+        Err(AppError::Conflict(message)) => {
+            let html = conflict_form_response(&form, true, Some(id), message)?.render()?;
+            return Ok(Html(html).into_response());
+        }
+        Err(err) => return Err(err),
+    };
+
+    if let Err(AppError::Conflict(message)) = pages::update(&state.pool, id, &input).await {
+        let html = conflict_form_response(&form, true, Some(id), message)?.render()?;
+        return Ok(Html(html).into_response());
+    }
+
     theme::write_page_content(
         &state.config.paths.work_dir,
         &file_name,
@@ -216,7 +245,7 @@ async fn update(
         &input.content,
     )?;
 
-    Ok(Redirect::to("/admin/pages"))
+    Ok(Redirect::to("/admin/pages").into_response())
 }
 
 async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<Redirect> {
@@ -229,6 +258,81 @@ async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResul
     Ok(Redirect::to("/admin/pages"))
 }
 
+fn page_form_template(
+    heading: &str,
+    action: &str,
+    submit_label: &str,
+    name: String,
+    url_path: String,
+    content: String,
+    is_static: bool,
+    is_published: bool,
+    is_edit: bool,
+    is_home: bool,
+    show_is_static: bool,
+    error_message: &str,
+    delete_action: &str,
+) -> PageFormTemplate {
+    PageFormTemplate {
+        heading: heading.to_string(),
+        action: action.to_string(),
+        submit_label: submit_label.to_string(),
+        name,
+        url_path,
+        content,
+        is_static,
+        is_published,
+        is_edit,
+        is_home,
+        show_is_static,
+        static_help: static_help_text(is_static),
+        delete_action: delete_action.to_string(),
+        error_message: error_message.to_string(),
+    }
+}
+
+/// バリデーション衝突時にフォームを再描画し、画面上で alert する。
+fn conflict_form_response(
+    form: &PageForm,
+    is_edit: bool,
+    id: Option<i64>,
+    message: String,
+) -> AppResult<PageFormTemplate> {
+    let is_static = form.is_static.is_some();
+    let (heading, action, submit_label, delete_action) = if is_edit {
+        let id = id.expect("edit conflict requires page id");
+        (
+            "ページを編集",
+            format!("/admin/pages/{id}/edit"),
+            "更新する",
+            format!("/admin/pages/{id}/delete"),
+        )
+    } else {
+        (
+            "ページを追加",
+            "/admin/pages".to_string(),
+            "作成する",
+            String::new(),
+        )
+    };
+
+    Ok(page_form_template(
+        heading,
+        &action,
+        submit_label,
+        form.name.clone(),
+        form.url_path.clone(),
+        form.content.clone(),
+        is_static,
+        form.is_published.is_some(),
+        is_edit,
+        false,
+        true,
+        &message,
+        &delete_action,
+    ))
+}
+
 fn static_help_text(is_static: bool) -> String {
     if is_static {
         "完成した HTML をそのまま保存します。MiniJinja の構文は展開されません。".to_string()
@@ -238,11 +342,11 @@ fn static_help_text(is_static: bool) -> String {
 }
 
 impl PageForm {
-    fn into_input(self, is_home: bool) -> AppResult<PageInput> {
+    fn into_input(&self, is_home: bool) -> AppResult<PageInput> {
         let url_path = if is_home {
             None
         } else {
-            normalize_url_path(&self.url_path)
+            normalize_url_path(self.url_path.as_str())
         };
 
         if let Some(path) = url_path.as_deref()
@@ -269,7 +373,7 @@ impl PageForm {
         Ok(PageInput {
             name: self.name.trim().to_string(),
             url_path,
-            content: self.content,
+            content: self.content.clone(),
             is_static,
             is_published,
         })

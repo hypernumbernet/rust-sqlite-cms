@@ -58,7 +58,7 @@
   input:disabled { background: #f6f7f7; color: var(--muted); }
 </style>
 
-<form method="post" action="{{ action }}" class="form-layout">
+<form method="post" action="{{ action }}" class="form-layout"{% if !is_home %} onsubmit="return validatePageForm();"{% endif %}>
   <section class="panel">
     <div class="field">
       <label for="content">HTML</label>
@@ -117,5 +117,51 @@
 <form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('このページを削除しますか？');">
   <button class="button danger" type="submit">削除する</button>
 </form>
+{% endif %}
+
+{% if !error_message.is_empty() %}
+<script>alert("{{ error_message }}");</script>
+{% endif %}
+
+{% if !is_home %}
+<script>
+function normalizeUrlPath(raw) {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  let path = trimmed;
+  if (!path.startsWith('/')) path = '/' + path;
+  if (path.length > 1) path = path.replace(/\/+$/, '');
+  return path;
+}
+
+function isReservedPath(path) {
+  return path === '/'
+    || path === '/admin'
+    || path.startsWith('/admin/')
+    || path === '/static'
+    || path.startsWith('/static/');
+}
+
+function validatePageForm() {
+  const published = document.getElementById('is_published');
+  const urlInput = document.getElementById('url_path');
+  const raw = urlInput?.value ?? '';
+  const path = normalizeUrlPath(raw);
+
+  if (published?.checked && !raw.trim()) {
+    alert('公開するには URL を指定してください。');
+    urlInput?.focus();
+    return false;
+  }
+
+  if (path && isReservedPath(path)) {
+    alert('URL「' + path + '」はシステムで予約されているため使用できません。');
+    urlInput?.focus();
+    return false;
+  }
+
+  return true;
+}
+</script>
 {% endif %}
 {% endblock %}

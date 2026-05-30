@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}固定ページ{% endblock %}
+{% block title %}ページ{% endblock %}
 {% block nav_pages %}active{% endblock %}
-{% block heading %}固定ページ{% endblock %}
+{% block heading %}ページ{% endblock %}
 
 {% block content %}
 <style>
@@ -46,6 +46,14 @@
   tr:last-child td { border-bottom: 0; }
   .name { font-weight: 600; }
   .url { color: var(--muted); font-size: 13px; }
+  .kind {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 12px;
+    color: var(--muted);
+  }
   .status {
     display: inline-block;
     border: 1px solid var(--border);
@@ -56,20 +64,19 @@
   .status.published { border-color: #1b8a4b; color: #1b8a4b; }
   .ops { display: flex; gap: 8px; align-items: center; }
   .ops form { margin: 0; }
-  .empty { padding: 28px; color: var(--muted); }
 </style>
 
 <div class="toolbar">
-  <p>静的 HTML を編集し、URL に割り当てて公開します。MiniJinja は使われず、ファイル内容がそのまま返されます。</p>
+  <p>MiniJinja テンプレートと静的 HTML を一元管理します。トップページ（<code>index.html</code>）は常に一覧に表示されます。</p>
   <a class="button" href="/admin/pages/new">新規追加</a>
 </div>
 
 <section class="panel">
-  {% if has_pages %}
   <table>
     <thead>
       <tr>
         <th>名前</th>
+        <th>種別</th>
         <th>URL</th>
         <th>状態</th>
         <th>更新日</th>
@@ -80,6 +87,7 @@
       {% for page in pages %}
       <tr>
         <td><div class="name">{{ page.name }}</div></td>
+        <td><span class="kind">{{ page.kind_label }}</span></td>
         <td><span class="url">{{ page.url_path }}</span></td>
         <td>
           {% if page.is_published %}
@@ -95,19 +103,16 @@
             <a class="button secondary" href="{{ page.url_path }}" target="_blank" rel="noopener">表示</a>
             {% endif %}
             <a class="button secondary" href="/admin/pages/{{ page.id }}/edit">編集</a>
-            <form method="post" action="/admin/pages/{{ page.id }}/delete" onsubmit="return confirm('この固定ページを削除しますか？');">
+            {% if page.can_delete %}
+            <form method="post" action="/admin/pages/{{ page.id }}/delete" onsubmit="return confirm('このページを削除しますか？');">
               <button class="button danger" type="submit">削除</button>
             </form>
+            {% endif %}
           </div>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  {% else %}
-  <div class="empty">
-    まだ固定ページはありません。「新規追加」からデザインを選んで作成してください。
-  </div>
-  {% endif %}
 </section>
 {% endblock %}

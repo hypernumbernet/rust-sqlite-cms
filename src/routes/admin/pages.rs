@@ -21,6 +21,8 @@ struct PageForm {
     url_path: String,
     content: String,
     #[serde(default)]
+    is_static: Option<String>,
+    #[serde(default)]
     is_published: Option<String>,
 }
 
@@ -29,10 +31,12 @@ struct PageListItem {
     id: i64,
     name: String,
     url_path: String,
+    kind_label: String,
     has_url: bool,
     is_published: bool,
     status_label: String,
     updated_at: String,
+    can_delete: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -46,7 +50,6 @@ struct PresetCard {
 #[template(path = "admin/pages/index.html")]
 struct PageIndexTemplate {
     pages: Vec<PageListItem>,
-    has_pages: bool,
 }
 
 #[derive(Template)]
@@ -64,8 +67,12 @@ struct PageFormTemplate {
     name: String,
     url_path: String,
     content: String,
+    is_static: bool,
     is_published: bool,
     is_edit: bool,
+    is_home: bool,
+    show_is_static: bool,
+    static_help: String,
     delete_action: String,
 }
 
@@ -84,11 +91,7 @@ async fn index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
         .into_iter()
         .map(PageListItem::from)
         .collect::<Vec<_>>();
-    let html = PageIndexTemplate {
-        has_pages: !pages.is_empty(),
-        pages,
-    }
-    .render()?;
+    let html = PageIndexTemplate { pages }.render()?;
 
     Ok(Html(html))
 }
@@ -108,22 +111,27 @@ async fn new_gallery() -> AppResult<impl IntoResponse> {
 }
 
 async fn new_form(Path(design): Path<String>) -> AppResult<impl IntoResponse> {
-    let (name, content) = if design == "blank" {
-        (String::new(), String::new())
+    let (name, content, is_static) = if design == "blank" {
+        (String::new(), String::new(), false)
     } else {
         let preset = presets::get(&design).ok_or(AppError::NotFound)?;
-        (preset.label.to_string(), preset.html.to_string())
+        let is_static = design == "simple-page";
+        (preset.label.to_string(), preset.html.to_string(), is_static)
     };
 
     let html = PageFormTemplate {
-        heading: "固定ページを追加".to_string(),
+        heading: "ページを追加".to_string(),
         action: "/admin/pages".to_string(),
         submit_label: "作成する".to_string(),
         name,
         url_path: String::new(),
         content,
+        is_static,
         is_published: false,
         is_edit: false,
+        is_home: false,
+        show_is_static: true,
+        static_help: static_help_text(is_static),
         delete_action: String::new(),
     }
     .render()?;
@@ -135,12 +143,15 @@ async fn create(
     State(state): State<AppState>,
     Form(form): Form<PageForm>,
 ) -> AppResult<Redirect> {
-    let input = form.into_input()?;
+    let input = form.into_input(false)?;
     let (id, file_name) = pages::insert(&state.pool, &input).await?;
 
-    if let Err(err) =
-        theme::write_page_source(&state.config.paths.work_dir, &file_name, &input.content)
-    {
+    if let Err(err) = theme::write_page_content(
+        &state.config.paths.work_dir,
+        &file_name,
+        input.is_static,
+        &input.content,
+    ) {
         let _ = pages::delete(&state.pool, id).await;
         return Err(err.into());
     }
@@ -151,20 +162,33 @@ async fn create(
 async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<impl IntoResponse> {
     let page = pages::find(&state.pool, id).await?;
     let content = match &page.file_name {
-        Some(file_name) => theme::read_page_source(&state.config.paths.work_dir, file_name)
-            .unwrap_or_default(),
+        Some(file_name) => theme::read_page_content(
+            &state.config.paths.work_dir,
+            file_name,
+            page.is_static,
+        )
+        .unwrap_or_default(),
         None => String::new(),
     };
 
+    let is_home = page.is_home();
     let html = PageFormTemplate {
-        heading: "固定ページを編集".to_string(),
+        heading: if is_home {
+            "トップページを編集".to_string()
+        } else {
+            "ページを編集".to_string()
+        },
         action: format!("/admin/pages/{id}/edit"),
         submit_label: "更新する".to_string(),
         name: page.name,
         url_path: page.url_path.unwrap_or_default(),
         content,
+        is_static: page.is_static,
         is_published: page.is_published,
         is_edit: true,
+        is_home,
+        show_is_static: !is_home,
+        static_help: static_help_text(page.is_static),
         delete_action: format!("/admin/pages/{id}/delete"),
     }
     .render()?;
@@ -180,11 +204,17 @@ async fn update(
     let page = pages::find(&state.pool, id).await?;
     let file_name = page
         .file_name
+        .clone()
         .unwrap_or_else(|| format!("page-{id}.html"));
-    let input = form.into_input()?;
+    let input = form.into_input(page.is_home())?;
 
     pages::update(&state.pool, id, &input).await?;
-    theme::write_page_source(&state.config.paths.work_dir, &file_name, &input.content)?;
+    theme::write_page_content(
+        &state.config.paths.work_dir,
+        &file_name,
+        input.is_static,
+        &input.content,
+    )?;
 
     Ok(Redirect::to("/admin/pages"))
 }
@@ -193,15 +223,27 @@ async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResul
     let page = pages::find(&state.pool, id).await?;
     pages::delete(&state.pool, id).await?;
     if let Some(file_name) = page.file_name {
-        theme::remove_page_source(&state.config.paths.work_dir, &file_name)?;
+        theme::remove_page_content(&state.config.paths.work_dir, &file_name, page.is_static)?;
     }
 
     Ok(Redirect::to("/admin/pages"))
 }
 
+fn static_help_text(is_static: bool) -> String {
+    if is_static {
+        "完成した HTML をそのまま保存します。MiniJinja の構文は展開されません。".to_string()
+    } else {
+        "MiniJinja の構文（{{ blogname }} など）が使えます。利用可能: blogname / blogdescription / news。".to_string()
+    }
+}
+
 impl PageForm {
-    fn into_input(self) -> AppResult<PageInput> {
-        let url_path = normalize_url_path(&self.url_path);
+    fn into_input(self, is_home: bool) -> AppResult<PageInput> {
+        let url_path = if is_home {
+            None
+        } else {
+            normalize_url_path(&self.url_path)
+        };
 
         if let Some(path) = url_path.as_deref()
             && is_reserved_path(path)
@@ -211,9 +253,14 @@ impl PageForm {
             )));
         }
 
-        let is_published = self.is_published.is_some();
+        let is_static = self.is_static.is_some();
+        let is_published = if is_home {
+            true
+        } else {
+            self.is_published.is_some()
+        };
 
-        if is_published && url_path.is_none() {
+        if is_published && url_path.is_none() && !is_home {
             return Err(AppError::Conflict(
                 "公開するには URL を指定してください".to_string(),
             ));
@@ -223,6 +270,7 @@ impl PageForm {
             name: self.name.trim().to_string(),
             url_path,
             content: self.content,
+            is_static,
             is_published,
         })
     }
@@ -230,7 +278,21 @@ impl PageForm {
 
 impl From<PageRow> for PageListItem {
     fn from(page: PageRow) -> Self {
-        let has_url = page.url_path.is_some();
+        let is_home = page.is_home();
+        let has_url = is_home || page.url_path.is_some();
+        let url_path = if is_home {
+            "/".to_string()
+        } else {
+            page.url_path.unwrap_or_else(|| "（未設定）".to_string())
+        };
+        let kind_label = if is_home {
+            "トップ"
+        } else if page.is_static {
+            "固定"
+        } else {
+            "テンプレート"
+        }
+        .to_string();
         let status_label = if page.is_published {
             "公開"
         } else {
@@ -245,11 +307,13 @@ impl From<PageRow> for PageListItem {
             } else {
                 page.name
             },
-            url_path: page.url_path.unwrap_or_else(|| "（未設定）".to_string()),
+            url_path,
+            kind_label,
             has_url,
             is_published: page.is_published,
             status_label,
             updated_at: page.updated_at,
+            can_delete: !is_home,
         }
     }
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, fmt};
 
 use rust_sqlite_cms::{
-    config::AppConfig, db, error::AppResult, repos::options, routes, state::AppState,
+    config::AppConfig, db, error::AppResult, repos::{options, pages}, routes, state::AppState,
     theme::{self, Templates},
 };
 
@@ -28,6 +28,7 @@ async fn main() -> AppResult<()> {
 
     theme::ensure_seeded(&config.paths.work_dir)?;
     theme::ensure_pages_dir(&config.paths.work_dir)?;
+    pages::ensure_index_page(&pool).await?;
     tracing::info!("作業ディレクトリを初期化しました");
 
     let bind_addr = config.server.bind_addr.clone();

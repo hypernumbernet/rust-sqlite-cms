@@ -108,3 +108,35 @@ pub fn remove_page_source(work_dir: &str, file_name: &str) -> std::io::Result<()
         Err(err) => Err(err),
     }
 }
+
+/// `is_static` に応じてページ本文を読み込む。
+pub fn read_page_content(work_dir: &str, file_name: &str, is_static: bool) -> std::io::Result<String> {
+    if is_static {
+        read_page_source(work_dir, file_name)
+    } else {
+        read_source(work_dir, file_name)
+    }
+}
+
+/// `is_static` に応じてページ本文を書き込む。
+pub fn write_page_content(
+    work_dir: &str,
+    file_name: &str,
+    is_static: bool,
+    content: &str,
+) -> std::io::Result<()> {
+    if is_static {
+        write_page_source(work_dir, file_name, content)
+    } else {
+        write_source(work_dir, file_name, content)
+    }
+}
+
+/// `is_static` に応じてページ本文ファイルを削除する。
+pub fn remove_page_content(work_dir: &str, file_name: &str, is_static: bool) -> std::io::Result<()> {
+    if is_static {
+        remove_page_source(work_dir, file_name)
+    } else {
+        remove_source(work_dir, file_name)
+    }
+}

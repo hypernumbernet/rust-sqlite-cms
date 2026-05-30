@@ -8,8 +8,9 @@ use minijinja::Value;
 use serde::Serialize;
 
 use crate::error::{AppError, AppResult};
+use crate::models::page::Page;
 use crate::models::post::Post;
-use crate::repos::{options, pages, posts, templates};
+use crate::repos::{options, pages, posts};
 use crate::state::AppState;
 use crate::theme;
 
@@ -34,15 +35,14 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn home(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
-    let ctx = build_site_context(&state).await?;
-    let html = state
-        .templates
-        .render("index.html", Value::from_serialize(&ctx))?;
+    let page = pages::find_by_file_name(&state.pool, "index.html")
+        .await?
+        .ok_or(AppError::NotFound)?;
 
-    Ok(Html(html))
+    render_page(&state, &page).await
 }
 
-/// 既存ルートに一致しなかったパスを、公開済み固定ページまたはテンプレートとして配信する。
+/// 既存ルートに一致しなかったパスを、公開済みページとして配信する。
 pub async fn serve_fallback(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -58,21 +58,25 @@ pub async fn serve_fallback(
         return Err(AppError::NotFound);
     }
 
-    if let Some(page) = pages::find_published_by_path(&state.pool, &path).await? {
-        let file_name = page.file_name.ok_or(AppError::NotFound)?;
-        let html = theme::read_page_source(&state.config.paths.work_dir, &file_name)?;
+    let page = pages::find_published_by_path(&state.pool, &path)
+        .await?
+        .ok_or(AppError::NotFound)?;
+
+    render_page(&state, &page).await
+}
+
+async fn render_page(state: &AppState, page: &Page) -> AppResult<Html<String>> {
+    let file_name = page.file_name.as_deref().ok_or(AppError::NotFound)?;
+
+    if page.is_static {
+        let html = theme::read_page_content(&state.config.paths.work_dir, file_name, true)?;
         return Ok(Html(html));
     }
 
-    let template = templates::find_published_by_path(&state.pool, &path)
-        .await?
-        .ok_or(AppError::NotFound)?;
-    let file_name = template.file_name.ok_or(AppError::NotFound)?;
-
-    let ctx = build_site_context(&state).await?;
+    let ctx = build_site_context(state).await?;
     let html = state
         .templates
-        .render(&file_name, Value::from_serialize(&ctx))?;
+        .render(file_name, Value::from_serialize(&ctx))?;
 
     Ok(Html(html))
 }

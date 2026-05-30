@@ -12,7 +12,6 @@ use crate::state::AppState;
 
 pub mod pages;
 pub mod posts;
-pub mod templates;
 
 #[derive(Template)]
 #[template(path = "admin/dashboard.html")]
@@ -25,7 +24,6 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin", get(dashboard))
         .merge(posts::router())
-        .merge(templates::router())
         .merge(pages::router())
 }
 

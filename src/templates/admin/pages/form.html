@@ -55,6 +55,7 @@
   .button.secondary { background: #fff; color: var(--accent); }
   .button.danger { background: #fff; color: #b32d2e; border-color: #b32d2e; }
   .delete-form { margin: 18px 0 0; }
+  input:disabled { background: #f6f7f7; color: var(--muted); }
 </style>
 
 <form method="post" action="{{ action }}" class="form-layout">
@@ -62,7 +63,7 @@
     <div class="field">
       <label for="content">HTML</label>
       <textarea id="content" name="content">{{ content }}</textarea>
-      <p class="help">完成した HTML をそのまま保存します。MiniJinja の構文は展開されません。</p>
+      <p class="help">{{ static_help }}</p>
     </div>
   </section>
 
@@ -73,11 +74,28 @@
       <p class="help">管理画面での表示名です。</p>
     </div>
 
+    {% if is_home %}
+    <div class="field">
+      <label for="url_path">URL</label>
+      <input id="url_path" name="url_path" type="text" value="/" disabled>
+      <p class="help">トップページは常に <code>/</code> で公開されます。</p>
+    </div>
+    {% else %}
     <div class="field">
       <label for="url_path">URL</label>
       <input id="url_path" name="url_path" type="text" value="{{ url_path }}" placeholder="/about">
       <p class="help">公開する URL（例: <code>/about</code>）。空のままだと下書きとして保存します。</p>
     </div>
+
+    {% if show_is_static %}
+    <div class="field">
+      <div class="checkbox">
+        <input id="is_static" name="is_static" type="checkbox" value="1"{% if is_static %} checked{% endif %}>
+        <label for="is_static">静的 HTML（MiniJinja なし）</label>
+      </div>
+      <p class="help">オンにすると完成した HTML をそのまま配信します。</p>
+    </div>
+    {% endif %}
 
     <div class="field">
       <div class="checkbox">
@@ -86,6 +104,7 @@
       </div>
       <p class="help">公開するには URL の指定が必要です。</p>
     </div>
+    {% endif %}
 
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
@@ -94,8 +113,8 @@
   </aside>
 </form>
 
-{% if is_edit %}
-<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('この固定ページを削除しますか？');">
+{% if is_edit && !is_home %}
+<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('このページを削除しますか？');">
   <button class="button danger" type="submit">削除する</button>
 </form>
 {% endif %}

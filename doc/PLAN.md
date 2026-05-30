@@ -131,7 +131,7 @@ rust-sqlite-cms/
         └── admin/
 ```
 
-**公開テンプレートと管理 UI の分離**: 公開テンプレートは `work/templates/`（本文ファイル）＋ `templates` テーブル（URL・公開フラグ等のメタ情報）、管理画面は `src/templates/admin/` の Askama に置きます。本文ファイルとメタ情報は管理画面が同期して読み書きします。
+**公開ページと管理 UI の分離**: 公開 HTML は `work/templates/` または `work/pages/`（`is_static` で区別）に本文を置き、`pages` テーブルに URL・公開フラグ等のメタ情報を保持します。管理画面は `src/templates/admin/` の Askama に置き、公開ページの影響を受けません。
 
 ## 主要機能
 
@@ -141,7 +141,7 @@ rust-sqlite-cms/
 | 固定ページ | 同上、`post_type = 'page'`、`parent_id` で階層 | Phase 1 |
 | 公開ステータス | `draft` / `publish` / `future` / `trash` | Phase 1 |
 | サイト設定 | `options` key-value | Phase 1 |
-| テンプレート | `work/templates/` ファイル + `templates` テーブル（メタ） | Phase 1 |
+| ページ（トップ・テンプレート・静的 HTML） | `pages` テーブル + `work/templates/` / `work/pages/` | Phase 1 |
 | ユーザー・ロール | `users` + ロール + capabilities | 最終 |
 | カテゴリ・タグ | `terms` + `term_taxonomy` + `term_relationships` | Phase 2 |
 | メディアライブラリ | DB メタデータ + `uploads/` ファイル | Phase 2 |
@@ -182,6 +182,7 @@ erDiagram
 | `term_taxonomy` | タクソノミー種別（`category`, `post_tag`, …） |
 | `term_relationships` | お知らせとタームの関連 |
 | `comments` | コメント本文・承認状態 |
+| `pages` | 公開ページのメタ（`is_static`, `url_path`, `file_name` など） |
 | `post_revisions` | 本文リビジョン（Phase 3） |
 
 ### SQLite スキーマ方針

@@ -96,3 +96,27 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 CREATE INDEX IF NOT EXISTS idx_comments_post_status ON comments(post_id, status);
+
+-- HTML テンプレート（本文は work/templates/、DB にはメタ情報のみ） ----------------
+CREATE TABLE IF NOT EXISTS templates (
+    id           INTEGER PRIMARY KEY,
+    name         TEXT    NOT NULL DEFAULT '',
+    url_path     TEXT    UNIQUE,                 -- 例 "/about"。NULL 可（下書きは未設定でも複数可）
+    file_name    TEXT,                           -- work/templates/ 内のファイル名
+    is_published INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_templates_published ON templates(is_published);
+
+-- 固定ページ（静的 HTML。本文は work/pages/、DB にはメタ情報のみ） ---------------
+CREATE TABLE IF NOT EXISTS pages (
+    id           INTEGER PRIMARY KEY,
+    name         TEXT    NOT NULL DEFAULT '',
+    url_path     TEXT    UNIQUE,
+    file_name    TEXT,
+    is_published INTEGER NOT NULL DEFAULT 0,
+    created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pages_published ON pages(is_published);

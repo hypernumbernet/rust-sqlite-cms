@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ blogname }}</title>
+  <style>
+    :root {
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --accent: #1b64da;
+      --accent-dark: #123f8c;
+      --border: #e4e7ec;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      line-height: 1.7;
+    }
+    a { color: inherit; }
+    .container {
+      width: min(1120px, calc(100% - 40px));
+      margin: 0 auto;
+    }
+    header {
+      background: rgba(255,255,255,.94);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 0;
+    }
+    .brand {
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+    .nav-links {
+      display: flex;
+      gap: 22px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .nav-links a { text-decoration: none; }
+    .hero {
+      padding: 88px 0 72px;
+      background:
+        radial-gradient(circle at 85% 20%, rgba(27,100,218,.16), transparent 28%),
+        linear-gradient(135deg, #fff 0%, #eef4ff 100%);
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr);
+      gap: 40px;
+      align-items: center;
+    }
+    .eyebrow {
+      color: var(--accent);
+      font-weight: 700;
+      letter-spacing: .08em;
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 12px 0 18px;
+      font-size: clamp(34px, 5vw, 56px);
+      line-height: 1.16;
+      letter-spacing: -.03em;
+    }
+    .lead {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 18px;
+    }
+    .hero-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 28px;
+      box-shadow: 0 22px 60px rgba(17,24,39,.08);
+    }
+    .hero-card h2 { margin: 0 0 12px; font-size: 22px; }
+    .hero-card p { margin: 0; color: var(--muted); }
+    .button {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      border-radius: 999px;
+      padding: 11px 18px;
+      text-decoration: none;
+      font-weight: 700;
+    }
+    section { padding: 64px 0; }
+    .section-title {
+      margin: 0 0 28px;
+      font-size: 30px;
+      letter-spacing: -.02em;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+    .card, .news-list, .profile {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 24px;
+    }
+    .card h3 { margin: 0 0 10px; }
+    .card p, .profile p { margin: 0; color: var(--muted); }
+    .news-item {
+      display: grid;
+      grid-template-columns: 160px minmax(0, 1fr);
+      gap: 20px;
+      padding: 18px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .news-item:first-child { padding-top: 0; }
+    .news-item:last-child { padding-bottom: 0; border-bottom: 0; }
+    .news-date { color: var(--muted); font-size: 13px; }
+    .news-title { margin: 0 0 6px; font-weight: 700; }
+    .news-excerpt { margin: 0; color: var(--muted); }
+    .empty-news { margin: 0; color: var(--muted); }
+    footer {
+      background: #111827;
+      color: #d1d5db;
+      padding: 28px 0;
+    }
+    footer .container {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 14px;
+    }
+    @media (max-width: 760px) {
+      .hero-grid, .cards, .news-item { grid-template-columns: 1fr; }
+      .nav { align-items: flex-start; gap: 12px; flex-direction: column; }
+      .nav-links { flex-wrap: wrap; gap: 12px; }
+      section { padding: 44px 0; }
+      footer .container { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="brand">{{ blogname }}</div>
+      <nav class="nav-links" aria-label="主要ナビゲーション">
+        <a href="#services">事業内容</a>
+        <a href="#news">お知らせ</a>
+        <a href="#company">会社概要</a>
+        <a href="/admin/posts">管理画面</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <div class="eyebrow">Corporate Website Sample</div>
+          <h1>地域と企業の成長を支える、信頼できるデジタルパートナー。</h1>
+          <p class="lead">{{ blogdescription }}</p>
+          <a class="button" href="#news">最新のお知らせを見る</a>
+        </div>
+        <div class="hero-card">
+          <h2>CMS でお知らせをすばやく更新</h2>
+          <p>このトップページのお知らせ欄は、`/admin/posts` から作成・編集した公開済み投稿を表示しています。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="services">
+      <div class="container">
+        <h2 class="section-title">事業内容</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>Web サイト制作</h3>
+            <p>企業のブランドや採用活動に合わせた、見やすく更新しやすいサイトを設計します。</p>
+          </article>
+          <article class="card">
+            <h3>業務システム開発</h3>
+            <p>日々の業務に合わせた小さな改善から、基幹業務の効率化まで支援します。</p>
+          </article>
+          <article class="card">
+            <h3>運用サポート</h3>
+            <p>公開後の改善、保守、コンテンツ更新まで継続的に伴走します。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="news">
+      <div class="container">
+        <h2 class="section-title">お知らせ</h2>
+        <div class="news-list">
+          {% if has_news %}
+            {% for item in news %}
+            <article class="news-item">
+              <time class="news-date">{{ item.display_date }}</time>
+              <div>
+                <h3 class="news-title">{{ item.title }}</h3>
+                <p class="news-excerpt">{{ item.excerpt }}</p>
+              </div>
+            </article>
+            {% endfor %}
+          {% else %}
+            <p class="empty-news">現在公開中のお知らせはありません。</p>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    <section id="company">
+      <div class="container">
+        <h2 class="section-title">会社概要</h2>
+        <div class="profile">
+          <p>サンプル株式会社は、中小企業の情報発信と業務改善を支援する架空の企業です。お知らせ欄以外の本文はサンプル固定コンテンツとして表示しています。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>{{ blogname }}</span>
+      <span>&copy; 2026 Sample Company. All rights reserved.</span>
+    </div>
+  </footer>
+</body>
+</html>

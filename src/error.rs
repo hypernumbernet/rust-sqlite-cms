@@ -34,9 +34,7 @@ pub type AppResult<T> = Result<T, AppError>;
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
-            AppError::NotFound => {
-                (StatusCode::NOT_FOUND, "見つかりませんでした").into_response()
-            }
+            AppError::NotFound => (StatusCode::NOT_FOUND, "見つかりませんでした").into_response(),
             other => {
                 tracing::error!(error = %other, "internal server error");
                 (

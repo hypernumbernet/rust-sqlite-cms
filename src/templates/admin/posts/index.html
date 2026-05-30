@@ -1,0 +1,108 @@
+{% extends "admin/base.html" %}
+
+{% block title %}投稿{% endblock %}
+{% block nav_posts %}active{% endblock %}
+{% block heading %}投稿{% endblock %}
+
+{% block content %}
+<style>
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .toolbar p { margin: 0; color: var(--muted); }
+  .button {
+    display: inline-block;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 8px 12px;
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 1;
+  }
+  .button.secondary {
+    background: #fff;
+    color: var(--accent);
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  th, td {
+    border-bottom: 1px solid var(--border);
+    padding: 12px 14px;
+    text-align: left;
+    vertical-align: top;
+    font-size: 14px;
+  }
+  th {
+    background: #f6f7f7;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  tr:last-child td { border-bottom: 0; }
+  .post-title { font-weight: 600; margin-bottom: 4px; }
+  .post-meta { color: var(--muted); font-size: 12px; }
+  .status {
+    display: inline-block;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 2px 9px;
+    font-size: 12px;
+  }
+  .empty {
+    padding: 28px;
+    color: var(--muted);
+  }
+</style>
+
+<div class="toolbar">
+  <p>トップページのお知らせ欄に表示する投稿を管理します。</p>
+  <a class="button" href="/admin/posts/new">新規追加</a>
+</div>
+
+<section class="panel">
+  {% if has_posts %}
+  <table>
+    <thead>
+      <tr>
+        <th>タイトル</th>
+        <th>状態</th>
+        <th>表示日</th>
+        <th>更新日</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for post in posts %}
+      <tr>
+        <td>
+          <div class="post-title">{{ post.title }}</div>
+          <div class="post-meta">slug: {{ post.post_name }}</div>
+        </td>
+        <td><span class="status">{{ post.status_label }}</span></td>
+        <td>{{ post.display_date }}</td>
+        <td>{{ post.updated_at }}</td>
+        <td><a class="button secondary" href="/admin/posts/{{ post.id }}/edit">編集</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">
+    まだお知らせはありません。「新規追加」から最初のお知らせを作成してください。
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

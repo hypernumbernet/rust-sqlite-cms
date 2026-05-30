@@ -1,48 +1,10 @@
 use std::sync::Arc;
 
-use askama::Template;
-use axum::{
-    Router,
-    extract::State,
-    response::{Html, IntoResponse, Redirect},
-    routing::get,
-};
 use tracing_subscriber::{EnvFilter, fmt};
 
 use rust_sqlite_cms::{
-    config::AppConfig,
-    db,
-    error::AppResult,
-    repos::options,
-    state::AppState,
+    config::AppConfig, db, error::AppResult, repos::options, routes, state::AppState,
 };
-
-#[derive(Template)]
-#[template(path = "admin/dashboard.html")]
-struct DashboardTemplate {
-    blogname: String,
-    blogdescription: String,
-}
-
-async fn admin_dashboard(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
-    let blogname = options::get(&state.pool, "blogname")
-        .await?
-        .unwrap_or_else(|| state.config.site.title.clone());
-    let blogdescription = options::get(&state.pool, "blogdescription")
-        .await?
-        .unwrap_or_else(|| state.config.site.tagline.clone());
-
-    let html = DashboardTemplate {
-        blogname,
-        blogdescription,
-    }
-    .render()?;
-    Ok(Html(html))
-}
-
-async fn index() -> impl IntoResponse {
-    Redirect::temporary("/admin")
-}
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -69,12 +31,10 @@ async fn main() -> AppResult<()> {
         config: Arc::new(config),
     };
 
-    let app = Router::new()
-        .route("/", get(index))
-        .route("/admin", get(admin_dashboard))
-        .with_state(state);
+    let app = routes::router().with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
+    tracing::info!("公開サイト: http://{bind_addr}/");
     tracing::info!("管理画面: http://{bind_addr}/admin");
 
     axum::serve(listener, app).await?;

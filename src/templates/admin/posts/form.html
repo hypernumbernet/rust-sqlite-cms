@@ -1,0 +1,107 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_posts %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<style>
+  .form-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 20px;
+    align-items: start;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  label {
+    display: block;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  input[type="text"], select, textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 9px 10px;
+    font: inherit;
+    background: #fff;
+  }
+  textarea { min-height: 180px; resize: vertical; }
+  .help {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 18px;
+  }
+  .button {
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 9px 14px;
+    text-decoration: none;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .button.secondary {
+    background: #fff;
+    color: var(--accent);
+  }
+</style>
+
+<form method="post" action="{{ action }}" class="form-layout">
+  <section class="panel">
+    <div class="field">
+      <label for="title">タイトル</label>
+      <input id="title" name="title" type="text" value="{{ title }}" required>
+    </div>
+
+    <div class="field">
+      <label for="content">本文</label>
+      <textarea id="content" name="content">{{ content }}</textarea>
+      <p class="help">公開サイトのサンプルでは、お知らせの詳細説明として扱います。</p>
+    </div>
+
+    <div class="field">
+      <label for="excerpt">抜粋</label>
+      <textarea id="excerpt" name="excerpt">{{ excerpt }}</textarea>
+      <p class="help">トップページのお知らせ欄には、抜粋が優先して表示されます。</p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="field">
+      <label for="post_status">公開状態</label>
+      <select id="post_status" name="post_status">
+        <option value="draft"{% if is_draft %} selected{% endif %}>下書き</option>
+        <option value="publish"{% if is_publish %} selected{% endif %}>公開</option>
+      </select>
+      <p class="help">現在の状態: {{ post_status }}</p>
+    </div>
+
+    <div class="field">
+      <label for="post_name">スラッグ</label>
+      <input id="post_name" name="post_name" type="text" value="{{ post_name }}">
+      <p class="help">未入力の場合はタイトルから自動生成します。</p>
+    </div>
+
+    <div class="actions">
+      <button class="button" type="submit">{{ submit_label }}</button>
+      <a class="button secondary" href="/admin/posts">戻る</a>
+    </div>
+  </aside>
+</form>
+{% endblock %}

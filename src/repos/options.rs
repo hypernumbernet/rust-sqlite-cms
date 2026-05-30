@@ -55,7 +55,12 @@ async fn set_default(pool: &SqlitePool, name: &str, value: &str) -> AppResult<()
 pub async fn ensure_defaults(pool: &SqlitePool, config: &AppConfig) -> AppResult<()> {
     set_default(pool, "blogname", &config.site.title).await?;
     set_default(pool, "blogdescription", &config.site.tagline).await?;
-    set_default(pool, "siteurl", &format!("http://{}", config.server.bind_addr)).await?;
+    set_default(
+        pool,
+        "siteurl",
+        &format!("http://{}", config.server.bind_addr),
+    )
+    .await?;
     set_default(pool, "active_theme", &config.theme.active).await?;
     set_default(
         pool,

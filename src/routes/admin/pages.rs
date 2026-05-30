@@ -18,6 +18,7 @@ use crate::theme;
 #[derive(Debug, Deserialize)]
 struct PageForm {
     name: String,
+    #[serde(default)]
     url_path: String,
     content: String,
     #[serde(default)]
@@ -147,7 +148,7 @@ async fn create(
     let input = match form.into_input(false) {
         Ok(input) => input,
         Err(AppError::Conflict(message)) => {
-            let html = conflict_form_response(&form, false, None, message)?.render()?;
+            let html = conflict_form_response(&form, false, None, false, message)?.render()?;
             return Ok(Html(html).into_response());
         }
         Err(err) => return Err(err),
@@ -156,7 +157,7 @@ async fn create(
     let (id, file_name) = match pages::insert(&state.pool, &input).await {
         Ok(pair) => pair,
         Err(AppError::Conflict(message)) => {
-            let html = conflict_form_response(&form, false, None, message)?.render()?;
+            let html = conflict_form_response(&form, false, None, false, message)?.render()?;
             return Ok(Html(html).into_response());
         }
         Err(err) => return Err(err),
@@ -203,7 +204,7 @@ async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<i
         page.is_published,
         true,
         is_home,
-        !is_home,
+        true,
         "",
         &format!("/admin/pages/{id}/delete"),
     )
@@ -227,15 +228,23 @@ async fn update(
     let input = match form.into_input(is_home) {
         Ok(input) => input,
         Err(AppError::Conflict(message)) => {
-            let html = conflict_form_response(&form, true, Some(id), message)?.render()?;
+            let html = conflict_form_response(&form, true, Some(id), is_home, message)?.render()?;
             return Ok(Html(html).into_response());
         }
         Err(err) => return Err(err),
     };
 
     if let Err(AppError::Conflict(message)) = pages::update(&state.pool, id, &input).await {
-        let html = conflict_form_response(&form, true, Some(id), message)?.render()?;
+        let html = conflict_form_response(&form, true, Some(id), is_home, message)?.render()?;
         return Ok(Html(html).into_response());
+    }
+
+    if page.is_static != input.is_static {
+        theme::remove_page_content(
+            &state.config.paths.work_dir,
+            &file_name,
+            page.is_static,
+        )?;
     }
 
     theme::write_page_content(
@@ -296,13 +305,19 @@ fn conflict_form_response(
     form: &PageForm,
     is_edit: bool,
     id: Option<i64>,
+    is_home: bool,
     message: String,
 ) -> AppResult<PageFormTemplate> {
     let is_static = form.is_static.is_some();
     let (heading, action, submit_label, delete_action) = if is_edit {
         let id = id.expect("edit conflict requires page id");
+        let heading = if is_home {
+            "トップページを編集"
+        } else {
+            "ページを編集"
+        };
         (
-            "ページを編集",
+            heading,
             format!("/admin/pages/{id}/edit"),
             "更新する",
             format!("/admin/pages/{id}/delete"),
@@ -326,7 +341,7 @@ fn conflict_form_response(
         is_static,
         form.is_published.is_some(),
         is_edit,
-        false,
+        is_home,
         true,
         &message,
         &delete_action,
@@ -358,11 +373,7 @@ impl PageForm {
         }
 
         let is_static = self.is_static.is_some();
-        let is_published = if is_home {
-            true
-        } else {
-            self.is_published.is_some()
-        };
+        let is_published = self.is_published.is_some();
 
         if is_published && url_path.is_none() && !is_home {
             return Err(AppError::Conflict(
@@ -383,13 +394,15 @@ impl PageForm {
 impl From<PageRow> for PageListItem {
     fn from(page: PageRow) -> Self {
         let is_home = page.is_home();
-        let has_url = is_home || page.url_path.is_some();
+        let has_url = (is_home && page.is_published) || page.url_path.is_some();
         let url_path = if is_home {
             "/".to_string()
         } else {
             page.url_path.unwrap_or_else(|| "（未設定）".to_string())
         };
-        let kind_label = if is_home {
+        let kind_label = if is_home && page.is_static {
+            "トップ・固定"
+        } else if is_home {
             "トップ"
         } else if page.is_static {
             "固定"

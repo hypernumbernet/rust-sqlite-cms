@@ -107,15 +107,17 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PageInput) -> AppResult<
     let page = find(pool, id).await?;
 
     if page.is_home() {
-        url_paths::ensure_url_available(pool, None, Some(id)).await?;
-
         let result = sqlx::query(
             "UPDATE pages
              SET name = ?,
+                 is_static = ?,
+                 is_published = ?,
                  updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
              WHERE id = ?",
         )
         .bind(&input.name)
+        .bind(input.is_static)
+        .bind(input.is_published)
         .bind(id)
         .execute(pool)
         .await?;

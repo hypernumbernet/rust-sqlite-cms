@@ -39,6 +39,10 @@ async fn home(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
         .await?
         .ok_or(AppError::NotFound)?;
 
+    if !page.is_published {
+        return Err(AppError::NotFound);
+    }
+
     render_page(&state, &page).await
 }
 

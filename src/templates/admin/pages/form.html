@@ -75,10 +75,11 @@
     </div>
 
     {% if is_home %}
+    <input type="hidden" name="url_path" value="/">
     <div class="field">
-      <label for="url_path">URL</label>
-      <input id="url_path" name="url_path" type="text" value="/" disabled>
-      <p class="help">トップページは常に <code>/</code> で公開されます。</p>
+      <label for="url_path_display">URL</label>
+      <input id="url_path_display" type="text" value="/" disabled>
+      <p class="help">トップページの URL は <code>/</code> 固定です。非公開にするとサイトトップは表示されません。</p>
     </div>
     {% else %}
     <div class="field">
@@ -86,6 +87,7 @@
       <input id="url_path" name="url_path" type="text" value="{{ url_path }}" placeholder="/about">
       <p class="help">公開する URL（例: <code>/about</code>）。空のままだと下書きとして保存します。</p>
     </div>
+    {% endif %}
 
     {% if show_is_static %}
     <div class="field">
@@ -102,9 +104,12 @@
         <input id="is_published" name="is_published" type="checkbox" value="1"{% if is_published %} checked{% endif %}>
         <label for="is_published">公開する</label>
       </div>
+      {% if is_home %}
+      <p class="help">オフにすると <code>/</code> は 404 になります（削除はできません）。</p>
+      {% else %}
       <p class="help">公開するには URL の指定が必要です。</p>
+      {% endif %}
     </div>
-    {% endif %}
 
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>

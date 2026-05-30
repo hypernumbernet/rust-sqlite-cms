@@ -28,6 +28,9 @@ pub enum AppError {
     #[error("not found")]
     NotFound,
 
+    #[error("conflict: {0}")]
+    Conflict(String),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -38,6 +41,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
             AppError::NotFound => (StatusCode::NOT_FOUND, "見つかりませんでした").into_response(),
+            AppError::Conflict(message) => (StatusCode::CONFLICT, message).into_response(),
             other => {
                 tracing::error!(error = %other, "internal server error");
                 (

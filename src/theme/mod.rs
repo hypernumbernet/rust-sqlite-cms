@@ -38,4 +38,16 @@ impl Templates {
         let template = env.get_template(&format!("{theme}/templates/{name}"))?;
         template.render(ctx)
     }
+
+    /// DB などに保存された任意のソース文字列を描画する。
+    /// `name` の拡張子で自動エスケープが決まるため、HTML には `.html` を渡す。
+    pub fn render_str<S: Serialize>(
+        &self,
+        name: &str,
+        source: &str,
+        ctx: S,
+    ) -> Result<String, minijinja::Error> {
+        let env = self.reloader.acquire_env()?;
+        env.render_named_str(name, source, ctx)
+    }
 }

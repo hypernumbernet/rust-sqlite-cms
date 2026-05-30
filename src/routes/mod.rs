@@ -6,5 +6,8 @@ pub mod admin;
 pub mod public;
 
 pub fn router() -> Router<AppState> {
-    Router::new().merge(public::router()).merge(admin::router())
+    Router::new()
+        .merge(public::router())
+        .merge(admin::router())
+        .fallback(public::serve_template)
 }

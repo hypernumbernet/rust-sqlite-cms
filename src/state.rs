@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sqlx::SqlitePool;
 
 use crate::config::AppConfig;
+use crate::theme::Templates;
 
 /// 各ハンドラへ共有されるアプリケーション状態。
 /// `axum` の `State` で取り回すため `Clone` 可能（中身は共有参照）。
@@ -10,4 +11,5 @@ use crate::config::AppConfig;
 pub struct AppState {
     pub pool: SqlitePool,
     pub config: Arc<AppConfig>,
+    pub templates: Arc<Templates>,
 }

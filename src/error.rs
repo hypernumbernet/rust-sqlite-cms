@@ -19,6 +19,9 @@ pub enum AppError {
     #[error("template error: {0}")]
     Template(#[from] askama::Error),
 
+    #[error("render error: {0}")]
+    Render(#[from] minijinja::Error),
+
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
 

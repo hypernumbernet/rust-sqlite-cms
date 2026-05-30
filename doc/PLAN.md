@@ -48,7 +48,8 @@ flowchart TB
   subgraph infra [Infrastructure]
     Repos[SQLite Repositories]
     FS[FileStorage uploads]
-    Askama[Askama Templates]
+    MiniJinja["MiniJinja (公開テーマ・ランタイム)"]
+    Askama["Askama (管理画面・コンパイル時)"]
   end
   PublicRoutes --> AuthMiddleware
   AdminRoutes --> AuthMiddleware
@@ -61,7 +62,7 @@ flowchart TB
   UserService --> Repos
   PublicRoutes --> ThemeService
   AdminRoutes --> Askama
-  ThemeService --> Askama
+  ThemeService --> MiniJinja
   Repos --> SQLite[(SQLite)]
 ```
 
@@ -71,7 +72,7 @@ flowchart TB
 - **services**: ビジネスルール、権限（capabilities）チェック、トランザクション境界
 - **repos**: SQL とモデル間のマッピング（1 テーブル ≈ 1 リポジトリを目安）
 - **auth**: セッション、ロール、 capability の解決
-- **themes / templates**: Askama テンプレートのレンダリング
+- **themes / templates**: テンプレートのレンダリング（公開サイトは MiniJinja でランタイム評価、管理画面は Askama でコンパイル時検証）
 
 ## 技術スタック
 
@@ -81,7 +82,8 @@ flowchart TB
 |------|----------|------|------|
 | HTTP | `axum` + `tokio` | ✅ | 軽量・型安全 |
 | DB | `sqlx`（sqlite, バンドル） | ✅ | マイグレーションは `migrations/` の手書き SQL（`sqlx::migrate!`） |
-| テンプレート | `askama` | ✅ | コンパイル時テンプレート検証 |
+| テンプレート（管理画面） | `askama` | ✅ | コンパイル時テンプレート検証（テーマ切替の影響を受けない） |
+| テンプレート（公開サイト） | `minijinja` + `minijinja-autoreload` | ✅ | ランタイム評価。`themes/` 配下を監視し、ファイル編集・テーマ切替を再起動なしで反映 |
 | 設定 | `figment` + `serde` | ✅ | TOML + 環境変数（`CMS_*`） |
 | ログ | `tracing` + `tracing-subscriber` | ✅ | 構造化ログ |
 | 日時 | `chrono` | ✅ | 予約投稿など |
@@ -102,7 +104,7 @@ rust-sqlite-cms/
 ├── Cargo.toml
 ├── config.example.toml      # 設定のサンプル（コピーして config.toml へ）
 ├── migrations/              # SQLite スキーマ（バージョン管理）
-├── themes/                  # 公開サイト用 Askama テーマ
+├── themes/                  # 公開サイト用テーマ（MiniJinja・ランタイム差し替え）
 │   └── default/
 │       ├── templates/       # *.html
 │       └── assets/          # CSS / JS（静的配信）
@@ -314,7 +316,7 @@ flowchart TB
 
 ## セキュリティ上の考慮（設計）
 
-- **XSS**: Askama の自動 HTML エスケープを利用。生 HTML を出す場合は明示的なサニタイズ方針を文書化
+- **XSS**: テンプレートエンジンの自動 HTML エスケープを利用（管理画面: Askama、公開サイト: MiniJinja の `.html` 既定エスケープ）。生 HTML を出す場合は明示的なサニタイズ方針を文書化
 - **CSRF**: 管理画面の POST フォームには CSRF トークンを付与
 - **認証**: パスワードは argon2 でハッシュ。セッション Cookie は HttpOnly / Secure（本番）を推奨
 - **アップロード**: MIME 検証、サイズ上限、実行可能拡張子の拒否

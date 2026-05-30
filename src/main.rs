@@ -4,6 +4,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 use rust_sqlite_cms::{
     config::AppConfig, db, error::AppResult, repos::options, routes, state::AppState,
+    theme::Templates,
 };
 
 #[tokio::main]
@@ -26,9 +27,11 @@ async fn main() -> AppResult<()> {
     tracing::info!("既定の options を確認しました");
 
     let bind_addr = config.server.bind_addr.clone();
+    let templates = Arc::new(Templates::new(config.paths.themes_dir.clone().into()));
     let state = AppState {
         pool,
         config: Arc::new(config),
+        templates,
     };
 
     let app = routes::router().with_state(state);

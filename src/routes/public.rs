@@ -1,30 +1,22 @@
-use askama::Template;
 use axum::{
     Router,
     extract::State,
     response::{Html, IntoResponse},
     routing::get,
 };
+use minijinja::context;
+use serde::Serialize;
 
 use crate::error::AppResult;
 use crate::models::post::Post;
 use crate::repos::{options, posts};
 use crate::state::AppState;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 struct NewsItem {
     title: String,
     excerpt: String,
     display_date: String,
-}
-
-#[derive(Template)]
-#[template(path = "public/index.html")]
-struct HomeTemplate {
-    blogname: String,
-    blogdescription: String,
-    news: Vec<NewsItem>,
-    has_news: bool,
 }
 
 pub fn router() -> Router<AppState> {
@@ -38,19 +30,25 @@ async fn home(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let blogdescription = options::get(&state.pool, "blogdescription")
         .await?
         .unwrap_or_else(|| state.config.site.tagline.clone());
+    let theme = options::get(&state.pool, "active_theme")
+        .await?
+        .unwrap_or_else(|| state.config.theme.active.clone());
     let news = posts::list_published(&state.pool, 5)
         .await?
         .into_iter()
         .map(NewsItem::from)
         .collect::<Vec<_>>();
 
-    let html = HomeTemplate {
-        blogname,
-        blogdescription,
-        has_news: !news.is_empty(),
-        news,
-    }
-    .render()?;
+    let html = state.templates.render(
+        &theme,
+        "index.html",
+        context! {
+            blogname,
+            blogdescription,
+            has_news => !news.is_empty(),
+            news,
+        },
+    )?;
 
     Ok(Html(html))
 }

@@ -9,6 +9,8 @@ askama = "0.16.0"
 axum = "0.8.9"
 chrono = { version = "0.4.44", default-features = false, features = ["serde", "clock"] }
 figment = { version = "0.10.19", features = ["toml", "env"] }
+minijinja = { version = "2.20.0", features = ["loader"] }
+minijinja-autoreload = "2.20.0"
 serde = { version = "1.0.228", features = ["derive"] }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros", "derive", "chrono"] }
 thiserror = "2.0.18"

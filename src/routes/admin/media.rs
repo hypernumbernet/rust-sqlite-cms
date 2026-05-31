@@ -130,7 +130,7 @@ async fn render_index(
             title: item.title.clone(),
             mime_type: item.mime_type.clone().unwrap_or_default(),
             file_size_label: format_file_size(item.file_size_bytes()),
-            updated_at: item.updated_at.clone(),
+            updated_at: super::format_updated_at(&item.updated_at),
             public_url: item.public_url(),
             is_image: item.is_image(),
         })

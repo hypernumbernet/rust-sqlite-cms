@@ -498,7 +498,7 @@ async fn build_image_entry_list(state: &AppState, placeholder_id: i64) -> AppRes
             has_thumbnail,
             layout_summary,
             status_label,
-            updated_at: post.updated_at,
+            updated_at: super::format_updated_at(&post.updated_at),
         });
     }
 
@@ -746,7 +746,7 @@ impl PlaceholderListItem {
             id: placeholder.id,
             name: placeholder.name,
             type_label: widgets::type_label(type_key).to_string(),
-            updated_at: placeholder.updated_at,
+            updated_at: super::format_updated_at(&placeholder.updated_at),
         }
     }
 }
@@ -771,7 +771,7 @@ impl From<Post> for EntryListItem {
             status_label,
             post_name,
             display_date,
-            updated_at: post.updated_at,
+            updated_at: super::format_updated_at(&post.updated_at),
         }
     }
 }

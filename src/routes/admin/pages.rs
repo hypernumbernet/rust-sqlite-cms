@@ -528,7 +528,7 @@ impl From<PageRow> for PageListItem {
             has_url,
             is_published: page.is_published,
             status_label,
-            updated_at: page.updated_at,
+            updated_at: super::format_updated_at(&page.updated_at),
             can_delete: !is_home,
         }
     }

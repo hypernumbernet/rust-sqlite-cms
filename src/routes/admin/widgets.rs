@@ -179,7 +179,7 @@ impl From<WidgetType> for WidgetTypeListItem {
             type_key: widget_type.type_key.clone(),
             type_label: widgets::type_label(&widget_type.type_key).to_string(),
             config_summary: config_summary(&widget_type),
-            updated_at: widget_type.updated_at,
+            updated_at: super::format_updated_at(&widget_type.updated_at),
         }
     }
 }

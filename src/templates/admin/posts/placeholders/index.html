@@ -17,7 +17,7 @@
 </style>
 
 <div class="toolbar">
-  <p>テンプレートに差し込むプレースホルダーとウィジェットタイプを管理します。行をクリックして投稿を編集します。</p>
+  <p>テンプレートに差し込むプレースホルダーとウィジェットタイプを管理します。</p>
   <a class="button" href="/admin/posts/placeholders/new">新規追加</a>
 </div>
 
@@ -41,8 +41,7 @@
         <td><span class="kind">{{ placeholder.type_label }}</span></td>
         <td>{{ placeholder.updated_at }}</td>
         <td>
-          <a class="button secondary" href="/admin/posts/placeholders/{{ placeholder.id }}">投稿を管理</a>
-          <a class="button secondary" href="/admin/posts/placeholders/{{ placeholder.id }}/edit">設定</a>
+          <a class="button secondary" href="/admin/posts/placeholders/{{ placeholder.id }}">管理</a>
         </td>
       </tr>
       {% endfor %}

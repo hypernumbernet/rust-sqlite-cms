@@ -5,32 +5,33 @@
 
 ## 現状
 
-Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェット）まで実装済みです。`cargo run` で設定読み込み → SQLite プール生成 → マイグレーション適用（`0001_init.sql`） → 既定 `options` 投入 → `work/` ディレクトリ初期化（`presets/index.html` の seed + `pages/` ディレクトリ作成） → `pages` テーブルのトップページ行確保 → axum サーバー起動までが一連で動作します。初回起動時に `data/cms.db` が自動生成されます。
+Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェット）まで実装済みです。`cargo run` で設定読み込み → SQLite プール生成 → マイグレーション適用（`0001`〜`0005`） → 既定 `options` 投入 → `work/` ディレクトリ初期化（`presets/index.html` の seed + `pages/` ディレクトリ作成） → `pages` テーブルのトップページ行確保 → axum サーバー起動までが一連で動作します。初回起動時に `data/cms.db` が自動生成されます。
 
 **利用可能な主な機能**:
 
 - 公開サイト: `http://127.0.0.1:3000/` で企業ホームページサンプル表示（MiniJinja テンプレート + `news` プレースホルダー由来のお知らせ一覧）。公開済みページは任意 URL パスでフォールバック配信。
 - 管理ダッシュボード: `/admin`（`options` 由来のサイト名・説明を表示）
-- お知らせ管理: `/admin/posts` でプレースホルダー（テンプレート変数名）の定義と、各プレースホルダー配下のエントリ（タイトル・本文・抜粋・ステータス draft/publish・スラッグ）CRUD
+- お知らせ管理: `/admin/posts` でプレースホルダー（テンプレート変数名）の定義と、各プレースホルダー配下のエントリ CRUD（投稿タブ + 設定タブの統合管理画面）
 - ページ管理: `/admin/pages` でサイトページ CRUD。プリセット（ランディング/シンプルページ/お知らせ一覧など）からの作成、MiniJinja テンプレート vs 静的 HTML の選択、URL パス割り当て、公開/非公開、トップページ特別扱い
-- ウィジェット設定: `/admin/widgets` で `news` ウィジェットの表示件数などの設定
+- ウィジェット: `/admin/widgets` で HTML 構成（`html_template`）とインスタンス設定スキーマ（`config_schema`）を編集・保存。完成したウィジェットタイプは DB に保持され、将来はエクスポート/インポートによる配布・共有を想定。各ページへの配置はプレースホルダー（`/admin/posts`）でインスタンスを作り、テンプレートに `{{ 名前_html | safe }}` を書くだけ
 - サイト設定: `/admin/settings` でサイト名・説明・サイト URL（`options` + `work/config.toml` の `[site]`）
 - 作業ディレクトリ: `work/templates/`（MiniJinja・autoreload 対応）と `work/pages/`（静的 HTML）をファイルベースで管理
 
 **実装済みの技術的特徴**:
 
-- 「お知らせ」は従来の単一 `posts` ではなく、`widget_types`（種類・設定 JSON） + `placeholders`（テンプレート参照名） + `posts(placeholder_id)` の組み合わせで実現。テンプレート側では `{{ news }}` / `{% if has_news %}` などで利用可能。
+- コンテンツウィジェット（お知らせ・画像など）は **ウィジェットタイプ**（HTML 構成の定義）→ **プレースホルダー**（ページごとのインスタンス + 設定）→ **エントリ**（`posts`）の 3 層。詳細は [ウィジェット体系](#ウィジェット体系)。
 - 公開ページの本文はファイル（`work/templates/*.html` または `work/pages/*.html`）、メタ情報（URL・公開フラグ・種別）は `pages` テーブルで管理。
 - 管理画面は Askama（コンパイル時型安全）、公開サイトは MiniJinja + `minijinja-autoreload`（ファイル編集で再起動不要で反映）。
 - 静的アセットは `work/templates/static/` を `/static` で配信。
 
-**未実装（主なもの）**: ユーザー認証・ログイン、画像カルーセルウィジェット（画像・リンク対応、Phase 2前倒し予定・目玉機能）、タクソノミー（カテゴリ/タグ）、ユーザー管理画面など。詳細は[ロードマップ](#ロードマップ)を参照。
+**未実装（主なもの）**: ユーザー認証・ログイン、タクソノミー（カテゴリ/タグ）、ユーザー管理画面など。詳細は[ロードマップ](#ロードマップ)を参照。
 
 ## 設計思想
 
 | 方針 | 内容 |
 |------|------|
 | メイン用途 | 一般的なホームページのお知らせ欄などを、ユーザーがお手軽に更新できること |
+| ウィジェット | HTML 構成を編集可能な再利用コンポーネント。タイプを保存し配布・共有し、インスタンス設定は各ページ（プレースホルダー）で調整して簡単に配置 |
 | 将来の拡張 | 商品管理・注文・在庫など EC サイト構築機能への独自進化 |
 | 管理画面 | **Askama SSR**（JavaScript フレームワークに依存しない） |
 | 公開 API | **管理用 REST/JSON API 対応**（`/api/v1` でプレースホルダー/投稿/ページ/ウィジェット/設定/メディアを操作可能。将来的な CLI・モバイルクライアント向け） |
@@ -68,7 +69,7 @@ flowchart TB
 - **routes**: ルーティング、リクエストのパース、フォーム処理、レスポンス（Html / Redirect）。バリデーションとエラーフォーム再描画もここで。
 - **repos**: SQL とモデル間のマッピング + ビジネス寄りのクエリ（例: `list_published_for_placeholder`）。1 テーブル ≈ 1 リポジトリ。
 - **theme**: `work/` ディレクトリの初期化・I/O（read/write/remove for templates/pages/static）、MiniJinja エンジン（autoreload）。
-- **widgets**: プレースホルダー解決と公開サイト向けコンテキスト構築（options + placeholders → `news` / `has_news` などの変数）。
+- **widgets**: プレースホルダー解決、`html_template` のサーバーサイドレンダリング、公開サイト向けコンテキスト構築（`{{ name_html }}` や `has_news` などの変数）。
 - **templates**: 管理画面は `src/templates/admin/` の Askama（型安全）、公開は `work/templates/` の MiniJinja（ランタイム差し替え可能）。
 - **auth / services**: サービス層を導入済み（`src/services/`）。HTML 管理画面と JSON API が同じ業務ロジックを共有。認証ミドルウェアは将来のフェーズで `/api` と `/admin` の両方に適用予定。
 
@@ -171,6 +172,62 @@ rust-sqlite-cms/
 
 **公開ページと管理 UI の分離**: 公開 HTML は `work/templates/`（MiniJinja）または `work/pages/`（`is_static` で区別）に本文を置き、`pages` テーブルに URL・公開フラグ・名前等のメタ情報を保持します。管理画面は `src/templates/admin/` の Askama に置き、公開ページの影響を受けません。MiniJinja ページは再起動不要で即反映。
 
+## ウィジェット体系
+
+ウィジェットは「見た目とマークアップの型」を定義する再利用可能なコンポーネントです。**HTML 構成（MiniJinja 断片）の編集**と**ページごとのインスタンス設定**を分離し、同じウィジェットを複数ページに簡単に載せられるようにします。
+
+### 2 層の編集責務
+
+| 層 | 管理画面 | 保存先 | 役割 |
+|----|----------|--------|------|
+| **ウィジェットタイプ** | `/admin/widgets` | `widget_types`（`html_template`, `config_schema`, `config`） | ウィジェットの HTML 構成・利用可能なインスタンス設定項目の定義。ここで作った型はサイト内で保存され、編集内容は DB に永続化される |
+| **プレースホルダー（インスタンス）** | `/admin/posts`（プレースホルダー作成 + 設定タブ） | `placeholders`（`name`, `config` JSON）+ 紐づく `posts` | あるウィジェットタイプの**1 つの利用単位**。表示件数・見出しなどインスタンス固有の値をここで調整。エントリ（お知らせ本文など）もこの配下で CRUD |
+
+- ウィジェット画面: **どう描画するか**（HTML テンプレート + 設定フォームのスキーマ）
+- 投稿（プレースホルダー）画面: **このページ用にどう使うか**（インスタンス設定 + コンテンツ）
+
+`config_schema`（JSON）で定義した項目は、プレースホルダー編集画面の設定タブで入力欄が自動生成されます（例: 表示件数 `limit`）。
+
+### ページへの配置
+
+公開ページの MiniJinja テンプレート（`work/templates/*.html`）に、プレースホルダー名に対応する変数を 1 行書くだけで配置できます。
+
+- **推奨**: `{{ news_html | safe }}` — サーバーでレンダリング済みの HTML 断片を差し込む（`news` はプレースホルダー名の例）
+- **後方互換**: `{{ news }}` / `{% if has_news %}` など、テンプレート側でループする従来形式（0003/0005 マイグレーション参照）
+
+ページ管理（`/admin/pages`）でテンプレート本文を編集し、使いたいプレースホルダー名を埋め込む運用です。静的 HTML ページ（`is_static`）では MiniJinja 変数は使えないため、ウィジェット配置はテンプレート型ページ向けです。
+
+### 保存・配布・共有
+
+| 項目 | 状態 |
+|------|------|
+| ウィジェットタイプの編集と DB への保存 | ✅ `/admin/widgets` で `html_template` / `config_schema` を更新 |
+| REST API による参照・更新 | ✅ `/api/v1/widgets`（一覧・`config` / `html_template` の PATCH） |
+| パッケージのエクスポート / インポート、他サイト・他ユーザーへの配布 | ⏳ 未実装（設計上の目標。JSON やアーカイブでの共有を Phase 2 以降で検討） |
+
+完成したウィジェット（タイプ定義 + 必要なら既定スキーマ）は、まず自サイトの `widget_types` として保持します。将来的にはエクスポートしてテンプレート集やコミュニティと共有し、別インストールへインポートして同じ見た目を再現できるようにする想定です。
+
+### データの流れ（公開時）
+
+```mermaid
+flowchart LR
+  WT[widget_types<br/>html_template]
+  PH[placeholders<br/>config + name]
+  PO[posts<br/>entries]
+  PG[page template<br/>work/templates]
+  WT --> Render[widgets レンダリング]
+  PH --> Render
+  PO --> Render
+  Render --> Vars["MiniJinja 変数<br/>例: news_html, has_news"]
+  Vars --> PG
+  PG --> HTML[公開 HTML]
+```
+
+### 実装済みのウィジェット例
+
+- **news**（お知らせ一覧）: プレースホルダー + 投稿エントリ。インスタンス設定で表示件数など
+- **image**（画像・リンク）: プレースホルダー + 画像エントリ（`postmeta` で float / margin 等）
+
 ## 主要機能
 
 | 機能 | データモデル | フェーズ | 状態 |
@@ -179,7 +236,9 @@ rust-sqlite-cms/
 | サイトページ（トップ・テンプレート・静的 HTML） | `pages` テーブル + `work/templates/`（MiniJinja） / `work/pages/`（生 HTML） | Phase 1 | ✅ 実装済み（/admin/pages + プリセット） |
 | 公開ステータス | `posts.post_status`（draft/publish）、`pages.is_published` | Phase 1 | ✅ |
 | サイト設定（key-value） | `options` テーブル | Phase 1 | ✅ |
-| ウィジェット設定 | `widget_types.config`（JSON） | Phase 1 | ✅（/admin/widgets で news 表示件数など） |
+| ウィジェット（HTML 構成・型定義） | `widget_types`（`html_template`, `config_schema`, `config`） | Phase 1 | ✅（/admin/widgets） |
+| ウィジェットインスタンス（ページごとの設定・配置） | `placeholders.config` + テンプレートへの `{{ *_html }}` | Phase 1 | ✅（/admin/posts + `/admin/pages` テンプレート編集） |
+| ウィジェットのエクスポート / 配布・共有 | （設計中: パッケージ形式） | Phase 2 | ⏳ 未着手 |
 | ユーザー・ロール | `users` + ロール + capabilities | 最終 | 未着手（スキーマ未導入） |
 | カテゴリ・タグ | `terms` + `term_taxonomy` + `term_relationships` | Phase 2 | 未着手（スキーマ未導入） |
 | メディアライブラリ | DB メタデータ + `uploads/` ファイル | Phase 2 | 未着手（config のみ） |
@@ -214,8 +273,8 @@ erDiagram
 |----------|------|----------|
 | `options` | サイト設定（`blogname`, `blogdescription`, `siteurl` など） | ✅ 積極利用（起動時既定投入 + 公開コンテキスト） |
 | `pages` | 公開ページのメタ（`name`, `url_path`, `file_name`, `is_static`, `is_published`）。本文は `work/templates/` または `work/pages/` に分離保存 | ✅ 積極利用（全ページ CRUD で使用） |
-| `widget_types` | ウィジェット種類の登録（`type_key` = "news" / "image" など）と JSON 設定 | ✅ 積極利用（/admin/widgets + 描画時解決） |
-| `placeholders` | テンプレート内で参照する名前付きスロット（例: "news"）。`widget_type_id` で種類を指定 | ✅ 積極利用（/admin/posts の中心） |
+| `widget_types` | ウィジェット種類（`type_key`）、HTML 構成（`html_template`）、インスタンス設定スキーマ（`config_schema`）、型共通の `config` | ✅ 積極利用（/admin/widgets + 描画時レンダリング） |
+| `placeholders` | ページに載せるインスタンス（`name` = テンプレート変数名、`config` = インスタンス設定 JSON）。`widget_type_id` で型を指定 | ✅ 積極利用（/admin/posts：設定タブ + エントリ CRUD） |
 | `posts` | お知らせエントリ（`placeholder_id` 紐付け）およびメディア添付（`post_type = attachment`） | ✅ 積極利用 |
 | `postmeta` | 画像ウィジェット（`media_id` / `float` / `margin`）や添付ファイルメタ | ✅ 利用中 |
 
@@ -262,11 +321,11 @@ Capability の例: `edit_posts`, `publish_posts`, `edit_others_posts`, `manage_o
 |----------|------|------|------|
 | GET | `/admin` | ダッシュボード（サイト名・説明表示 + 各管理へのリンクカード） | ✅ |
 | GET, POST | `/admin/posts` | プレースホルダー一覧・作成・編集・削除 | ✅ |
-| GET, POST | `/admin/posts/placeholders/{id}` | 指定プレースホルダー配下のエントリ一覧 | ✅ |
+| GET, POST | `/admin/posts/placeholders/{id}` | プレースホルダー管理（インスタンス設定タブ + エントリ一覧） | ✅ |
 | GET, POST | `/admin/posts/placeholders/{id}/entries/new` など | エントリ作成・編集 | ✅ |
-| GET, POST | `/admin/pages` | ページ一覧・作成（プリセット選択）・編集・削除 | ✅ |
+| GET, POST | `/admin/pages` | ページ一覧・作成（プリセット選択）・編集・削除（テンプレートへのウィジェット配置） | ✅ |
 | GET | `/admin/pages/new/{design}` | プリセット選択後の作成フォーム | ✅ |
-| GET, POST | `/admin/widgets` | ウィジェットタイプ一覧・設定編集（news 表示件数など） | ✅ |
+| GET, POST | `/admin/widgets` | ウィジェットタイプ一覧・HTML 構成（`html_template`）と `config_schema` の編集 | ✅ |
 | GET, POST | `/admin/login` | ログイン（最終フェーズで有効化予定） | ⏳ |
 | GET, POST | `/admin/settings` | サイト設定（blogname / blogdescription / siteurl） | ✅ |
 | - | `/admin/users` など | ナビゲーション上は存在するが未実装（404 またはスタブ） | ⏳ |
@@ -319,18 +378,21 @@ flowchart TB
 - [x] お知らせ機能（プレースホルダー定義 + エントリ CRUD + ウィジェットレンダリング + `news` / `has_news` コンテキスト提供）
 - [x] ページ管理（プリセット選択、テンプレート/静的 HTML、URL 割り当て・公開制御、トップページ特別扱い）
 - [x] デフォルトテーマと公開ルート（`work/` seed、MiniJinja autoreload、`/ ` + フォールバック配信、静的アセット配信）
-- [x] ウィジェット設定画面（`widget_types` の config 更新）
+- [x] ウィジェット管理（`widget_types` の `html_template` / `config_schema` 編集と保存）
+- [x] プレースホルダー単位のインスタンス設定（`placeholders.config`、`config_schema` 連動フォーム）
 
 **次の予定（優先順）**:
 
 1. ユーザー認証・ログイン（`tower-sessions` + argon2、パスワードハッシュ、セッション管理、`/admin/login`）
 2. 管理画面への認証ミドルウェア適用（未ログイン時はログインへ誘導）
 3. 画像カルーセルウィジェット（画像・リンクアップロード対応）の実装 — Phase 2前倒し・目玉機能
-4. メディアライブラリ（アップロード UI + `uploads/` 管理 + ページ/投稿への添付）
-5. その他 Phase 2 項目（タグ・カテゴリ、RSS など）
+4. ウィジェットのエクスポート / インポート（他サイト・他ユーザーとの配布・共有）
+5. メディアライブラリ（アップロード UI + `uploads/` 管理 + ページ/投稿への添付）
+6. その他 Phase 2 項目（タグ・カテゴリ、RSS など）
 
 ### Phase 2
 
+- ウィジェットのエクスポート / インポート（完成したウィジェットタイプのパッケージ化と共有）
 - 画像カルーセルウィジェット（画像・リンクアップロード対応） — 目玉機能として前倒し予定
 - カテゴリ・タグ
 - メディアライブラリ（アップロード・添付）

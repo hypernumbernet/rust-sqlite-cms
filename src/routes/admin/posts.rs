@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
     Form, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -22,6 +22,19 @@ struct PlaceholderForm {
     name: String,
     widget_type_id: String,
     #[serde(default)]
+    config: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ManageQuery {
+    #[serde(default)]
+    tab: String,
+}
+
+#[derive(Debug, Clone)]
+struct ManageFormOverride {
+    name: String,
+    widget_type_id: Option<i64>,
     config: String,
 }
 
@@ -99,14 +112,31 @@ struct PlaceholderFormTemplate {
 }
 
 #[derive(Template)]
-#[template(path = "admin/posts/entries/index.html")]
-struct EntryIndexTemplate {
+#[template(path = "admin/posts/placeholders/manage.html")]
+struct PlaceholderManageTemplate {
     placeholder_id: i64,
     placeholder_name: String,
+    type_key: String,
     type_label: String,
-    entries: Vec<EntryListItem>,
+    type_hint: String,
+    is_entries_tab: bool,
+    is_settings_tab: bool,
+    entries_tab_url: String,
+    settings_tab_url: String,
+    entries_description: String,
+    new_entry_url: String,
+    new_entry_label: String,
     has_entries: bool,
-    settings_url: String,
+    entries: Vec<EntryListItem>,
+    image_entries: Vec<ImageEntryListItem>,
+    carousel_entries: Vec<CarouselEntryListItem>,
+    settings_action: String,
+    delete_action: String,
+    name: String,
+    widget_types: Vec<WidgetTypeOption>,
+    config: String,
+    config_schema: String,
+    error_message: String,
 }
 
 #[derive(Template)]
@@ -146,17 +176,6 @@ struct MediaFormItem {
 }
 
 #[derive(Template)]
-#[template(path = "admin/posts/entries/index_image.html")]
-struct ImageEntryIndexTemplate {
-    placeholder_id: i64,
-    placeholder_name: String,
-    type_label: String,
-    entries: Vec<ImageEntryListItem>,
-    has_entries: bool,
-    settings_url: String,
-}
-
-#[derive(Template)]
 #[template(path = "admin/posts/entries/form_image.html")]
 struct ImageEntryFormTemplate {
     heading: String,
@@ -188,17 +207,6 @@ struct CarouselEntryListItem {
 }
 
 #[derive(Template)]
-#[template(path = "admin/posts/entries/index_carousel.html")]
-struct CarouselEntryIndexTemplate {
-    placeholder_id: i64,
-    placeholder_name: String,
-    type_label: String,
-    entries: Vec<CarouselEntryListItem>,
-    has_entries: bool,
-    settings_url: String,
-}
-
-#[derive(Template)]
 #[template(path = "admin/posts/entries/form_carousel.html")]
 struct CarouselEntryFormTemplate {
     heading: String,
@@ -224,7 +232,7 @@ pub fn router() -> Router<AppState> {
         )
         .route(
             "/admin/posts/placeholders/{id}",
-            get(entry_index),
+            get(placeholder_manage),
         )
         .route(
             "/admin/posts/placeholders/{id}/edit",
@@ -332,13 +340,8 @@ async fn placeholder_create(
     Ok(Redirect::to("/admin/posts").into_response())
 }
 
-async fn placeholder_edit(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> AppResult<impl IntoResponse> {
-    let placeholder = placeholders::find(&state.pool, id).await?;
-    let html = placeholder_form_for(&state, &placeholder, "").await?.render()?;
-    Ok(Html(html))
+async fn placeholder_edit(Path(id): Path<i64>) -> Redirect {
+    Redirect::to(&format!("/admin/posts/placeholders/{id}?tab=settings"))
 }
 
 async fn placeholder_update(
@@ -350,20 +353,17 @@ async fn placeholder_update(
     let input = match (&form).into_input() {
         Ok(input) => input,
         Err(message) => {
-            // バリデーションエラー時は送信値を優先してフォームを再描画（config の変更を失わない）
             let widget_type_id = form.widget_type_id.trim().parse::<i64>().ok();
-            let html = build_placeholder_form(
+            let html = build_manage_template(
                 &state,
-                "プレースホルダーを編集",
-                &format!("/admin/posts/placeholders/{}/edit", id),
-                "更新する",
-                &form.name,
-                widget_type_id,
-                true,
-                &format!("/admin/posts/placeholders/{}", id),
-                &format!("/admin/posts/placeholders/{}/delete", id),
+                &placeholder,
+                "settings",
                 &message,
-                &form.config,
+                Some(ManageFormOverride {
+                    name: form.name,
+                    widget_type_id,
+                    config: form.config,
+                }),
             )
             .await?
             .render()?;
@@ -373,13 +373,21 @@ async fn placeholder_update(
 
     if let Err(err) = placeholders::update(&state.pool, id, &input).await {
         if let AppError::Conflict(message) = err {
-            let html = placeholder_form_for(&state, &placeholder, &message).await?.render()?;
+            let html = build_manage_template(
+                &state,
+                &placeholder,
+                "settings",
+                &message,
+                None,
+            )
+            .await?
+            .render()?;
             return Ok(Html(html).into_response());
         }
         return Err(err);
     }
 
-    Ok(Redirect::to("/admin/posts").into_response())
+    Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}?tab=settings")).into_response())
 }
 
 async fn placeholder_destroy(
@@ -390,64 +398,35 @@ async fn placeholder_destroy(
         Ok(()) => Ok(Redirect::to("/admin/posts").into_response()),
         Err(AppError::Conflict(message)) => {
             let placeholder = placeholders::find(&state.pool, id).await?;
-            let html = placeholder_form_for(&state, &placeholder, &message).await?.render()?;
+            let html = build_manage_template(
+                &state,
+                &placeholder,
+                "settings",
+                &message,
+                None,
+            )
+            .await?
+            .render()?;
             Ok(Html(html).into_response())
         }
         Err(err) => Err(err),
     }
 }
 
-async fn entry_index(
+async fn placeholder_manage(
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Query(query): Query<ManageQuery>,
 ) -> AppResult<impl IntoResponse> {
     let placeholder = placeholders::find(&state.pool, id).await?;
-    let type_key = placeholder_type_key(&state, &placeholder).await?;
-    let type_label = widgets::type_label(&type_key).to_string();
-
-    if type_key == "image" {
-        let entries = build_image_entry_list(&state, id).await?;
-        let html = ImageEntryIndexTemplate {
-            placeholder_id: id,
-            placeholder_name: placeholder.name,
-            type_label,
-            has_entries: !entries.is_empty(),
-            entries,
-            settings_url: format!("/admin/posts/placeholders/{id}/edit"),
-        }
-        .render()?;
-        return Ok(Html(html));
-    }
-
-    if type_key == "carousel" {
-        let entries = build_carousel_entry_list(&state, id).await?;
-        let html = CarouselEntryIndexTemplate {
-            placeholder_id: id,
-            placeholder_name: placeholder.name,
-            type_label,
-            has_entries: !entries.is_empty(),
-            entries,
-            settings_url: format!("/admin/posts/placeholders/{id}/edit"),
-        }
-        .render()?;
-        return Ok(Html(html));
-    }
-
-    let entries = posts::list_all_for_placeholder(&state.pool, id)
+    let active_tab = if query.tab == "settings" {
+        "settings"
+    } else {
+        "entries"
+    };
+    let html = build_manage_template(&state, &placeholder, active_tab, "", None)
         .await?
-        .into_iter()
-        .map(EntryListItem::from)
-        .collect::<Vec<_>>();
-    let html = EntryIndexTemplate {
-        placeholder_id: id,
-        placeholder_name: placeholder.name,
-        type_label,
-        has_entries: !entries.is_empty(),
-        entries,
-        settings_url: format!("/admin/posts/placeholders/{id}/edit"),
-    }
-    .render()?;
-
+        .render()?;
     Ok(Html(html))
 }
 
@@ -906,25 +885,116 @@ struct CarouselEntryParsed {
     meta: HashMap<String, String>,
 }
 
-async fn placeholder_form_for(
+async fn build_manage_template(
     state: &AppState,
     placeholder: &Placeholder,
+    active_tab: &str,
     error_message: &str,
-) -> AppResult<PlaceholderFormTemplate> {
-    build_placeholder_form(
-        state,
-        "プレースホルダーを編集",
-        &format!("/admin/posts/placeholders/{}/edit", placeholder.id),
-        "更新する",
-        &placeholder.name,
-        Some(placeholder.widget_type_id),
-        true,
-        &format!("/admin/posts/placeholders/{}", placeholder.id),
-        &format!("/admin/posts/placeholders/{}/delete", placeholder.id),
-        error_message,
-        &placeholder.config,
-    )
-    .await
+    form_override: Option<ManageFormOverride>,
+) -> AppResult<PlaceholderManageTemplate> {
+    let id = placeholder.id;
+    let type_key = placeholder_type_key(state, placeholder).await?;
+    let type_label = widgets::type_label(&type_key).to_string();
+
+    let (type_hint, entries_description, new_entry_label) = match type_key.as_str() {
+        "image" => (
+            "公開済み 1 件が表示されます".to_string(),
+            "このプレースホルダーに表示する画像を管理します。".to_string(),
+            "新規追加".to_string(),
+        ),
+        "carousel" => (
+            "公開済みの全スライドが順番に表示されます".to_string(),
+            "カルーセル用画像スライドを管理します。複数追加でき、公開状態のものがスライドショーになります。"
+                .to_string(),
+            "スライドを追加".to_string(),
+        ),
+        _ => (
+            String::new(),
+            "このプレースホルダーに表示する投稿を管理します。".to_string(),
+            "新規追加".to_string(),
+        ),
+    };
+
+    let (entries, image_entries, carousel_entries, has_entries) = match type_key.as_str() {
+        "image" => {
+            let list = build_image_entry_list(state, id).await?;
+            let has = !list.is_empty();
+            (Vec::new(), list, Vec::new(), has)
+        }
+        "carousel" => {
+            let list = build_carousel_entry_list(state, id).await?;
+            let has = !list.is_empty();
+            (Vec::new(), Vec::new(), list, has)
+        }
+        _ => {
+            let list = posts::list_all_for_placeholder(&state.pool, id)
+                .await?
+                .into_iter()
+                .map(EntryListItem::from)
+                .collect::<Vec<_>>();
+            let has = !list.is_empty();
+            (list, Vec::new(), Vec::new(), has)
+        }
+    };
+
+    let (name, widget_type_id, config) = if let Some(override_form) = form_override {
+        (
+            override_form.name,
+            override_form.widget_type_id,
+            override_form.config,
+        )
+    } else {
+        (
+            placeholder.name.clone(),
+            Some(placeholder.widget_type_id),
+            placeholder.config.clone(),
+        )
+    };
+
+    let widget_types = widget_type_options(state, widget_type_id).await?;
+    let effective_type_id = widget_type_id.or_else(|| {
+        widget_types
+            .iter()
+            .find(|option| option.selected)
+            .map(|option| option.id)
+            .or_else(|| widget_types.first().map(|option| option.id))
+    });
+    let config_schema = if let Some(wt_id) = effective_type_id {
+        widget_types::find(&state.pool, wt_id)
+            .await
+            .map(|wt| wt.config_schema)
+            .unwrap_or_else(|_| "{}".to_string())
+    } else {
+        "{}".to_string()
+    };
+
+    let is_settings_tab = active_tab == "settings";
+
+    Ok(PlaceholderManageTemplate {
+        placeholder_id: id,
+        placeholder_name: placeholder.name.clone(),
+        type_key,
+        type_label,
+        type_hint,
+        is_entries_tab: !is_settings_tab,
+        is_settings_tab,
+        entries_tab_url: format!("/admin/posts/placeholders/{id}"),
+        settings_tab_url: format!("/admin/posts/placeholders/{id}?tab=settings"),
+        entries_description,
+        new_entry_url: format!("/admin/posts/placeholders/{id}/entries/new"),
+        new_entry_label,
+        has_entries,
+        entries,
+        image_entries,
+        carousel_entries,
+        settings_action: format!("/admin/posts/placeholders/{id}/edit"),
+        delete_action: format!("/admin/posts/placeholders/{id}/delete"),
+        name,
+        widget_types,
+        config,
+        config_schema,
+        error_message: error_message.to_string(),
+    })
 }
 
 async fn build_placeholder_form(

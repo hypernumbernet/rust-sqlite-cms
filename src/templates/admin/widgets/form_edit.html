@@ -73,15 +73,16 @@
     </div>
 
     <div class="vars-help">
-      <strong>このタイプで主に利用できる変数</strong><br>
+      <strong>断片テンプレート（html_template）で使う変数</strong><br>
+      プレースホルダー名に依存しないタイプ固定キーです。ページ側では <code>&#123;&#123; プレースホルダー名 &#125;&#125;_html</code> で差し込みます。<br>
       {% if type_key == "news" %}
-        <code>news</code>（配列）, <code>has_news</code>, <code>item.title</code> / <code>item.excerpt</code> / <code>item.display_date</code>, <code>config</code>
+        <code>items</code>（配列）, <code>has_items</code>, <code>item.title</code> / <code>item.excerpt</code> / <code>item.display_date</code>, <code>config</code>
       {% elif type_key == "carousel" %}
-        <code>carousel</code>, <code>has_carousel</code>, <code>carousel.slides</code>, <code>carousel.interval</code> / <code>width</code> / <code>height</code> など
+        <code>carousel</code>, <code>has_carousel</code>, <code>carousel.slides</code>, <code>carousel.interval</code> / <code>width</code> / <code>height</code> など, <code>config</code>
       {% elif type_key == "image" %}
-        <code>（プレースホルダー名）</code>, <code>has_xxx</code>, <code>image_url</code>, <code>alt</code>, <code>link_url</code>, <code>style</code> など
+        <code>item</code>, <code>has_item</code>, <code>item.image_url</code>, <code>item.alt</code>, <code>item.link_url</code>, <code>item.style</code> など, <code>config</code>
       {% else %}
-        タイプに応じたデータ（<code>has_プレースホルダー名</code> など）が渡されます。
+        タイプに応じたデータが渡されます。
       {% endif %}
     </div>
 

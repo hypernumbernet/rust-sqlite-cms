@@ -113,151 +113,54 @@ pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String
         }
     };
 
-    match type_key {
-        "news" => (
-            format!(
-                r#"{{% if has_{name} %}}
-<section id="{name}">
+    let fragment_example = match type_key {
+        "news" => format!(
+            r#"<section id="{name}">
   <h2>お知らせ</h2>
   <div class="news-list">
-    {{% for item in {name} %}}
-    <article class="news-item">
-      <time class="news-date">{{{{ item.display_date }}}}</time>
-      <div>
-        <h3 class="news-title">{{{{ item.title }}}}</h3>
-        <p class="news-excerpt">{{{{ item.excerpt }}}}</p>
-      </div>
-    </article>
-    {{% endfor %}}
+    {{{{ {name}_html | safe }}}}
   </div>
-</section>
-{{% else %}}
-<p class="empty-news">現在公開中のお知らせはありません。</p>
-{{% endif %}}"#
-            ),
-            format!(
-                "変数 <code>{name}</code> は NewsItem の配列（title / excerpt / display_date）。\
-                 <code>has_{name}</code> は公開済みエントリが 1 件以上あるとき true になります。"
-            ),
+</section>"#
         ),
-        "image" => (
-            format!(
-                r#"{{% if has_{name} %}}
-<figure class="widget-image" style="{{{{ {name}.style }}}}">
-  {{% if {name}.link_url %}}
-  <a href="{{{{ {name}.link_url }}}}">
-    <img src="{{{{ {name}.image_url }}}}" alt="{{{{ {name}.alt }}}}">
-  </a>
-  {{% else %}}
-  <img src="{{{{ {name}.image_url }}}}" alt="{{{{ {name}.alt }}}}">
-  {{% endif %}}
-</figure>
-{{% endif %}}"#
-            ),
-            format!(
-                "変数 <code>{name}</code> は ImageItem（image_url / alt / link_url / style など）。\
-                 float と margin は <code>{name}.style</code> に反映済みです。\
-                 <code>has_{name}</code> は公開済み画像エントリがあるとき true です。"
-            ),
+        "image" => format!(
+            r#"<div class="widget-image-wrap">
+  {{{{ {name}_html | safe }}}}
+</div>"#
         ),
-        "carousel" => (
-            format!(
-                r#"{{% if has_{name} %}}
-<div class="carousel" style="width:{{{{ {name}.width }}}}; height:{{{{ {name}.height }}}}; --interval: {{{{ {name}.interval }}}}s;">
-  <div class="carousel-track">
-    {{% for slide in {name}.slides %}}
-    <div class="carousel-slide">
-      {{% if slide.link_url %}}
-      <a href="{{{{ slide.link_url }}}}">
-        <img src="{{{{ slide.image_url }}}}" alt="{{{{ slide.alt }}}}">
-      </a>
-      {{% else %}}
-      <img src="{{{{ slide.image_url }}}}" alt="{{{{ slide.alt }}}}">
-      {{% endif %}}
-    </div>
-    {{% endfor %}}
-  </div>
-  {{% if {name}.slides | length > 1 %}}
-  <button class="carousel-prev" type="button" aria-label="前へ">‹</button>
-  <button class="carousel-next" type="button" aria-label="次へ">›</button>
-  <div class="carousel-dots">
-    {{% for slide in {name}.slides %}}<button class="carousel-dot" data-index="{{{{ loop.index0 }}}}" type="button"></button>{{% endfor %}}
-  </div>
-  {{% endif %}}
-</div>
-<style>
-.carousel {{ position:relative; overflow:hidden; border-radius:8px; background:#f3f4f6; }}
-.carousel-track {{ display:flex; height:100%; transition:transform 0.5s ease; }}
-.carousel-slide {{ flex:0 0 100%; height:100%; }}
-.carousel-slide img {{ width:100%; height:100%; object-fit:cover; display:block; }}
-.carousel-slide a {{ display:block; height:100%; }}
-.carousel-prev, .carousel-next {{ position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.45); color:#fff; border:none; font-size:28px; width:40px; height:40px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; }}
-.carousel-prev {{ left:12px; }} .carousel-next {{ right:12px; }}
-.carousel-dots {{ position:absolute; bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:8px; }}
-.carousel-dot {{ width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,0.6); border:none; padding:0; cursor:pointer; }}
-.carousel-dot.active {{ background:#fff; }}
-</style>
-<script>
-(function() {{
-  var root = document.currentScript.previousElementSibling;
-  if (!root || !root.classList.contains('carousel')) root = document.currentScript.parentElement.querySelector('.carousel');
-  if (!root) return;
-  var track = root.querySelector('.carousel-track');
-  var slides = track ? Array.prototype.slice.call(track.children) : [];
-  if (slides.length < 2) return;
-  var prev = root.querySelector('.carousel-prev');
-  var next = root.querySelector('.carousel-next');
-  var dots = Array.prototype.slice.call(root.querySelectorAll('.carousel-dot'));
-  var index = 0;
-  var intervalMs = (parseFloat(getComputedStyle(root).getPropertyValue('--interval')) || 5) * 1000;
-  var timer = null;
-
-  function go(i) {{
-    index = (i + slides.length) % slides.length;
-    track.style.transform = 'translateX(-' + (index * 100) + '%)';
-    dots.forEach(function(d, di) {{ d.classList.toggle('active', di === index); }});
-  }}
-
-  function start() {{
-    stop();
-    timer = setInterval(function() {{ go(index + 1); }}, intervalMs);
-  }}
-  function stop() {{ if (timer) clearInterval(timer); }}
-
-  if (prev) prev.addEventListener('click', function() {{ go(index - 1); start(); }});
-  if (next) next.addEventListener('click', function() {{ go(index + 1); start(); }});
-  dots.forEach(function(dot, di) {{
-    dot.addEventListener('click', function() {{ go(di); start(); }});
-  }});
-
-  root.addEventListener('mouseenter', stop);
-  root.addEventListener('mouseleave', start);
-
-  // init
-  track.style.transform = 'translateX(0)';
-  if (dots[0]) dots[0].classList.add('active');
-  start();
-}})();
-</script>
-{{% endif %}}"#
-            ),
-            format!(
-                "変数 <code>{name}</code> は CarouselData（slides の配列 + interval / width / height）。\
-                 各スライドは image_url / alt / link_url を持ちます。\
-                 例のスニペットは自動再生・前後ボタン・ドット付きのセルフコンテインド実装です。\
-                 <code>has_{name}</code> は公開済みスライドが1件以上あるとき true です。"
-            ),
+        "carousel" => format!(
+            r#"<div class="carousel-wrap">
+  {{{{ {name}_html | safe }}}}
+</div>"#
         ),
-        other => (
-            format!(
-                "{{% if has_{name} %}}\n  {{{{ {name} }}}}\n{{% endif %}}"
-            ),
-            format!(
-                "ウィジェットタイプ <code>{other}</code> 向けの例です。\
-                 <code>{name}</code> と <code>has_{name}</code> をテンプレートで参照します。"
-            ),
+        _ => format!("{{{{ {name}_html | safe }}}}"),
+    };
+
+    let inline_hint = match type_key {
+        "news" => format!(
+            "上級者向け（インライン）: <code>has_{name}</code> / <code>{name}</code> 配列で \
+             <code>{{% for item in {name} %}}</code> ループも可能。"
         ),
-    }
+        "image" => format!(
+            "上級者向け（インライン）: <code>has_{name}</code> / <code>{name}</code> オブジェクト \
+             （image_url / alt / style など）を直接参照も可能。"
+        ),
+        "carousel" => format!(
+            "上級者向け（インライン）: <code>has_{name}</code> / <code>{name}.slides</code> など \
+             構造化データをページ内で直接ループも可能。"
+        ),
+        other => format!(
+            "ウィジェットタイプ <code>{other}</code> 向け。<code>{name}</code> / \
+             <code>has_{name}</code> も利用できます。"
+        ),
+    };
+
+    let help = format!(
+        "推奨: ウィジェット HTML は <a href=\"/admin/widgets\">ウィジェット</a> 画面で編集し、\
+         ページでは <code>{{{{ {name}_html | safe }}}}</code> で差し込みます（<code>| safe</code> 必須）。\
+         MiniJinja テンプレートページ（静的 HTML 以外）でのみ有効です。{inline_hint}"
+    );
+
+    (fragment_example, help)
 }
 
 /// サイト変数と全プレースホルダーを解決し、MiniJinja 用コンテキストを返す。
@@ -338,14 +241,12 @@ async fn resolve_placeholder(
                 serde_json::Value::Bool(has_items),
             );
 
-            // ウィジェットHTMLフラグメントをサーバサイドレンダリング（活性テンプレート）
+            // ウィジェットHTMLフラグメントをサーバサイドレンダリング（タイプ固定キー）
             let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-            frag_ctx.insert(placeholder.name.clone(), serde_json::to_value(&items).unwrap_or_default());
-            frag_ctx.insert(format!("has_{}", placeholder.name), serde_json::Value::Bool(has_items));
+            frag_ctx.insert("items".to_string(), serde_json::to_value(&items).unwrap_or_default());
+            frag_ctx.insert("has_items".to_string(), serde_json::Value::Bool(has_items));
             frag_ctx.insert("config".to_string(), instance_config.clone());
-            if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
-                ctx.insert(format!("{}_html", placeholder.name), serde_json::Value::String(html));
-            }
+            insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
         }
         "image" => {
             let entries =
@@ -355,6 +256,10 @@ async fn resolve_placeholder(
                     format!("has_{}", placeholder.name),
                     serde_json::Value::Bool(false),
                 );
+                let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+                frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(false));
+                frag_ctx.insert("config".to_string(), instance_config.clone());
+                insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
                 return Ok(());
             };
 
@@ -380,6 +285,10 @@ async fn resolve_placeholder(
                     format!("has_{}", placeholder.name),
                     serde_json::Value::Bool(false),
                 );
+                let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+                frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(false));
+                frag_ctx.insert("config".to_string(), instance_config.clone());
+                insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
                 return Ok(());
             };
 
@@ -395,6 +304,10 @@ async fn resolve_placeholder(
                         format!("has_{}", placeholder.name),
                         serde_json::Value::Bool(false),
                     );
+                    let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+                    frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(false));
+                    frag_ctx.insert("config".to_string(), instance_config.clone());
+                    insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
                     return Ok(());
                 }
             };
@@ -409,6 +322,10 @@ async fn resolve_placeholder(
                     format!("has_{}", placeholder.name),
                     serde_json::Value::Bool(false),
                 );
+                let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+                frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(false));
+                frag_ctx.insert("config".to_string(), instance_config.clone());
+                insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
                 return Ok(());
             }
 
@@ -435,20 +352,27 @@ async fn resolve_placeholder(
             );
 
             let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-            frag_ctx.insert(placeholder.name.clone(), serde_json::to_value(&item).unwrap_or_default());
-            frag_ctx.insert(format!("has_{}", placeholder.name), serde_json::Value::Bool(true));
+            frag_ctx.insert("item".to_string(), serde_json::to_value(&item).unwrap_or_default());
+            frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(true));
             frag_ctx.insert("config".to_string(), instance_config.clone());
-            if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
-                ctx.insert(format!("{}_html", placeholder.name), serde_json::Value::String(html));
-            }
+            insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
         }
         "carousel" => {
             let mut cfg: CarouselWidgetConfig =
                 serde_json::from_str(&widget_type.config).unwrap_or_default();
-            // インスタンス設定で一部オーバーライド可能（将来拡張）
             if let Some(interval) = instance_config.get("interval").and_then(|v| v.as_u64()) {
                 if (1..=30).contains(&interval) {
                     cfg.interval = interval as u32;
+                }
+            }
+            if let Some(width) = instance_config.get("width").and_then(|v| v.as_str()) {
+                if !width.trim().is_empty() {
+                    cfg.width = width.to_string();
+                }
+            }
+            if let Some(height) = instance_config.get("height").and_then(|v| v.as_str()) {
+                if !height.trim().is_empty() {
+                    cfg.height = height.to_string();
                 }
             }
 
@@ -525,12 +449,10 @@ async fn resolve_placeholder(
             );
 
             let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
-            frag_ctx.insert(placeholder.name.clone(), serde_json::to_value(&data).unwrap_or_default());
-            frag_ctx.insert(format!("has_{}", placeholder.name), serde_json::Value::Bool(has_slides));
+            frag_ctx.insert("carousel".to_string(), serde_json::to_value(&data).unwrap_or_default());
+            frag_ctx.insert("has_carousel".to_string(), serde_json::Value::Bool(has_slides));
             frag_ctx.insert("config".to_string(), instance_config.clone());
-            if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
-                ctx.insert(format!("{}_html", placeholder.name), serde_json::Value::String(html));
-            }
+            insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
         }
         other => {
             tracing::warn!(
@@ -544,7 +466,21 @@ async fn resolve_placeholder(
     Ok(())
 }
 
-/// ウィジェットタイプの html_template を、プレースホルダー名をキーとしたローカルコンテキストで
+async fn insert_placeholder_html(
+    ctx: &mut serde_json::Map<String, serde_json::Value>,
+    placeholder_name: &str,
+    widget_type: &WidgetType,
+    frag_ctx: serde_json::Map<String, serde_json::Value>,
+) {
+    if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
+        ctx.insert(
+            format!("{}_html", placeholder_name),
+            serde_json::Value::String(html),
+        );
+    }
+}
+
+/// ウィジェットタイプの html_template をタイプ固定キーのローカルコンテキストで
 /// MiniJinja レンダリングする。成功したHTML文字列を返す（呼び出し側で *_html として登録）。
 async fn render_widget_fragment_with_data(
     widget_type: &WidgetType,

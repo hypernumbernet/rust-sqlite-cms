@@ -6,33 +6,13 @@
 
 {% block content %}
 <style>
+  /* media/index (upload + card browser) — only media-specific kept */
   .toolbar {
-    display: flex;
     align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 16px;
     flex-wrap: wrap;
   }
-  .toolbar p { margin: 0; color: var(--muted); max-width: 560px; }
-  .button {
-    display: inline-block;
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    background: var(--accent);
-    color: #fff;
-    padding: 8px 12px;
-    text-decoration: none;
-    font-size: 13px;
-    line-height: 1;
-    cursor: pointer;
-  }
-  .button.secondary { background: #fff; color: var(--accent); }
-  .button.danger { background: #fff; color: #b32d2e; border-color: #b32d2e; }
+  .toolbar p { max-width: 560px; }
   .panel {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 4px;
     padding: 16px;
     margin-bottom: 16px;
   }
@@ -43,21 +23,9 @@
     flex-wrap: wrap;
   }
   .upload-form input[type="file"] { font-size: 14px; }
-  .notice {
-    border-radius: 4px;
-    padding: 10px 14px;
-    margin-bottom: 16px;
-    font-size: 14px;
-  }
-  .notice.error { background: #fcf0f1; border: 1px solid #d63638; color: #8a1f1f; }
-  .notice.success { background: #edfaef; border: 1px solid #1b8a4b; color: #1b5e20; }
   .empty {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 4px;
     padding: 32px;
     text-align: center;
-    color: var(--muted);
   }
   .grid {
     display: grid;

@@ -6,8 +6,7 @@
 
 {% block content %}
 <style>
-  .toolbar { margin-bottom: 16px; }
-  .toolbar p { margin: 0; color: var(--muted); }
+  /* gallery preset chooser (unique card grid) */
   .cards {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
@@ -25,19 +24,6 @@
   .card h3 { margin: 0; font-size: 16px; }
   .card p { margin: 0; color: var(--muted); font-size: 13px; flex: 1; }
   .card.blank { border-style: dashed; }
-  .button {
-    display: inline-block;
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    background: var(--accent);
-    color: #fff;
-    padding: 8px 12px;
-    text-decoration: none;
-    font-size: 13px;
-    line-height: 1;
-    text-align: center;
-  }
-  .button.secondary { background: #fff; color: var(--accent); }
   .back { margin-top: 18px; }
   .back a { font-size: 13px; }
 </style>

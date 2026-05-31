@@ -6,30 +6,7 @@
 
 {% block content %}
 <style>
-  .form-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 20px;
-    align-items: start;
-  }
-  .panel {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 20px;
-  }
-  .field { margin-bottom: 18px; }
-  .field:last-child { margin-bottom: 0; }
-  label { display: block; margin-bottom: 6px; font-weight: 600; }
-  input[type="text"] {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 9px 10px;
-    font: inherit;
-    background: #fff;
-  }
-  .help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  /* Settings-specific info notice (blue) — success/error now come from base */
   .notice {
     background: #f0f6fc;
     border: 1px solid #c5d9ed;
@@ -39,35 +16,6 @@
     color: var(--text);
     margin-bottom: 18px;
   }
-  .success {
-    background: #edfaef;
-    border: 1px solid #b8e6bf;
-    border-radius: 4px;
-    padding: 12px 14px;
-    font-size: 13px;
-    margin-bottom: 18px;
-  }
-  .error {
-    background: #fcf0f1;
-    border: 1px solid #f0b8bd;
-    border-radius: 4px;
-    padding: 12px 14px;
-    font-size: 13px;
-    margin-bottom: 18px;
-  }
-  .actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
-  .button {
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    background: var(--accent);
-    color: #fff;
-    padding: 9px 14px;
-    text-decoration: none;
-    font: inherit;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .button.secondary { background: #fff; color: var(--accent); }
 </style>
 
 {% if !success_message.is_empty() %}

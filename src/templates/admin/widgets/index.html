@@ -6,35 +6,9 @@
 
 {% block content %}
 <style>
-  .toolbar { margin-bottom: 16px; }
-  .toolbar p { margin: 0; color: var(--muted); }
-  .button {
-    display: inline-block;
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    background: #fff;
-    color: var(--accent);
-    padding: 8px 12px;
-    text-decoration: none;
-    font-size: 13px;
-    line-height: 1;
-  }
-  .panel {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-  }
-  table { width: 100%; border-collapse: collapse; }
-  th, td {
-    border-bottom: 1px solid var(--border);
-    padding: 12px 14px;
-    text-align: left;
-    vertical-align: top;
-    font-size: 14px;
-  }
-  th { background: #f6f7f7; color: var(--muted); font-weight: 600; }
-  tr:last-child td { border-bottom: 0; }
+  /* widgets index (table list) */
+  .panel { padding: 0; overflow: hidden; }
+  table td { vertical-align: top; }
   .type-name { font-weight: 600; }
   .type-key { color: var(--muted); font-size: 12px; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 </style>

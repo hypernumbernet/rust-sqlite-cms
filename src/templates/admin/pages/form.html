@@ -6,29 +6,7 @@
 
 {% block content %}
 <style>
-  .form-layout {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 20px;
-    align-items: start;
-  }
-  .panel {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 20px;
-  }
-  .field { margin-bottom: 18px; }
-  .field:last-child { margin-bottom: 0; }
-  label { display: block; margin-bottom: 6px; font-weight: 600; }
-  input[type="text"], textarea {
-    width: 100%;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 9px 10px;
-    font: inherit;
-    background: #fff;
-  }
+  /* Page form specific */
   textarea#content {
     min-height: 420px;
     resize: vertical;
@@ -37,23 +15,6 @@
     line-height: 1.5;
     white-space: pre;
   }
-  .help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
-  .checkbox { display: flex; align-items: center; gap: 8px; }
-  .checkbox label { margin: 0; }
-  .actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
-  .button {
-    border: 1px solid var(--accent);
-    border-radius: 4px;
-    background: var(--accent);
-    color: #fff;
-    padding: 9px 14px;
-    text-decoration: none;
-    font: inherit;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .button.secondary { background: #fff; color: var(--accent); }
-  .button.danger { background: #fff; color: #b32d2e; border-color: #b32d2e; }
   .delete-form { margin: 18px 0 0; }
   input:disabled { background: #f6f7f7; color: var(--muted); }
 </style>

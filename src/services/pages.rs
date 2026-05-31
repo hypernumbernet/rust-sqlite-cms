@@ -7,24 +7,26 @@
 use sqlx::SqlitePool;
 
 use crate::config::AppConfig;
-use crate::error::AppResult;
+use crate::error::DomainResult;
 use crate::models::page::{Page, PageInput};
 use crate::repos::pages as pages_repo;
 use crate::theme;
 
 /// 全ページ一覧（管理用）。
-pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Page>> {
-    pages_repo::list_all(pool).await
+pub async fn list_all(pool: &SqlitePool) -> DomainResult<Vec<Page>> {
+    pages_repo::list_all(pool).await.map_err(Into::into)
 }
 
 /// ID で取得。
-pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Page> {
-    pages_repo::find(pool, id).await
+pub async fn find(pool: &SqlitePool, id: i64) -> DomainResult<Page> {
+    pages_repo::find(pool, id).await.map_err(Into::into)
 }
 
 /// ファイル名で取得。
-pub async fn find_by_file_name(pool: &SqlitePool, file_name: &str) -> AppResult<Option<Page>> {
-    pages_repo::find_by_file_name(pool, file_name).await
+pub async fn find_by_file_name(pool: &SqlitePool, file_name: &str) -> DomainResult<Option<Page>> {
+    pages_repo::find_by_file_name(pool, file_name)
+        .await
+        .map_err(Into::into)
 }
 
 /// 新規作成。
@@ -36,7 +38,7 @@ pub async fn create_page(
     pool: &SqlitePool,
     config: &AppConfig,
     input: &PageInput,
-) -> AppResult<(i64, String)> {
+) -> DomainResult<(i64, String)> {
     let (id, file_name) = pages_repo::insert(pool, input).await?;
 
     if let Err(err) = theme::write_page_content(
@@ -62,7 +64,7 @@ pub async fn update_page(
     config: &AppConfig,
     id: i64,
     input: &PageInput,
-) -> AppResult<()> {
+) -> DomainResult<()> {
     let page = pages_repo::find(pool, id).await?;
     let old_is_static = page.is_static;
     let old_file_name = page.file_name.clone().unwrap_or_else(|| format!("page-{id}.html"));
@@ -92,7 +94,7 @@ pub async fn delete_page(
     pool: &SqlitePool,
     config: &AppConfig,
     id: i64,
-) -> AppResult<()> {
+) -> DomainResult<()> {
     let page = pages_repo::find(pool, id).await?;
 
     // まずファイルを削除（無くても気にしない）
@@ -100,10 +102,12 @@ pub async fn delete_page(
         let _ = theme::remove_page_content(&config.paths.work_dir, file_name, page.is_static);
     }
 
-    pages_repo::delete(pool, id).await
+    pages_repo::delete(pool, id).await.map_err(Into::into)
 }
 
 /// 公開サイト向けにページを取得してレンダリングできる状態で返す（既存 page_render と共用しやすい形）。
-pub async fn find_published_for_render(pool: &SqlitePool, path: &str) -> AppResult<Option<Page>> {
-    pages_repo::find_published_by_path(pool, path).await
+pub async fn find_published_for_render(pool: &SqlitePool, path: &str) -> DomainResult<Option<Page>> {
+    pages_repo::find_published_by_path(pool, path)
+        .await
+        .map_err(Into::into)
 }

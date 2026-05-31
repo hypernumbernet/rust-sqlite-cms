@@ -3,8 +3,30 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-/// アプリ全体で扱うエラー型。`?` で各レイヤーのエラーを集約し、
-/// HTTP レスポンスへ変換する。
+/// ドメイン／サービス層で使う中立的なエラー型。
+/// HTTP 表現（AppError / ApiError）とは分離して定義する。
+#[derive(Debug, thiserror::Error)]
+pub enum DomainError {
+    #[error("not found")]
+    NotFound,
+
+    #[error("conflict: {0}")]
+    Conflict(String),
+
+    #[error("validation error: {0}")]
+    Validation(String),
+
+    #[error("bad request: {0}")]
+    BadRequest(String),
+
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+
+pub type DomainResult<T> = Result<T, DomainError>;
+
+/// アプリ全体で扱うエラー型（主にHTML/SSRルート用）。
+/// 段階的に DomainError へ移行中。
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("database error: {0}")]
@@ -36,6 +58,41 @@ pub enum AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
+
+impl From<DomainError> for AppError {
+    fn from(err: DomainError) -> Self {
+        match err {
+            DomainError::NotFound => AppError::NotFound,
+            DomainError::Conflict(msg) => AppError::Conflict(msg),
+            DomainError::Validation(msg) | DomainError::BadRequest(msg) => {
+                AppError::Conflict(msg) // HTML側では Conflict として扱う（既存挙動維持）
+            }
+            DomainError::Internal(inner) => AppError::Other(inner),
+        }
+    }
+}
+
+impl From<AppError> for DomainError {
+    fn from(err: AppError) -> Self {
+        match err {
+            AppError::NotFound => DomainError::NotFound,
+            AppError::Conflict(msg) => DomainError::Conflict(msg),
+            other => DomainError::Internal(anyhow::anyhow!("{other}")),
+        }
+    }
+}
+
+impl From<std::io::Error> for DomainError {
+    fn from(err: std::io::Error) -> Self {
+        DomainError::Internal(err.into())
+    }
+}
+
+impl From<sqlx::Error> for DomainError {
+    fn from(err: sqlx::Error) -> Self {
+        DomainError::Internal(err.into())
+    }
+}
 
 /// API（JSON）レスポンス用のエラー型。
 /// サービス層のエラーをここにマッピングし、一貫した JSON エラーを返す。
@@ -84,6 +141,18 @@ impl IntoResponse for ApiError {
         });
 
         (status, axum::Json(body)).into_response()
+    }
+}
+
+impl From<DomainError> for ApiError {
+    fn from(err: DomainError) -> Self {
+        match err {
+            DomainError::NotFound => ApiError::NotFound,
+            DomainError::Conflict(msg) => ApiError::Conflict(msg),
+            DomainError::Validation(msg) => ApiError::Validation(msg),
+            DomainError::BadRequest(msg) => ApiError::BadRequest(msg),
+            DomainError::Internal(inner) => ApiError::Internal(inner),
+        }
     }
 }
 

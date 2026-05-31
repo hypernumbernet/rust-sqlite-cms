@@ -3,11 +3,11 @@
 use sqlx::SqlitePool;
 
 use crate::config::AppConfig;
-use crate::error::AppResult;
+use crate::error::{DomainError, DomainResult};
 use crate::repos::options;
 
 /// 現在のサイト設定を取得（options 優先、未設定時は config デフォルト）。
-pub async fn get_site_settings(pool: &SqlitePool, config: &AppConfig) -> AppResult<(String, String, String)> {
+pub async fn get_site_settings(pool: &SqlitePool, config: &AppConfig) -> DomainResult<(String, String, String)> {
     let blogname = options::get(pool, "blogname")
         .await?
         .unwrap_or_else(|| config.site.title.clone());
@@ -27,7 +27,7 @@ pub async fn update_site_settings(
     blogname: &str,
     blogdescription: &str,
     siteurl: &str,
-) -> AppResult<()> {
+) -> DomainResult<()> {
     options::set(pool, "blogname", blogname).await?;
     options::set(pool, "blogdescription", blogdescription).await?;
     options::set(pool, "siteurl", siteurl).await?;
@@ -35,7 +35,7 @@ pub async fn update_site_settings(
     // config.toml 同期（失敗はログ + エラーに）
     if let Err(err) = AppConfig::save_site_section(blogname, blogdescription) {
         tracing::error!(error = %err, "work/config.toml の保存に失敗しました");
-        return Err(crate::error::AppError::Other(anyhow::anyhow!("{err}")));
+        return Err(DomainError::Internal(anyhow::anyhow!("{err}")));
     }
 
     Ok(())

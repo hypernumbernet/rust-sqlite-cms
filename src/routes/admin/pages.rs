@@ -172,11 +172,12 @@ async fn create(
     };
 
     if let Err(err) = services::pages::create_page(&state.pool, &state.config, &input).await {
-        if matches!(err, AppError::Conflict(_)) {
-            let html = conflict_form_response(&form, false, None, false, err.to_string())?.render()?;
+        let app_err: AppError = err.into();
+        if matches!(app_err, AppError::Conflict(_)) {
+            let html = conflict_form_response(&form, false, None, false, app_err.to_string())?.render()?;
             return Ok(Html(html).into_response());
         }
-        return Err(err);
+        return Err(app_err);
     }
 
     Ok(Redirect::to("/admin/pages").into_response())
@@ -237,11 +238,12 @@ async fn update(
     };
 
     if let Err(err) = services::pages::update_page(&state.pool, &state.config, id, &input).await {
-        if matches!(err, AppError::Conflict(_)) {
-            let html = conflict_form_response(&form, true, Some(id), is_home, err.to_string())?.render()?;
+        let app_err: AppError = err.into();
+        if matches!(app_err, AppError::Conflict(_)) {
+            let html = conflict_form_response(&form, true, Some(id), is_home, app_err.to_string())?.render()?;
             return Ok(Html(html).into_response());
         }
-        return Err(err);
+        return Err(app_err);
     }
 
     Ok(Redirect::to("/admin/pages").into_response())

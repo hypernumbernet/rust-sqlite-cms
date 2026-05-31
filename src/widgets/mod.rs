@@ -226,7 +226,14 @@ async fn resolve_placeholder(
                 return Ok(());
             };
 
-            let media_id = match postmeta::get(pool, entry.id, "media_id").await? {
+            // 並列で postmeta を取得（N+1 緩和）
+            let (media_id_str, float, margin) = tokio::join!(
+                postmeta::get(pool, entry.id, "media_id"),
+                postmeta::get(pool, entry.id, "float"),
+                postmeta::get(pool, entry.id, "margin"),
+            );
+
+            let media_id = match media_id_str? {
                 Some(value) => value.parse::<i64>().ok(),
                 None => None,
             };
@@ -273,12 +280,8 @@ async fn resolve_placeholder(
                 return Ok(());
             }
 
-            let float = postmeta::get(pool, entry.id, "float")
-                .await?
-                .unwrap_or_else(|| "none".to_string());
-            let margin = postmeta::get(pool, entry.id, "margin")
-                .await?
-                .unwrap_or_default();
+            let float = float?.unwrap_or_else(|| "none".to_string());
+            let margin = margin?.unwrap_or_default();
             let style = build_image_style(&float, &margin);
 
             let item = ImageItem {

@@ -58,7 +58,7 @@ async fn list(State(state): State<AppState>) -> ApiResult<Json<PageListResponse>
 }
 
 async fn get_one(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Page>> {
-    let page = services::pages::find(&state.pool, id).await.map_err(ApiError::from)?;
+    let page = services::pages::find(&state.pool, id).await?;
     Ok(Json(page))
 }
 
@@ -83,9 +83,9 @@ async fn create(
 
     let (id, _) = services::pages::create_page(&state.pool, &state.config, &input)
         .await
-        .map_err(ApiError::from)?;
+        ?;
 
-    let created = services::pages::find(&state.pool, id).await.map_err(ApiError::from)?;
+    let created = services::pages::find(&state.pool, id).await?;
     Ok(Json(created))
 }
 
@@ -94,7 +94,7 @@ async fn update(
     Path(id): Path<i64>,
     Json(payload): Json<UpdatePageRequest>,
 ) -> ApiResult<Json<Page>> {
-    let current = services::pages::find(&state.pool, id).await.map_err(ApiError::from)?;
+    let current = services::pages::find(&state.pool, id).await?;
 
     let input = PageInput {
         name: payload.name.unwrap_or(current.name),
@@ -119,16 +119,16 @@ async fn update(
 
     services::pages::update_page(&state.pool, &state.config, id, &input)
         .await
-        .map_err(ApiError::from)?;
+        ?;
 
-    let updated = services::pages::find(&state.pool, id).await.map_err(ApiError::from)?;
+    let updated = services::pages::find(&state.pool, id).await?;
     Ok(Json(updated))
 }
 
 async fn delete_page(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<serde_json::Value>> {
     services::pages::delete_page(&state.pool, &state.config, id)
         .await
-        .map_err(ApiError::from)?;
+        ?;
 
     Ok(Json(serde_json::json!({ "deleted": true, "id": id })))
 }

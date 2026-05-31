@@ -5,7 +5,7 @@
 
 ## 現状
 
-Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェット）まで実装済みです。`cargo run` で設定読み込み → SQLite プール生成 → マイグレーション適用（0001-0003） → 既定 `options` 投入 → `work/` ディレクトリ初期化（`presets/index.html` の seed + `pages/` ディレクトリ作成） → `pages` テーブルのトップページ行確保 → axum サーバー起動までが一連で動作します。初回起動時に `data/cms.db` が自動生成されます。
+Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェット）まで実装済みです。`cargo run` で設定読み込み → SQLite プール生成 → マイグレーション適用（`0001_init.sql`） → 既定 `options` 投入 → `work/` ディレクトリ初期化（`presets/index.html` の seed + `pages/` ディレクトリ作成） → `pages` テーブルのトップページ行確保 → axum サーバー起動までが一連で動作します。初回起動時に `data/cms.db` が自動生成されます。
 
 **利用可能な主な機能**:
 
@@ -79,7 +79,7 @@ flowchart TB
 | 用途 | クレート | 状態 | 備考 |
 |------|----------|------|------|
 | HTTP | `axum` + `tokio` | ✅ | 軽量・型安全 |
-| DB | `sqlx`（sqlite, バンドル） | ✅ | マイグレーションは `migrations/` の手書き SQL（`sqlx::migrate!`）。0001-0003 適用済み |
+| DB | `sqlx`（sqlite, バンドル） | ✅ | マイグレーションは `migrations/0001_init.sql` の手書き SQL（`sqlx::migrate!`） |
 | テンプレート（管理画面） | `askama` | ✅ | コンパイル時テンプレート検証（公開テンプレートの影響を受けない） |
 | テンプレート（公開サイト） | `minijinja` + `minijinja-autoreload` | ✅ | ランタイム評価。`work/templates/` 配下を監視し、ファイル編集を再起動なしで反映 |
 | 静的配信 | `tower-http`（ServeDir） | ✅ | `work/templates/static/` を `/static` で配信 |
@@ -103,7 +103,7 @@ rust-sqlite-cms/
 │   └── PLAN.md              # 本ドキュメント（設計・ロードマップ）
 ├── Cargo.toml
 ├── config.example.toml      # 設定のサンプル（初回起動で work/config.toml へコピー）
-├── migrations/              # SQLite スキーマ（0001-0003）
+├── migrations/              # SQLite スキーマ（0001_init.sql）
 ├── presets/                 # 同梱スターターデザイン（git 管理・seed 元）
 │   ├── index.html           # 公開トップの初期テンプレート（HOME_INDEX）
 │   ├── landing.html         # ランディングページプリセット
@@ -151,14 +151,14 @@ rust-sqlite-cms/
 | 公開ステータス | `posts.post_status`（draft/publish）、`pages.is_published` | Phase 1 | ✅ |
 | サイト設定（key-value） | `options` テーブル | Phase 1 | ✅ |
 | ウィジェット設定 | `widget_types.config`（JSON） | Phase 1 | ✅（/admin/widgets で news 表示件数など） |
-| ユーザー・ロール | `users` + ロール + capabilities | 最終 | ⏳（スキーマのみ、コード未使用） |
-| カテゴリ・タグ | `terms` + `term_taxonomy` + `term_relationships` | Phase 2 | ⏳（スキーマのみ） |
+| ユーザー・ロール | `users` + ロール + capabilities | 最終 | 未着手（スキーマ未導入） |
+| カテゴリ・タグ | `terms` + `term_taxonomy` + `term_relationships` | Phase 2 | 未着手（スキーマ未導入） |
 | メディアライブラリ | DB メタデータ + `uploads/` ファイル | Phase 2 | 未着手（config のみ） |
 | 画像カルーセルウィジェット | 画像・リンクを扱う専用ウィジェット（Phase 2前倒し予定） | Phase 2 | 計画中（目玉機能として位置づけ） |
 | ナビゲーションメニュー | `nav_menus` + `nav_menu_items` | Phase 2 | 未着手 |
 | RSS | `/feed/` | Phase 2 | 未着手 |
 | 予約公開 | `status = future` + 公開日時 | Phase 2 | 未着手 |
-| カスタムフィールド | `postmeta` key-value | Phase 1（基本）/ Phase 3（拡張） | ⏳（スキーマのみ） |
+| カスタムフィールド | `postmeta` key-value | Phase 1（基本）/ Phase 3（拡張） | ✅（画像ウィジェット・メディア添付で利用） |
 | リビジョン | `post_revisions` | Phase 3 | 未着手 |
 | 商品・カタログ | `products` 等（設計中） | Phase 3 | 未着手 |
 | 注文・在庫 | `orders` / `order_items` 等（設計中） | Phase 3 | 未着手 |
@@ -166,7 +166,7 @@ rust-sqlite-cms/
 
 ## データモデル概要
 
-現在の実装で**積極的に使用**されているのは以下のテーブルです。他のテーブル（users / terms / postmeta など）は 0001_init.sql にスキーマ定義されていますが、Phase 1 時点ではコードパスで未使用です。
+`migrations/0001_init.sql` で定義される 6 テーブルが Phase 1 のデータモデル全体です（`users` / タクソノミー系は未導入。将来フェーズで追加予定）。
 
 **主な関係（実装済み部分）**:
 
@@ -174,6 +174,7 @@ rust-sqlite-cms/
 erDiagram
   widget_types ||--o{ placeholders : "defines"
   placeholders ||--o{ posts : "contains entries"
+  posts ||--o{ postmeta : "meta"
   pages ||--o| "file (work/)" : "body in"
   options ||--o| "runtime context" : "provides blogname etc"
 ```
@@ -184,26 +185,19 @@ erDiagram
 |----------|------|----------|
 | `options` | サイト設定（`blogname`, `blogdescription`, `siteurl` など） | ✅ 積極利用（起動時既定投入 + 公開コンテキスト） |
 | `pages` | 公開ページのメタ（`name`, `url_path`, `file_name`, `is_static`, `is_published`）。本文は `work/templates/` または `work/pages/` に分離保存 | ✅ 積極利用（全ページ CRUD で使用） |
-| `widget_types` | ウィジェット種類の登録（`type_key` = "news" など）と JSON 設定（表示件数など） | ✅ 積極利用（/admin/widgets + 描画時解決） |
+| `widget_types` | ウィジェット種類の登録（`type_key` = "news" / "image" など）と JSON 設定 | ✅ 積極利用（/admin/widgets + 描画時解決） |
 | `placeholders` | テンプレート内で参照する名前付きスロット（例: "news"）。`widget_type_id` で種類を指定 | ✅ 積極利用（/admin/posts の中心） |
-| `posts` | コンテンツエントリ。本来の WP 風汎用テーブルだが、現在は主に `placeholder_id` 経由でお知らせエントリとして使用（`post_status`, `title`, `content`, `excerpt`, `post_name`） | ✅ 積極利用（プレースホルダー配下の CRUD） |
-| `users` / `usermeta` | ユーザーアカウント | ⏳（スキーマのみ、未使用） |
-| `terms` / `term_taxonomy` / `term_relationships` | カテゴリ・タグ | ⏳（スキーマのみ） |
-| `postmeta` | カスタムフィールド | ⏳（スキーマのみ） |
+| `posts` | お知らせエントリ（`placeholder_id` 紐付け）およびメディア添付（`post_type = attachment`） | ✅ 積極利用 |
+| `postmeta` | 画像ウィジェット（`media_id` / `float` / `margin`）や添付ファイルメタ | ✅ 利用中 |
 
 ### SQLite スキーマ方針
 
 - 型は `INTEGER PRIMARY KEY`, `TEXT`, 必要に応じて `JSON`（config など）
-- 外部キーで参照整合性を担保（0003 で追加の `placeholder_id` 含む）
-- マイグレーションは `migrations/0001_init.sql`（コア + pages） + `0002_widgets.sql` + `0003_widget_types_placeholders.sql`（widgets から移行 + posts 拡張）
-- 全文検索は Phase 1 では未使用（将来 FTS5 検討）
-（上記の「主要テーブル（現在の利用状況）」を参照。従来予定の `post_type` による pages/posts 統一モデルは、Phase 1 実装で `pages`（サイト構造） + ウィジェット用 `posts` に分離・進化しました。）
-
-### SQLite スキーマ方針
-
-- 型は `INTEGER PRIMARY KEY`, `TEXT`, 必要に応じて `JSON`
-- 外部キーで参照整合性を担保
+- 外部キーで参照整合性を担保（`placeholder_id` など）
+- マイグレーションは [`migrations/0001_init.sql`](../migrations/0001_init.sql) の単一ファイル（スキーマ + `news` / `image` シード）
 - 全文検索は Phase 1 では `LIKE`、将来 **FTS5** を検討
+- スキーマ変更後は既存 `data/cms.db` を削除して再生成（`sqlx::migrate!` のチェックサム検証のため）
+（従来予定の `post_type` による pages/posts 統一モデルは、Phase 1 実装で `pages`（サイト構造） + ウィジェット用 `posts` に分離・進化しました。）
 
 ## 権限モデル
 
@@ -289,7 +283,7 @@ flowchart TB
 
 進捗凡例: `[x]` 完了 / `[~]` 一部 / `[ ]` 未着手
 
-- [x] SQLite マイグレーション（`migrations/0001_init.sql` + `0002_widgets.sql` + `0003_widget_types_placeholders.sql` でコア + ウィジェット体系を作成）
+- [x] SQLite マイグレーション（`migrations/0001_init.sql` でウィジェット体系・ページ・options を一括定義）
 - [x] サイト基本設定（`options` テーブル + 起動時の既定値投入 + `ensure_defaults`）
 - [x] サイト設定画面（`/admin/settings`、`work/config.toml` の `[site]` 同期）
 - [x] 管理画面（Askama）（ダッシュボード + 投稿/ページ/ウィジェット管理画面のフル CRUD）

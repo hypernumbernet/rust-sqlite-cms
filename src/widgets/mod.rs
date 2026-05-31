@@ -302,20 +302,33 @@ async fn resolve_placeholder(
     widget_type: &WidgetType,
     ctx: &mut serde_json::Map<String, serde_json::Value>,
 ) -> AppResult<()> {
+    // インスタンス設定（placeholder.config）を優先、未設定時はタイプのconfigをフォールバック
+    let instance_config: serde_json::Value =
+        serde_json::from_str(&placeholder.config).unwrap_or(serde_json::Value::Object(Default::default()));
+
     match widget_type.type_key.as_str() {
         "news" => {
-            let config: NewsWidgetConfig =
+            // インスタンス > タイプ > デフォルト の優先順
+            let mut cfg: NewsWidgetConfig =
                 serde_json::from_str(&widget_type.config).unwrap_or_default();
+            if let Some(limit) = instance_config.get("limit").and_then(|v| v.as_i64()) {
+                if (1..=50).contains(&limit) {
+                    cfg.limit = limit;
+                }
+            }
+
             let items: Vec<NewsItem> = posts::list_published_for_placeholder(
                 pool,
                 placeholder.id,
-                config.limit,
+                cfg.limit,
             )
             .await?
             .into_iter()
             .map(NewsItem::from)
             .collect();
             let has_items = !items.is_empty();
+
+            // 構造化データ（後方互換）
             ctx.insert(
                 placeholder.name.clone(),
                 serde_json::to_value(&items).expect("NewsItem is serializable"),
@@ -324,6 +337,15 @@ async fn resolve_placeholder(
                 format!("has_{}", placeholder.name),
                 serde_json::Value::Bool(has_items),
             );
+
+            // ウィジェットHTMLフラグメントをサーバサイドレンダリング（活性テンプレート）
+            let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+            frag_ctx.insert(placeholder.name.clone(), serde_json::to_value(&items).unwrap_or_default());
+            frag_ctx.insert(format!("has_{}", placeholder.name), serde_json::Value::Bool(has_items));
+            frag_ctx.insert("config".to_string(), instance_config.clone());
+            if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
+                ctx.insert(format!("{}_html", placeholder.name), serde_json::Value::String(html));
+            }
         }
         "image" => {
             let entries =
@@ -411,10 +433,24 @@ async fn resolve_placeholder(
                 format!("has_{}", placeholder.name),
                 serde_json::Value::Bool(true),
             );
+
+            let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+            frag_ctx.insert(placeholder.name.clone(), serde_json::to_value(&item).unwrap_or_default());
+            frag_ctx.insert(format!("has_{}", placeholder.name), serde_json::Value::Bool(true));
+            frag_ctx.insert("config".to_string(), instance_config.clone());
+            if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
+                ctx.insert(format!("{}_html", placeholder.name), serde_json::Value::String(html));
+            }
         }
         "carousel" => {
-            let config: CarouselWidgetConfig =
+            let mut cfg: CarouselWidgetConfig =
                 serde_json::from_str(&widget_type.config).unwrap_or_default();
+            // インスタンス設定で一部オーバーライド可能（将来拡張）
+            if let Some(interval) = instance_config.get("interval").and_then(|v| v.as_u64()) {
+                if (1..=30).contains(&interval) {
+                    cfg.interval = interval as u32;
+                }
+            }
 
             let entries =
                 posts::list_published_for_placeholder_ordered(pool, placeholder.id, 100).await?;
@@ -474,9 +510,9 @@ async fn resolve_placeholder(
             let has_slides = !slides.is_empty();
             let data = CarouselData {
                 slides,
-                interval: config.interval,
-                width: config.width,
-                height: config.height,
+                interval: cfg.interval,
+                width: cfg.width,
+                height: cfg.height,
             };
 
             ctx.insert(
@@ -487,6 +523,14 @@ async fn resolve_placeholder(
                 format!("has_{}", placeholder.name),
                 serde_json::Value::Bool(has_slides),
             );
+
+            let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+            frag_ctx.insert(placeholder.name.clone(), serde_json::to_value(&data).unwrap_or_default());
+            frag_ctx.insert(format!("has_{}", placeholder.name), serde_json::Value::Bool(has_slides));
+            frag_ctx.insert("config".to_string(), instance_config.clone());
+            if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
+                ctx.insert(format!("{}_html", placeholder.name), serde_json::Value::String(html));
+            }
         }
         other => {
             tracing::warn!(
@@ -498,4 +542,33 @@ async fn resolve_placeholder(
     }
 
     Ok(())
+}
+
+/// ウィジェットタイプの html_template を、プレースホルダー名をキーとしたローカルコンテキストで
+/// MiniJinja レンダリングする。成功したHTML文字列を返す（呼び出し側で *_html として登録）。
+async fn render_widget_fragment_with_data(
+    widget_type: &WidgetType,
+    data: &serde_json::Map<String, serde_json::Value>,
+) -> Option<String> {
+    let tpl = widget_type.html_template.trim();
+    if tpl.is_empty() {
+        return None;
+    }
+    let mut env = minijinja::Environment::new();
+    let tname = format!("wfrag_{}", widget_type.type_key);
+    if let Err(e) = env.add_template(&tname, tpl) {
+        tracing::error!(error = %e, type_key = %widget_type.type_key, "widget html_template パース失敗");
+        return None;
+    }
+    let tmpl = match env.get_template(&tname) {
+        Ok(t) => t,
+        Err(_) => return None,
+    };
+    match tmpl.render(minijinja::Value::from_serialize(data)) {
+        Ok(s) => Some(s),
+        Err(e) => {
+            tracing::error!(error = %e, type_key = %widget_type.type_key, "widget fragment レンダリング失敗");
+            None
+        }
+    }
 }

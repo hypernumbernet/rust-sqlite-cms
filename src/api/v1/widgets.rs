@@ -12,7 +12,10 @@ use crate::state::AppState;
 
 #[derive(Debug, Deserialize)]
 struct UpdateWidgetConfigRequest {
-    config: String, // 呼び出し側で JSON 文字列を渡す（または型別エンドポイント）
+    config: String,
+    /// 任意。省略時は既存の html_template を維持（後方互換）。
+    #[serde(default)]
+    html_template: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -40,9 +43,22 @@ async fn update_config(
     let _ = services::widgets::list_all(&state.pool).await?; // 簡易
     // より良いのは find_by_key をサービスに追加することだが、現時点は repo 直接回避のため list で代用
 
-    services::widgets::update_config(&state.pool, &type_key, &payload.config).await?;
+    // html_template が省略された場合は既存値を維持（後方互換）
+    let current_html = if let Some(h) = &payload.html_template {
+        h.clone()
+    } else {
+        // 簡易: list から探す（本当は find_by_key を使うべき）
+        let items = services::widgets::list_all(&state.pool).await?;
+        items
+            .into_iter()
+            .find(|w| w.type_key == type_key)
+            .map(|w| w.html_template)
+            .unwrap_or_default()
+    };
 
-    // 更新後再取得（簡易のため list から探す）
+    services::widgets::update_config(&state.pool, &type_key, &payload.config, &current_html).await?;
+
+    // 更新後再取得
     let items = services::widgets::list_all(&state.pool).await?;
     let updated = items
         .into_iter()

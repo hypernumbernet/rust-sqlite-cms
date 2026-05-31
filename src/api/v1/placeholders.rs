@@ -14,6 +14,8 @@ use crate::state::AppState;
 struct CreatePlaceholderRequest {
     name: String,
     widget_type_id: i64,
+    #[serde(default)]
+    config: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,6 +24,8 @@ struct UpdatePlaceholderRequest {
     name: Option<String>,
     #[serde(default)]
     widget_type_id: Option<i64>,
+    #[serde(default)]
+    config: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -77,6 +81,7 @@ async fn create(
     let input = PlaceholderInput {
         name: payload.name,
         widget_type_id: payload.widget_type_id,
+        config: payload.config.unwrap_or_else(|| "{}".to_string()),
     };
 
     let created = services::placeholders::create(&state.pool, input)
@@ -95,6 +100,7 @@ async fn update(
     let input = PlaceholderInput {
         name: payload.name.unwrap_or(current.name),
         widget_type_id: payload.widget_type_id.unwrap_or(current.widget_type_id),
+        config: payload.config.unwrap_or(current.config),
     };
 
     services::placeholders::update(&state.pool, id, input)

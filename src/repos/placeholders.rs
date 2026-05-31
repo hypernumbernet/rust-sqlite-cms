@@ -6,7 +6,7 @@ use crate::models::placeholder::{Placeholder, PlaceholderInput};
 /// 全プレースホルダーを名前順で取得する。
 pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Placeholder>> {
     Ok(sqlx::query_as::<_, Placeholder>(
-        "SELECT id, name, widget_type_id, created_at, updated_at
+        "SELECT id, name, widget_type_id, config, created_at, updated_at
          FROM placeholders
          ORDER BY name ASC, id ASC",
     )
@@ -17,7 +17,7 @@ pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Placeholder>> {
 /// ID でプレースホルダーを取得する。存在しなければ `NotFound`。
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Placeholder> {
     sqlx::query_as::<_, Placeholder>(
-        "SELECT id, name, widget_type_id, created_at, updated_at
+        "SELECT id, name, widget_type_id, config, created_at, updated_at
          FROM placeholders
          WHERE id = ?",
     )
@@ -30,12 +30,13 @@ pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Placeholder> {
 /// プレースホルダーを作成する。
 pub async fn insert(pool: &SqlitePool, input: &PlaceholderInput) -> AppResult<i64> {
     let row: (i64,) = sqlx::query_as(
-        "INSERT INTO placeholders (name, widget_type_id)
-         VALUES (?, ?)
+        "INSERT INTO placeholders (name, widget_type_id, config)
+         VALUES (?, ?, ?)
          RETURNING id",
     )
     .bind(&input.name)
     .bind(input.widget_type_id)
+    .bind(&input.config)
     .fetch_one(pool)
     .await
     .map_err(map_unique_violation)?;
@@ -49,11 +50,13 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PlaceholderInput) -> App
         "UPDATE placeholders
          SET name = ?,
              widget_type_id = ?,
+             config = ?,
              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
          WHERE id = ?",
     )
     .bind(&input.name)
     .bind(input.widget_type_id)
+    .bind(&input.config)
     .bind(id)
     .execute(pool)
     .await

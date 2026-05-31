@@ -51,7 +51,28 @@
         <option value="{{ widget_type.id }}"{% if widget_type.selected %} selected{% endif %}>{{ widget_type.label }}</option>
         {% endfor %}
       </select>
-      <p class="help">タイプの詳細設定は <a href="/admin/widgets">ウィジェット</a> 画面で編集します。</p>
+      <p class="help">ウィジェットの見た目（HTML）は <a href="/admin/widgets">ウィジェット</a> 画面で編集します。</p>
+    </div>
+
+    <div class="field">
+      <label>インスタンス設定</label>
+      <p class="help" style="margin-bottom: 8px;">
+        ウィジェットマスターで定義されたスキーマに基づいて入力欄が自動生成されます。<br>
+        未入力の項目はウィジェットタイプのデフォルト値が使用されます。
+      </p>
+
+      <!-- 動的生成された入力欄がここに入る -->
+      <div id="dynamic-config-fields" style="border: 1px solid var(--border); border-radius: 4px; padding: 12px; background: #fafafa; margin-bottom: 8px;">
+        <!-- JSで生成 -->
+      </div>
+
+      <!-- 実際の送信値（JSで動的フィールドからJSONを構築してセット） -->
+      <input type="hidden" id="config" name="config" value="{{ config }}">
+
+      <details style="margin-top: 4px;">
+        <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">JSONで直接編集（上級者向け）</summary>
+        <textarea id="config-raw" rows="3" style="font-family: ui-monospace, monospace; font-size: 12px; width: 100%; margin-top: 6px;">{{ config }}</textarea>
+      </details>
     </div>
 
     <div class="actions">
@@ -73,4 +94,139 @@
 {% if !error_message.is_empty() %}
 <script>alert("{{ error_message }}");</script>
 {% endif %}
+
+<script>
+// ウィジェットインスタンス設定の動的フォーム生成
+(function() {
+  const schemaEl = document.querySelector('#dynamic-config-fields');
+  const hiddenConfig = document.getElementById('config');
+  const rawTextarea = document.getElementById('config-raw');
+  const widgetTypeSelect = document.getElementById('widget_type_id');
+
+  // サーバーから渡された現在の値とスキーマ（テンプレートから埋め込み）
+  let currentConfig = {};
+  try {
+    currentConfig = JSON.parse(hiddenConfig.value || '{}');
+  } catch (e) {
+    currentConfig = {};
+  }
+
+  // サーバーから渡されたスキーマ（window経由）
+  let currentSchema = window.__WIDGET_CONFIG_SCHEMA__ || {};
+
+  function renderFields(schema, values) {
+    if (!schemaEl) return;
+    schemaEl.innerHTML = '';
+
+    const fields = (schema && schema.fields) || [];
+    if (fields.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'help';
+      p.textContent = 'このウィジェットタイプにインスタンス固有の設定項目はありません。';
+      schemaEl.appendChild(p);
+      return;
+    }
+
+    fields.forEach(field => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'field';
+      wrapper.style.marginBottom = '10px';
+
+      const label = document.createElement('label');
+      label.textContent = field.label || field.key;
+      label.style.display = 'block';
+      label.style.marginBottom = '4px';
+      label.style.fontSize = '13px';
+
+      let input;
+      if (field.type === 'number') {
+        input = document.createElement('input');
+        input.type = 'number';
+        if (field.min !== undefined) input.min = field.min;
+        if (field.max !== undefined) input.max = field.max;
+        if (field.step !== undefined) input.step = field.step;
+      } else {
+        // text などデフォルト
+        input = document.createElement('input');
+        input.type = 'text';
+      }
+
+      input.name = 'dynamic_' + field.key;
+      input.value = (values && values[field.key] !== undefined) ? values[field.key] : (field.default ?? '');
+      input.style.width = '100%';
+      input.style.fontFamily = 'ui-monospace, monospace';
+
+      input.addEventListener('input', updateHiddenConfig);
+
+      const help = document.createElement('p');
+      help.className = 'help';
+      help.style.marginTop = '2px';
+      help.style.fontSize = '11px';
+      help.textContent = field.help || '';
+
+      wrapper.appendChild(label);
+      wrapper.appendChild(input);
+      if (field.help) wrapper.appendChild(help);
+      schemaEl.appendChild(wrapper);
+    });
+  }
+
+  function updateHiddenConfig() {
+    const fields = (currentSchema && currentSchema.fields) || [];
+    const newValues = {};
+
+    fields.forEach(field => {
+      const input = document.querySelector('input[name="dynamic_' + field.key + '"]');
+      if (input) {
+        let val = input.value;
+        if (field.type === 'number' && val !== '') {
+          val = parseFloat(val);
+        }
+        newValues[field.key] = val;
+      }
+    });
+
+    hiddenConfig.value = JSON.stringify(newValues, null, 2);
+    if (rawTextarea) rawTextarea.value = hiddenConfig.value;
+  }
+
+  // 生JSON textarea と同期
+  if (rawTextarea) {
+    rawTextarea.addEventListener('input', function() {
+      hiddenConfig.value = rawTextarea.value;
+      try {
+        currentConfig = JSON.parse(rawTextarea.value || '{}');
+        renderFields(currentSchema, currentConfig);
+      } catch (e) {}
+    });
+  }
+
+  // 初期描画
+  renderFields(currentSchema, currentConfig);
+
+  // ウィジェットタイプ変更時にスキーマを再取得して再描画（簡易版：ページリロード推奨 or 将来Ajax化）
+  if (widgetTypeSelect) {
+    widgetTypeSelect.addEventListener('change', function() {
+      // 現時点ではリロードを促すメッセージを表示（本格的にはAjaxでschema取得）
+      if (confirm('ウィジェットタイプを変更しました。設定フォームを最新のスキーマで更新するためページを再読み込みしますか？')) {
+        // フォームの現在の値を維持したい場合はより高度な実装が必要。ここではシンプルにリロード
+        location.reload();
+      }
+    });
+  }
+
+  // フォーム送信前に最終同期
+  const form = schemaEl ? schemaEl.closest('form') : null;
+  if (form) {
+    form.addEventListener('submit', function() {
+      updateHiddenConfig();
+    });
+  }
+})();
+</script>
+
+<script>
+  // サーバーから渡される現在のスキーマ（ウィジェットタイプ定義）
+  window.__WIDGET_CONFIG_SCHEMA__ = {{ config_schema | safe }};
+</script>
 {% endblock %}

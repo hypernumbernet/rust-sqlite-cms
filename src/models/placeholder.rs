@@ -4,6 +4,9 @@ pub struct Placeholder {
     pub id: i64,
     pub name: String,
     pub widget_type_id: i64,
+    /// インスタンスごとの設定JSON（例: newsのlimit、carouselのintervalなど）。
+    /// ウィジェットタイプ共通設定からインスタンス設定へ移行した値の受け皿。
+    pub config: String,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -13,6 +16,7 @@ pub struct Placeholder {
 pub struct PlaceholderInput {
     pub name: String,
     pub widget_type_id: i64,
+    pub config: String,
 }
 
 const RESERVED_NAMES: &[&str] = &["blogname", "blogdescription"];

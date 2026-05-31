@@ -6,13 +6,20 @@ pub struct WidgetType {
     pub id: i64,
     pub type_key: String,
     pub config: String,
+    /// ウィジェットを構成するHTML/MiniJinjaフラグメント（ウィジェット画面で編集）。
+    pub html_template: String,
+    /// このウィジェットタイプのインスタンス（プレースホルダー）が持つべき設定項目のスキーマ定義（JSON）。
+    /// プレースホルダー編集画面で、このスキーマに基づいて入力フォームを自動生成する。
+    /// 例: { "fields": [ { "key": "limit", "label": "表示件数", "type": "number", "default": 5, "min": 1, "max": 50 } ] }
+    pub config_schema: String,
     pub updated_at: String,
 }
 
-/// ウィジェットタイプ更新時にリポジトリへ渡す入力値。
+/// ウィジェットタイプ更新時にリポジトリへ渡す入力値（HTML構成編集用に拡張）。
 #[derive(Debug, Clone)]
 pub struct WidgetTypeInput {
     pub config: String,
+    pub html_template: String,
 }
 
 /// news ウィジェットタイプの設定。

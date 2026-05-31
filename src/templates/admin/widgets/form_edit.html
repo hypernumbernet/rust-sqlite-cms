@@ -1,0 +1,98 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_widgets %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<style>
+  .code-editor {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    width: 100%;
+    min-height: 520px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: #fafafa;
+    resize: vertical;
+    box-sizing: border-box;
+  }
+  .vars-help {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-size: 12.5px;
+    line-height: 1.6;
+    margin-top: 8px;
+  }
+  .vars-help code {
+    background: #fff;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+</style>
+
+<form method="post" action="{{ action }}">
+  <!-- 説明をトップに統合（フル幅） -->
+  <div class="panel" style="margin-bottom: 20px;">
+    <div class="field" style="margin-bottom: 0;">
+      <label style="margin-bottom: 6px;">このウィジェットタイプについて</label>
+      <p class="help" style="margin: 0 0 8px;">{{ description }}</p>
+      <p class="help" style="margin: 0;">
+        このHTML（MiniJinja）を編集すると、対応するプレースホルダーを使うすべてのページで
+        <code>&#123;&#123; プレースホルダー名 &#125;&#125;_html</code> として出力されます。
+        インスタンスごとの設定（表示件数など）はプレースホルダー編集側で行ってください。
+      </p>
+    </div>
+  </div>
+
+  <!-- メイン編集領域（広いエリアをフルに使用） -->
+  <div class="panel">
+    <div class="field">
+      <label for="type_key">タイプキー (type_key)</label>
+      <input id="type_key" name="type_key" type="text" value="{{ type_key }}" required pattern="[a-z0-9_]+" style="font-family: monospace; max-width: 320px;">
+      <p class="help">英小文字・数字・アンダースコア。変更するとこのウィジェットのURLも変わります。</p>
+    </div>
+
+    <div class="field">
+      <label for="html_template">ウィジェットを構成するHTML（MiniJinjaテンプレート）</label>
+      <textarea id="html_template" name="html_template" class="code-editor" spellcheck="false" style="min-height: 520px;">{{ html_template }}</textarea>
+      <p class="help" style="margin-top: 8px;">このテンプレートはサーバーサイドでレンダリングされ、<code>_html</code> 変数としてページに挿入されます。</p>
+    </div>
+
+    <div class="field">
+      <label for="config_schema">インスタンス設定スキーマ定義（JSON）</label>
+      <textarea id="config_schema" name="config_schema" class="code-editor" spellcheck="false" style="min-height: 220px; font-size: 12px;">{{ config_schema }}</textarea>
+      <p class="help" style="margin-top: 6px;">
+        このウィジェットを使うプレースホルダー（インスタンス）で持てる設定項目を定義します。<br>
+        ここで定義した内容に基づいて、プレースホルダー編集画面で入力欄が自動生成されます。
+      </p>
+    </div>
+
+    <div class="vars-help">
+      <strong>このタイプで主に利用できる変数</strong><br>
+      {% if type_key == "news" %}
+        <code>news</code>（配列）, <code>has_news</code>, <code>item.title</code> / <code>item.excerpt</code> / <code>item.display_date</code>, <code>config</code>
+      {% elif type_key == "carousel" %}
+        <code>carousel</code>, <code>has_carousel</code>, <code>carousel.slides</code>, <code>carousel.interval</code> / <code>width</code> / <code>height</code> など
+      {% elif type_key == "image" %}
+        <code>（プレースホルダー名）</code>, <code>has_xxx</code>, <code>image_url</code>, <code>alt</code>, <code>link_url</code>, <code>style</code> など
+      {% else %}
+        タイプに応じたデータ（<code>has_プレースホルダー名</code> など）が渡されます。
+      {% endif %}
+    </div>
+
+    <div class="actions" style="margin-top: 20px;">
+      <button class="button" type="submit">更新する</button>
+      <a class="button secondary" href="/admin/widgets">戻る</a>
+    </div>
+  </div>
+</form>
+
+{% if !error_message.is_empty() %}
+<div class="notice error" style="margin-top:16px">{{ error_message }}</div>
+{% endif %}
+{% endblock %}

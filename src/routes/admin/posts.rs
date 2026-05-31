@@ -21,6 +21,8 @@ use crate::widgets::{self};
 struct PlaceholderForm {
     name: String,
     widget_type_id: String,
+    #[serde(default)]
+    config: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -90,6 +92,10 @@ struct PlaceholderFormTemplate {
     widget_type_label: String,
     template_example: String,
     template_help: String,
+    // インスタンス設定（ウィジェットタイプごとのオプション: limit など）
+    config: String,
+    // このウィジェットタイプのインスタンス設定スキーマ（JSON）。これに基づいて入力欄を動的生成する。
+    config_schema: String,
 }
 
 #[derive(Template)]
@@ -266,6 +272,7 @@ async fn placeholder_new(State(state): State<AppState>) -> AppResult<impl IntoRe
         "",
         "",
         "",
+        "{}",
     )
     .await?
     .render()?;
@@ -292,6 +299,7 @@ async fn placeholder_create(
                 "",
                 "",
                 &message,
+                &form.config,
             )
             .await?
             .render()?;
@@ -312,6 +320,7 @@ async fn placeholder_create(
                 "",
                 "",
                 &message,
+                &input.config,
             )
             .await?
             .render()?;
@@ -341,7 +350,23 @@ async fn placeholder_update(
     let input = match (&form).into_input() {
         Ok(input) => input,
         Err(message) => {
-            let html = placeholder_form_for(&state, &placeholder, &message).await?.render()?;
+            // バリデーションエラー時は送信値を優先してフォームを再描画（config の変更を失わない）
+            let widget_type_id = form.widget_type_id.trim().parse::<i64>().ok();
+            let html = build_placeholder_form(
+                &state,
+                "プレースホルダーを編集",
+                &format!("/admin/posts/placeholders/{}/edit", id),
+                "更新する",
+                &form.name,
+                widget_type_id,
+                true,
+                &format!("/admin/posts/placeholders/{}", id),
+                &format!("/admin/posts/placeholders/{}/delete", id),
+                &message,
+                &form.config,
+            )
+            .await?
+            .render()?;
             return Ok(Html(html).into_response());
         }
     };
@@ -897,6 +922,7 @@ async fn placeholder_form_for(
         &format!("/admin/posts/placeholders/{}", placeholder.id),
         &format!("/admin/posts/placeholders/{}/delete", placeholder.id),
         error_message,
+        &placeholder.config,
     )
     .await
 }
@@ -912,6 +938,7 @@ async fn build_placeholder_form(
     entries_url: &str,
     delete_action: &str,
     error_message: &str,
+    config: &str,
 ) -> AppResult<PlaceholderFormTemplate> {
     let widget_types = widget_type_options(state, widget_type_id).await?;
     let effective_type_id = widget_type_id.or_else(|| {
@@ -928,6 +955,16 @@ async fn build_placeholder_form(
     };
     let (template_example, template_help) = widgets::template_usage(&type_key, name);
 
+    // 選択されたウィジェットタイプのインスタンス設定スキーマを取得（動的フォーム生成用）
+    let config_schema = if let Some(id) = effective_type_id {
+        match widget_types::find(&state.pool, id).await {
+            Ok(wt) => wt.config_schema,
+            Err(_) => "{}".to_string(),
+        }
+    } else {
+        "{}".to_string()
+    };
+
     Ok(PlaceholderFormTemplate {
         heading: heading.to_string(),
         action: action.to_string(),
@@ -941,6 +978,8 @@ async fn build_placeholder_form(
         widget_type_label: widgets::type_label(&type_key).to_string(),
         template_example,
         template_help,
+        config: config.to_string(),
+        config_schema,
     })
 }
 
@@ -1025,7 +1064,11 @@ impl PlaceholderForm {
             return Err("ウィジェットタイプを選択してください".to_string());
         }
 
-        Ok(PlaceholderInput { name, widget_type_id })
+        Ok(PlaceholderInput {
+            name,
+            widget_type_id,
+            config: self.config.clone(),
+        })
     }
 }
 

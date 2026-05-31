@@ -24,21 +24,8 @@
   <div class="container">
     <h1>お知らせ</h1>
     <p class="lead">{{ blogname }} からの最新情報</p>
-    <div class="news-list">
-      {% if news %}
-        {% for item in news %}
-        <article class="news-item">
-          <time class="news-date">{{ item.display_date }}</time>
-          <div>
-            <h2 class="news-title">{{ item.title }}</h2>
-            <p class="news-excerpt">{{ item.excerpt }}</p>
-          </div>
-        </article>
-        {% endfor %}
-      {% else %}
-        <p class="empty">現在公開中のお知らせはありません。</p>
-      {% endif %}
-    </div>
+    {# お知らせ一覧はウィジェットタイプ「news」の html_template から生成されます #}
+    {{ news_html | safe }}
   </div>
 </body>
 </html>

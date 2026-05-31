@@ -21,13 +21,24 @@ pub async fn create(pool: &SqlitePool, input: PlaceholderInput) -> DomainResult<
     crate::models::placeholder::validate_name(&input.name)
         .map_err(DomainError::Conflict)?;
 
-    let id = placeholders_repo::insert(pool, &input).await?;
+    // config が空の場合はデフォルトの空オブジェクトに正規化
+    let mut normalized = input;
+    if normalized.config.trim().is_empty() {
+        normalized.config = "{}".to_string();
+    }
+
+    let id = placeholders_repo::insert(pool, &normalized).await?;
     placeholders_repo::find(pool, id).await.map_err(Into::into)
 }
 
 /// 更新。
 pub async fn update(pool: &SqlitePool, id: i64, input: PlaceholderInput) -> DomainResult<()> {
-    placeholders_repo::update(pool, id, &input)
+    let mut normalized = input;
+    if normalized.config.trim().is_empty() {
+        normalized.config = "{}".to_string();
+    }
+
+    placeholders_repo::update(pool, id, &normalized)
         .await
         .map_err(Into::into)
 }

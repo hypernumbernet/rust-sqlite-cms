@@ -205,19 +205,7 @@
       <div class="container">
         <h2 class="section-title">お知らせ</h2>
         <div class="news-list">
-          {% if has_news %}
-            {% for item in news %}
-            <article class="news-item">
-              <time class="news-date">{{ item.display_date }}</time>
-              <div>
-                <h3 class="news-title">{{ item.title }}</h3>
-                <p class="news-excerpt">{{ item.excerpt }}</p>
-              </div>
-            </article>
-            {% endfor %}
-          {% else %}
-            <p class="empty-news">現在公開中のお知らせはありません。</p>
-          {% endif %}
+          {{ news_html | safe }}
         </div>
       </div>
     </section>

@@ -30,6 +30,13 @@
     background: #fff;
   }
   .help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  .help code { font-size: 11px; }
+  .example-label {
+    margin: 0 0 8px;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .example-label strong { font-weight: 600; }
   .example {
     margin: 0;
     padding: 12px;
@@ -62,12 +69,9 @@
   <section class="panel">
     <div class="field">
       <label>テンプレートでの利用例</label>
-      <pre class="example">{% raw %}{% if has_NAME %}
-  {% for item in NAME %}
-    {{ item.title }}
-  {% endfor %}
-{% endif %}{% endraw %}</pre>
-      <p class="help"><code>NAME</code> をプレースホルダー名に置き換えてください。</p>
+      <p class="example-label">ウィジェットタイプ: <strong>{{ widget_type_label }}</strong>{% if is_edit %} · プレースホルダー名: <strong><code>{{ name }}</code></strong>{% endif %}</p>
+      <pre class="example">{{ template_example }}</pre>
+      <p class="help">{{ template_help|safe }}</p>
     </div>
   </section>
 

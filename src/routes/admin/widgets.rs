@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json;
 
 use crate::error::{AppError, AppResult};
-use crate::models::widget::{validate_news_limit, NewsWidgetConfig, WidgetType, WidgetTypeInput};
+use crate::models::widget::{validate_news_limit, ImageWidgetConfig, NewsWidgetConfig, WidgetType, WidgetTypeInput};
 use crate::repos::widget_types as widget_types_repo;
 use crate::state::AppState;
 use crate::widgets::{self, WIDGET_TYPES};
@@ -46,6 +46,15 @@ struct WidgetTypeFormTemplate {
     error_message: String,
 }
 
+#[derive(Template)]
+#[template(path = "admin/widgets/form_image.html")]
+struct ImageWidgetFormTemplate {
+    heading: String,
+    type_key: String,
+    type_label: String,
+    description: String,
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/widgets", get(index))
@@ -68,7 +77,7 @@ async fn edit(
     Path(type_key): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let widget_type = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
-    let html = widget_type_form_template(&widget_type, "", "")?.render()?;
+    let html = render_widget_form(&widget_type, "", "")?;
 
     Ok(Html(html))
 }
@@ -80,16 +89,46 @@ async fn update(
 ) -> AppResult<Response> {
     let widget_type = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
 
+    if widget_type.type_key == "image" {
+        return Ok(Redirect::to("/admin/widgets").into_response());
+    }
+
     let input = match form.into_input(&widget_type.type_key) {
         Ok(input) => input,
         Err(message) => {
-            let html = widget_type_form_template(&widget_type, &message, &form.limit)?.render()?;
+            let html = render_widget_form(&widget_type, &message, &form.limit)?;
             return Ok(Html(html).into_response());
         }
     };
 
     widget_types_repo::update_config(&state.pool, &type_key, &input).await?;
     Ok(Redirect::to("/admin/widgets").into_response())
+}
+
+fn render_widget_form(
+    widget_type: &WidgetType,
+    error_message: &str,
+    limit_override: &str,
+) -> AppResult<String> {
+    if widget_type.type_key == "image" {
+        return image_widget_form_template(widget_type)?.render().map_err(Into::into);
+    }
+
+    widget_type_form_template(widget_type, error_message, limit_override)?.render().map_err(Into::into)
+}
+
+fn image_widget_form_template(widget_type: &WidgetType) -> AppResult<ImageWidgetFormTemplate> {
+    let def = WIDGET_TYPES
+        .iter()
+        .find(|def| def.key == widget_type.type_key)
+        .ok_or(AppError::NotFound)?;
+
+    Ok(ImageWidgetFormTemplate {
+        heading: format!("{} を編集", def.label),
+        type_key: widget_type.type_key.clone(),
+        type_label: def.label.to_string(),
+        description: def.description.to_string(),
+    })
 }
 
 fn widget_type_form_template(
@@ -129,6 +168,7 @@ fn news_limit_from_config(config: &str) -> i64 {
 fn config_summary(widget_type: &WidgetType) -> String {
     match widget_type.type_key.as_str() {
         "news" => format!("表示件数: {}", news_limit_from_config(&widget_type.config)),
+        "image" => "画像 1 枚表示".to_string(),
         other => other.to_string(),
     }
 }
@@ -161,6 +201,8 @@ impl WidgetTypeForm {
                 serde_json::to_string(&NewsWidgetConfig { limit })
                     .map_err(|_| "設定の保存に失敗しました".to_string())?
             }
+            "image" => serde_json::to_string(&ImageWidgetConfig {})
+                .map_err(|_| "設定の保存に失敗しました".to_string())?,
             _ => return Err("不明なウィジェットタイプです".to_string()),
         };
 

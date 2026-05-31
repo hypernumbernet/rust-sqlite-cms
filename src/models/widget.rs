@@ -41,3 +41,71 @@ pub fn validate_news_limit(limit: i64) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// image ウィジェットタイプの設定（共通設定なし）。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ImageWidgetConfig {}
+
+/// image エントリの float 値を検証する。
+pub fn validate_image_float(float: &str) -> Result<(), String> {
+    match float {
+        "none" | "left" | "right" => Ok(()),
+        _ => Err("回り込みは「なし」「左」「右」から選択してください".to_string()),
+    }
+}
+
+/// image エントリの margin 値を検証する。空文字列は許可。
+pub fn validate_image_margin(margin: &str) -> Result<(), String> {
+    let margin = margin.trim();
+    if margin.is_empty() {
+        return Ok(());
+    }
+
+    for token in margin.split_whitespace() {
+        if !is_margin_token(token) {
+            return Err(
+                "マージンは CSS の margin 形式（例: 16px、8px 16px）で指定してください".to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn is_margin_token(token: &str) -> bool {
+    let token = token.trim();
+    if token.is_empty() {
+        return false;
+    }
+    for unit in ["px", "em", "rem", "%"] {
+        if let Some(num) = token.strip_suffix(unit) {
+            return !num.is_empty() && num.parse::<f64>().is_ok();
+        }
+    }
+    false
+}
+
+/// image エントリのリンク URL を検証する。空文字列は許可。
+pub fn validate_image_link_url(url: &str) -> Result<(), String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Ok(());
+    }
+    if url.starts_with("http://") || url.starts_with("https://") || url.starts_with('/') {
+        Ok(())
+    } else {
+        Err("リンク URL は http://、https://、または / で始めてください".to_string())
+    }
+}
+
+/// image エントリ用の postmeta からインライン style を組み立てる。
+pub fn build_image_style(float: &str, margin: &str) -> String {
+    let mut parts = Vec::new();
+    if float == "left" || float == "right" {
+        parts.push(format!("float:{float}"));
+    }
+    let margin = margin.trim();
+    if !margin.is_empty() {
+        parts.push(format!("margin:{margin}"));
+    }
+    parts.join(";")
+}

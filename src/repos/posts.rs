@@ -35,6 +35,25 @@ pub async fn list_published_for_placeholder(
     .await?)
 }
 
+/// 指定プレースホルダー配下の公開済み投稿を menu_order 順で取得する。
+pub async fn list_published_for_placeholder_ordered(
+    pool: &SqlitePool,
+    placeholder_id: i64,
+    limit: i64,
+) -> AppResult<Vec<Post>> {
+    Ok(sqlx::query_as::<_, Post>(
+        "SELECT id, placeholder_id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
+         FROM posts
+         WHERE post_type = 'post' AND post_status = 'publish' AND placeholder_id = ?
+         ORDER BY menu_order ASC, id ASC
+         LIMIT ?",
+    )
+    .bind(placeholder_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?)
+}
+
 /// ID でお知らせを取得する。存在しなければ `NotFound`。
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Post> {
     sqlx::query_as::<_, Post>(

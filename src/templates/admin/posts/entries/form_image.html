@@ -1,0 +1,164 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_posts %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<style>
+  .breadcrumb { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
+  .breadcrumb a { text-decoration: none; }
+  .form-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 20px;
+    align-items: start;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; margin-bottom: 6px; font-weight: 600; }
+  input[type="text"], select {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 9px 10px;
+    font: inherit;
+    background: #fff;
+  }
+  .help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+  .button {
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 9px 14px;
+    text-decoration: none;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .button.secondary { background: #fff; color: var(--accent); }
+  .notice {
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    background: #fcf0f1;
+    border: 1px solid #d63638;
+    color: #8a1f1f;
+  }
+  .media-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+  }
+  .media-option {
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    padding: 8px;
+    cursor: pointer;
+    text-align: center;
+  }
+  .media-option:has(input:checked) { border-color: var(--accent); }
+  .media-option input { margin: 0 0 8px; }
+  .media-option img {
+    width: 100%;
+    height: 80px;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+    margin-bottom: 6px;
+  }
+  .media-option span {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+  .empty-media {
+    padding: 16px;
+    background: #f6f7f7;
+    border-radius: 4px;
+    color: var(--muted);
+    font-size: 14px;
+  }
+</style>
+
+<p class="breadcrumb"><a href="/admin/posts">投稿</a> / <a href="{{ back_url }}"><code>{{ placeholder_name }}</code></a></p>
+
+{% if !error_message.is_empty() %}
+<div class="notice">{{ error_message }}</div>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form-layout">
+  <section class="panel">
+    <div class="field">
+      <label>画像 <span style="font-weight:400;color:var(--muted)">（必須）</span></label>
+      {% if has_media %}
+      <div class="media-grid">
+        {% for item in media_items %}
+        <label class="media-option">
+          <input type="radio" name="media_id" value="{{ item.id }}"{% if item.selected %} checked{% endif %} required>
+          <img src="{{ item.public_url }}" alt="{{ item.title }}">
+          <span>{{ item.title }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="empty-media">
+        画像がありません。<a href="/admin/media">メディア</a> 画面から先にアップロードしてください。
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="field">
+      <label for="title">alt テキスト</label>
+      <input id="title" name="title" type="text" value="{{ title }}">
+      <p class="help">アクセシビリティ用の代替テキスト。空の場合はファイル名が使われます。</p>
+    </div>
+
+    <div class="field">
+      <label for="content">リンク URL</label>
+      <input id="content" name="content" type="text" value="{{ content }}" placeholder="https://example.com または /about">
+      <p class="help">任意。設定すると画像クリックでこの URL に遷移します。</p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="field">
+      <label for="post_status">公開状態</label>
+      <select id="post_status" name="post_status">
+        <option value="draft"{% if is_draft %} selected{% endif %}>下書き</option>
+        <option value="publish"{% if is_publish %} selected{% endif %}>公開</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="float">回り込み（float）</label>
+      <select id="float" name="float">
+        <option value="none"{% if is_float_none %} selected{% endif %}>なし</option>
+        <option value="left"{% if is_float_left %} selected{% endif %}>左</option>
+        <option value="right"{% if is_float_right %} selected{% endif %}>右</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="margin">マージン</label>
+      <input id="margin" name="margin" type="text" value="{{ margin }}" placeholder="16px">
+      <p class="help">CSS margin 形式（例: 16px、8px 16px）。空可。</p>
+    </div>
+
+    <div class="actions">
+      <button class="button" type="submit"{% if !has_media %} disabled{% endif %}>{{ submit_label }}</button>
+      <a class="button secondary" href="{{ back_url }}">戻る</a>
+    </div>
+  </aside>
+</form>
+{% endblock %}

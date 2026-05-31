@@ -1,6 +1,6 @@
 /// `pages` テーブルの行に対応する。本文は `file_name` が指す
 /// `work/templates/` または `work/pages/` 配下のファイルに保持し、DB にはメタ情報のみを持つ。
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct Page {
     pub id: i64,
     pub name: String,

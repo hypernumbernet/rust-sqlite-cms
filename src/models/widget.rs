@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// `widget_types` テーブルの行に対応する。
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct WidgetType {
     pub id: i64,
     pub type_key: String,

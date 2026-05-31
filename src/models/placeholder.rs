@@ -1,5 +1,5 @@
 /// `placeholders` テーブルの行に対応する。
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct Placeholder {
     pub id: i64,
     pub name: String,

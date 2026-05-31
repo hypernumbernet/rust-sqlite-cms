@@ -12,8 +12,9 @@ use crate::error::{AppError, AppResult};
 use crate::models::page::{Page as PageRow, PageInput};
 use crate::page_render;
 use crate::presets;
-use crate::repos::pages;
+use crate::repos::pages; // まだ一部で直接使っている（list/findなど）
 use crate::routes::url::{is_reserved_path, normalize_url_path};
+use crate::services;
 use crate::state::AppState;
 use crate::theme;
 
@@ -170,23 +171,12 @@ async fn create(
         Err(err) => return Err(err),
     };
 
-    let (id, file_name) = match pages::insert(&state.pool, &input).await {
-        Ok(pair) => pair,
-        Err(AppError::Conflict(message)) => {
-            let html = conflict_form_response(&form, false, None, false, message)?.render()?;
+    if let Err(err) = services::pages::create_page(&state.pool, &state.config, &input).await {
+        if matches!(err, AppError::Conflict(_)) {
+            let html = conflict_form_response(&form, false, None, false, err.to_string())?.render()?;
             return Ok(Html(html).into_response());
         }
-        Err(err) => return Err(err),
-    };
-
-    if let Err(err) = theme::write_page_content(
-        &state.config.paths.work_dir,
-        &file_name,
-        input.is_static,
-        &input.content,
-    ) {
-        let _ = pages::delete(&state.pool, id).await;
-        return Err(err.into());
+        return Err(err);
     }
 
     Ok(Redirect::to("/admin/pages").into_response())
@@ -236,10 +226,6 @@ async fn update(
 ) -> AppResult<Response> {
     let page = pages::find(&state.pool, id).await?;
     let is_home = page.is_home();
-    let file_name = page
-        .file_name
-        .clone()
-        .unwrap_or_else(|| format!("page-{id}.html"));
 
     let input = match form.into_input(is_home) {
         Ok(input) => input,
@@ -250,25 +236,13 @@ async fn update(
         Err(err) => return Err(err),
     };
 
-    if let Err(AppError::Conflict(message)) = pages::update(&state.pool, id, &input).await {
-        let html = conflict_form_response(&form, true, Some(id), is_home, message)?.render()?;
-        return Ok(Html(html).into_response());
+    if let Err(err) = services::pages::update_page(&state.pool, &state.config, id, &input).await {
+        if matches!(err, AppError::Conflict(_)) {
+            let html = conflict_form_response(&form, true, Some(id), is_home, err.to_string())?.render()?;
+            return Ok(Html(html).into_response());
+        }
+        return Err(err);
     }
-
-    if page.is_static != input.is_static {
-        theme::remove_page_content(
-            &state.config.paths.work_dir,
-            &file_name,
-            page.is_static,
-        )?;
-    }
-
-    theme::write_page_content(
-        &state.config.paths.work_dir,
-        &file_name,
-        input.is_static,
-        &input.content,
-    )?;
 
     Ok(Redirect::to("/admin/pages").into_response())
 }
@@ -386,12 +360,7 @@ fn summary_from_app_error(err: &AppError) -> String {
 }
 
 async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<Redirect> {
-    let page = pages::find(&state.pool, id).await?;
-    pages::delete(&state.pool, id).await?;
-    if let Some(file_name) = page.file_name {
-        theme::remove_page_content(&state.config.paths.work_dir, &file_name, page.is_static)?;
-    }
-
+    services::pages::delete_page(&state.pool, &state.config, id).await?;
     Ok(Redirect::to("/admin/pages"))
 }
 

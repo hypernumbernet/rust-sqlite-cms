@@ -7,10 +7,12 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::config::AppConfig;
 use crate::error::AppResult;
-use crate::repos::options;
+use crate::services;
 use crate::state::AppState;
+
+// 読み取り用に repos を残す（または services 経由に完全移行）
+use crate::repos::options;
 
 const MAX_TEXT_LEN: usize = 200;
 
@@ -69,14 +71,7 @@ async fn save(
     let blogdescription = form.blogdescription.trim().to_string();
     let siteurl = form.siteurl.trim().to_string();
 
-    options::set(&state.pool, "blogname", &blogname).await?;
-    options::set(&state.pool, "blogdescription", &blogdescription).await?;
-    options::set(&state.pool, "siteurl", &siteurl).await?;
-
-    if let Err(err) = AppConfig::save_site_section(&blogname, &blogdescription) {
-        tracing::error!(error = %err, "work/config.toml の保存に失敗しました");
-        return Err(crate::error::AppError::Other(anyhow::anyhow!("{err}")));
-    }
+    services::options::update_site_settings(&state.pool, &blogname, &blogdescription, &siteurl).await?;
 
     Ok(Redirect::to("/admin/settings?saved=1").into_response())
 }

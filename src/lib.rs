@@ -1,3 +1,4 @@
+pub mod api;
 pub mod config;
 pub mod db;
 pub mod error;
@@ -7,6 +8,7 @@ pub mod page_render;
 pub mod presets;
 pub mod repos;
 pub mod routes;
+pub mod services;
 pub mod state;
 pub mod theme;
 pub mod widgets;

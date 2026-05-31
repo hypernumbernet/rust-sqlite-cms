@@ -1,5 +1,5 @@
 /// `posts` テーブルのお知らせ行に対応する。
-#[derive(Debug, Clone, sqlx::FromRow)]
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct Post {
     pub id: i64,
     pub placeholder_id: Option<i64>,

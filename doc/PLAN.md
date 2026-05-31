@@ -33,7 +33,7 @@ Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェッ
 | メイン用途 | 一般的なホームページのお知らせ欄などを、ユーザーがお手軽に更新できること |
 | 将来の拡張 | 商品管理・注文・在庫など EC サイト構築機能への独自進化 |
 | 管理画面 | **Askama SSR**（JavaScript フレームワークに依存しない） |
-| 公開 API | **非対応**（HTML フォーム + SSR が中心） |
+| 公開 API | **管理用 REST/JSON API 対応**（`/api/v1` でプレースホルダー/投稿/ページ/ウィジェット/設定/メディアを操作可能。将来的な CLI・モバイルクライアント向け） |
 | データベース | SQLite（シンプルな単一ファイル運用） |
 
 ## アーキテクチャ
@@ -70,7 +70,36 @@ flowchart TB
 - **theme**: `work/` ディレクトリの初期化・I/O（read/write/remove for templates/pages/static）、MiniJinja エンジン（autoreload）。
 - **widgets**: プレースホルダー解決と公開サイト向けコンテキスト構築（options + placeholders → `news` / `has_news` などの変数）。
 - **templates**: 管理画面は `src/templates/admin/` の Askama（型安全）、公開は `work/templates/` の MiniJinja（ランタイム差し替え可能）。
-- **auth / services**: 未実装。将来的にミドルウェアとサービス層で権限チェック・トランザクションを分離予定。
+- **auth / services**: サービス層を導入済み（`src/services/`）。HTML 管理画面と JSON API が同じ業務ロジックを共有。認証ミドルウェアは将来のフェーズで `/api` と `/admin` の両方に適用予定。
+
+### Phase 1.5 以降のアーキテクチャ（API 導入後）
+
+サービス層の導入により、HTML クライアント（Askama SSR）と JSON API クライアントが同じコアロジックを利用する形になりました。
+
+```mermaid
+flowchart TB
+  subgraph http [HTTP Layer]
+    PublicRoutes[PublicRoutes（SSR）]
+    AdminRoutes[AdminRoutes（Askama SSR）]
+    ApiRoutes[API Routes /api/v1（JSON）]
+  end
+  subgraph app [Application Layer]
+    Services[Services<br/>（pages / posts / placeholders / widgets / options / media）]
+  end
+  subgraph infra [Infrastructure]
+    Repos[Repos]
+    Theme[Theme（ファイルI/O）]
+  end
+
+  AdminRoutes --> Services
+  ApiRoutes --> Services
+  PublicRoutes --> Widgets
+  Services --> Repos
+  Services --> Theme
+  Repos --> SQLite[(SQLite)]
+  Theme --> MiniJinja
+```
+
 
 ## 技術スタック
 

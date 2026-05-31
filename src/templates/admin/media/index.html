@@ -1,0 +1,168 @@
+{% extends "admin/base.html" %}
+
+{% block title %}メディア{% endblock %}
+{% block nav_media %}active{% endblock %}
+{% block heading %}メディア{% endblock %}
+
+{% block content %}
+<style>
+  .toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .toolbar p { margin: 0; color: var(--muted); max-width: 560px; }
+  .button {
+    display: inline-block;
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 8px 12px;
+    text-decoration: none;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+  }
+  .button.secondary { background: #fff; color: var(--accent); }
+  .button.danger { background: #fff; color: #b32d2e; border-color: #b32d2e; }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .upload-form {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .upload-form input[type="file"] { font-size: 14px; }
+  .notice {
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin-bottom: 16px;
+    font-size: 14px;
+  }
+  .notice.error { background: #fcf0f1; border: 1px solid #d63638; color: #8a1f1f; }
+  .notice.success { background: #edfaef; border: 1px solid #1b8a4b; color: #1b5e20; }
+  .empty {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 32px;
+    text-align: center;
+    color: var(--muted);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .preview {
+    height: 140px;
+    background: #f6f7f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .preview img {
+    max-width: 100%;
+    max-height: 140px;
+    object-fit: contain;
+  }
+  .preview .placeholder {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 12px;
+    text-align: center;
+    word-break: break-all;
+  }
+  .card-body { padding: 12px 14px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+  .card-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    word-break: break-all;
+  }
+  .meta { margin: 0; color: var(--muted); font-size: 12px; }
+  .url-row { display: flex; gap: 6px; }
+  .url-row input {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: #f6f7f7;
+  }
+  .ops { display: flex; gap: 8px; margin-top: auto; }
+  .ops form { margin: 0; }
+</style>
+
+<div class="toolbar">
+  <p>画像や PDF をアップロードして管理します。公開 URL をコピーしてテンプレートやページから参照できます。</p>
+</div>
+
+{% if !error_message.is_empty() %}
+<div class="notice error">{{ error_message }}</div>
+{% endif %}
+{% if !success_message.is_empty() %}
+<div class="notice success">{{ success_message }}</div>
+{% endif %}
+
+<section class="panel">
+  <form class="upload-form" method="post" action="/admin/media/upload" enctype="multipart/form-data">
+    <input type="file" name="file" accept="image/*,.pdf,.svg" required>
+    <button class="button" type="submit">アップロード</button>
+  </form>
+</section>
+
+{% if has_media %}
+<div class="grid">
+  {% for item in media_items %}
+  <article class="card">
+    <div class="preview">
+      {% if item.is_image %}
+      <img src="{{ item.public_url }}" alt="{{ item.title }}">
+      {% else %}
+      <div class="placeholder">{{ item.mime_type }}</div>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <h3 class="card-title">{{ item.title }}</h3>
+      <p class="meta">{{ item.file_size_label }} · {{ item.updated_at }}</p>
+      <div class="url-row">
+        <input type="text" value="{{ item.public_url }}" readonly id="url-{{ item.id }}">
+        <button class="button secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('url-{{ item.id }}').value)">コピー</button>
+      </div>
+      <div class="ops">
+        <a class="button secondary" href="{{ item.public_url }}" target="_blank" rel="noopener">表示</a>
+        <form method="post" action="/admin/media/{{ item.id }}/delete" onsubmit="return confirm('このメディアを削除しますか？');">
+          <button class="button danger" type="submit">削除</button>
+        </form>
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<section class="empty">
+  <p>まだメディアがありません。上のフォームからファイルをアップロードしてください。</p>
+</section>
+{% endif %}
+{% endblock %}

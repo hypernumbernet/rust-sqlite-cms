@@ -11,8 +11,8 @@ bind_addr = "127.0.0.1:3000"
 path = "data/cms.db"
 
 [paths]
-# メディアのアップロード先
-uploads_dir = "uploads"
+# メディアのアップロード先（work 配下を推奨）
+uploads_dir = "work/uploads"
 # テンプレート・静的アセットのステートフルな作業ディレクトリ（work/templates/, work/templates/static/）
 work_dir = "work"
 

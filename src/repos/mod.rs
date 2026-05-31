@@ -1,3 +1,4 @@
+pub mod media;
 pub mod options;
 pub mod pages;
 pub mod placeholders;

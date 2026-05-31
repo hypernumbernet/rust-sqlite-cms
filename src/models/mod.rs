@@ -1,3 +1,4 @@
+pub mod media;
 pub mod option;
 pub mod page;
 pub mod placeholder;

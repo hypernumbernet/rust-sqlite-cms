@@ -23,4 +23,6 @@ pub fn is_reserved_path(path: &str) -> bool {
         || path.starts_with("/admin/")
         || path == "/static"
         || path.starts_with("/static/")
+        || path == "/uploads"
+        || path.starts_with("/uploads/")
 }

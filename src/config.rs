@@ -61,7 +61,7 @@ impl Default for AppConfig {
                 path: "data/cms.db".to_string(),
             },
             paths: PathsConfig {
-                uploads_dir: "uploads".to_string(),
+                uploads_dir: "work/uploads".to_string(),
                 work_dir: "work".to_string(),
             },
             site: SiteConfig {

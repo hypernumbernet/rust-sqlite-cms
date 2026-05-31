@@ -1,5 +1,6 @@
 # config.example.toml
-# このファイルを config.toml にコピーして編集してください。
+# 初回起動時に work/config.toml として自動コピーされます（手動コピーは不要）。
+# サイト名・説明は管理画面 /admin/settings からも編集できます。
 # 値は環境変数（CMS_ プレフィックス）で上書きできます。
 
 [server]

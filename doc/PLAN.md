@@ -14,6 +14,7 @@ Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェッ
 - お知らせ管理: `/admin/posts` でプレースホルダー（テンプレート変数名）の定義と、各プレースホルダー配下のエントリ（タイトル・本文・抜粋・ステータス draft/publish・スラッグ）CRUD
 - ページ管理: `/admin/pages` でサイトページ CRUD。プリセット（ランディング/シンプルページ/お知らせ一覧など）からの作成、MiniJinja テンプレート vs 静的 HTML の選択、URL パス割り当て、公開/非公開、トップページ特別扱い
 - ウィジェット設定: `/admin/widgets` で `news` ウィジェットの表示件数などの設定
+- サイト設定: `/admin/settings` でサイト名・説明・サイト URL（`options` + `work/config.toml` の `[site]`）
 - 作業ディレクトリ: `work/templates/`（MiniJinja・autoreload 対応）と `work/pages/`（静的 HTML）をファイルベースで管理
 
 **実装済みの技術的特徴**:
@@ -23,7 +24,7 @@ Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェッ
 - 管理画面は Askama（コンパイル時型安全）、公開サイトは MiniJinja + `minijinja-autoreload`（ファイル編集で再起動不要で反映）。
 - 静的アセットは `work/templates/static/` を `/static` で配信。
 
-**未実装（主なもの）**: ユーザー認証・ログイン、メディアライブラリ（アップロード）、画像カルーセルウィジェット（画像・リンク対応、Phase 2前倒し予定・目玉機能）、タクソノミー（カテゴリ/タグ）、本格的なブログパーマリンク、サイト設定画面、メディア・ユーザー管理画面など。ナビゲーション上はリンクがあるが機能未実装。詳細は[ロードマップ](#ロードマップ)を参照。
+**未実装（主なもの）**: ユーザー認証・ログイン、画像カルーセルウィジェット（画像・リンク対応、Phase 2前倒し予定・目玉機能）、タクソノミー（カテゴリ/タグ）、ユーザー管理画面など。詳細は[ロードマップ](#ロードマップ)を参照。
 
 ## 設計思想
 
@@ -82,7 +83,7 @@ flowchart TB
 | テンプレート（管理画面） | `askama` | ✅ | コンパイル時テンプレート検証（公開テンプレートの影響を受けない） |
 | テンプレート（公開サイト） | `minijinja` + `minijinja-autoreload` | ✅ | ランタイム評価。`work/templates/` 配下を監視し、ファイル編集を再起動なしで反映 |
 | 静的配信 | `tower-http`（ServeDir） | ✅ | `work/templates/static/` を `/static` で配信 |
-| 設定 | `figment` + `serde` | ✅ | TOML + 環境変数（`CMS_*`）。優先順: デフォルト → config.toml → 環境変数 |
+| 設定 | `figment` + `serde` | ✅ | TOML + 環境変数（`CMS_*`）。優先順: デフォルト → work/config.toml → 環境変数 |
 | ログ | `tracing` + `tracing-subscriber` | ✅ | 構造化ログ |
 | 日時 | `chrono` | ✅ | 作成・更新・公開日時 |
 | エラー | `thiserror` + `anyhow` | ✅ | `AppError` で集約し `IntoResponse` |
@@ -101,7 +102,7 @@ rust-sqlite-cms/
 ├── doc/
 │   └── PLAN.md              # 本ドキュメント（設計・ロードマップ）
 ├── Cargo.toml
-├── config.example.toml      # 設定のサンプル（コピーして config.toml へ）
+├── config.example.toml      # 設定のサンプル（初回起動で work/config.toml へコピー）
 ├── migrations/              # SQLite スキーマ（0001-0003）
 ├── presets/                 # 同梱スターターデザイン（git 管理・seed 元）
 │   ├── index.html           # 公開トップの初期テンプレート（HOME_INDEX）
@@ -109,6 +110,7 @@ rust-sqlite-cms/
 │   ├── simple-page.html     # シンプル固定ページプリセット
 │   └── news.html            # お知らせ一覧プリセット
 ├── work/                    # ステートフル作業ディレクトリ（.gitignore 対象）
+│   ├── config.toml        # 実行時設定（初回は config.example.toml から生成）
 │   ├── templates/           # MiniJinja テンプレート（autoreload）
 │   │   ├── index.html       # /（初回は presets から自動生成）
 │   │   ├── page-*.html      # テンプレート型ページ（MiniJinja 評価）
@@ -180,7 +182,7 @@ erDiagram
 
 | テーブル | 用途 | 利用状況 |
 |----------|------|----------|
-| `options` | サイト設定（`blogname`, `blogdescription`, `siteurl`, `permalink_structure` など） | ✅ 積極利用（起動時既定投入 + 公開コンテキスト） |
+| `options` | サイト設定（`blogname`, `blogdescription`, `siteurl` など） | ✅ 積極利用（起動時既定投入 + 公開コンテキスト） |
 | `pages` | 公開ページのメタ（`name`, `url_path`, `file_name`, `is_static`, `is_published`）。本文は `work/templates/` または `work/pages/` に分離保存 | ✅ 積極利用（全ページ CRUD で使用） |
 | `widget_types` | ウィジェット種類の登録（`type_key` = "news" など）と JSON 設定（表示件数など） | ✅ 積極利用（/admin/widgets + 描画時解決） |
 | `placeholders` | テンプレート内で参照する名前付きスロット（例: "news"）。`widget_type_id` で種類を指定 | ✅ 積極利用（/admin/posts の中心） |
@@ -243,7 +245,8 @@ Capability の例: `edit_posts`, `publish_posts`, `edit_others_posts`, `manage_o
 | GET | `/admin/pages/new/{design}` | プリセット選択後の作成フォーム | ✅ |
 | GET, POST | `/admin/widgets` | ウィジェットタイプ一覧・設定編集（news 表示件数など） | ✅ |
 | GET, POST | `/admin/login` | ログイン（最終フェーズで有効化予定） | ⏳ |
-| - | `/admin/media`, `/admin/users`, `/admin/settings` など | ナビゲーション上は存在するが未実装（404 またはスタブ） | ⏳ |
+| GET, POST | `/admin/settings` | サイト設定（blogname / blogdescription / siteurl） | ✅ |
+| - | `/admin/users` など | ナビゲーション上は存在するが未実装（404 またはスタブ） | ⏳ |
 
 サイドバー（`base.html`）にはメディア・ユーザー・設定へのリンクがありますが、これらは Phase 2 以降で実装予定です。
 
@@ -288,6 +291,7 @@ flowchart TB
 
 - [x] SQLite マイグレーション（`migrations/0001_init.sql` + `0002_widgets.sql` + `0003_widget_types_placeholders.sql` でコア + ウィジェット体系を作成）
 - [x] サイト基本設定（`options` テーブル + 起動時の既定値投入 + `ensure_defaults`）
+- [x] サイト設定画面（`/admin/settings`、`work/config.toml` の `[site]` 同期）
 - [x] 管理画面（Askama）（ダッシュボード + 投稿/ページ/ウィジェット管理画面のフル CRUD）
 - [x] お知らせ機能（プレースホルダー定義 + エントリ CRUD + ウィジェットレンダリング + `news` / `has_news` コンテキスト提供）
 - [x] ページ管理（プリセット選択、テンプレート/静的 HTML、URL 割り当て・公開制御、トップページ特別扱い）
@@ -333,7 +337,7 @@ flowchart TB
 
 ## 開発フロー
 
-1. （任意）`config.example.toml` を `config.toml` にコピーして編集
+1. （任意）`work/config.toml` を直接編集（初回起動で `config.example.toml` から自動生成）
 2. `cargo run` でサーバー起動
 3. ブラウザで `http://127.0.0.1:3000/admin` にアクセス
 

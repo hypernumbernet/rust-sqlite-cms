@@ -16,6 +16,7 @@ async fn main() -> AppResult<()> {
         )
         .init();
 
+    AppConfig::ensure_default_file()?;
     let config = AppConfig::load()?;
     tracing::info!(bind_addr = %config.server.bind_addr, db = %config.database.path, "起動設定を読み込みました");
 

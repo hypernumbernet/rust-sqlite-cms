@@ -61,11 +61,5 @@ pub async fn ensure_defaults(pool: &SqlitePool, config: &AppConfig) -> AppResult
         &format!("http://{}", config.server.bind_addr),
     )
     .await?;
-    set_default(
-        pool,
-        "permalink_structure",
-        "/%year%/%monthnum%/%day%/%postname%/",
-    )
-    .await?;
     Ok(())
 }

@@ -1,0 +1,120 @@
+{% extends "admin/base.html" %}
+
+{% block title %}設定{% endblock %}
+{% block nav_settings %}active{% endblock %}
+{% block heading %}設定{% endblock %}
+
+{% block content %}
+<style>
+  .form-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    gap: 20px;
+    align-items: start;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 20px;
+  }
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; margin-bottom: 6px; font-weight: 600; }
+  input[type="text"] {
+    width: 100%;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 9px 10px;
+    font: inherit;
+    background: #fff;
+  }
+  .help { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+  .notice {
+    background: #f0f6fc;
+    border: 1px solid #c5d9ed;
+    border-radius: 4px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text);
+    margin-bottom: 18px;
+  }
+  .success {
+    background: #edfaef;
+    border: 1px solid #b8e6bf;
+    border-radius: 4px;
+    padding: 12px 14px;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .error {
+    background: #fcf0f1;
+    border: 1px solid #f0b8bd;
+    border-radius: 4px;
+    padding: 12px 14px;
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 18px; }
+  .button {
+    border: 1px solid var(--accent);
+    border-radius: 4px;
+    background: var(--accent);
+    color: #fff;
+    padding: 9px 14px;
+    text-decoration: none;
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .button.secondary { background: #fff; color: var(--accent); }
+</style>
+
+{% if !success_message.is_empty() %}
+<div class="success">{{ success_message }}</div>
+{% endif %}
+
+{% if !error_message.is_empty() %}
+<div class="error">{{ error_message }}</div>
+{% endif %}
+
+<form method="post" action="/admin/settings" class="form-layout">
+  <section class="panel">
+    <div class="notice">
+      サイト名と説明は公開ページ（<code>{{ blogname }}</code> など）に即時反映されます。
+      設定ファイル <code>work/config.toml</code> の <code>[site]</code> も同期して保存します。再起動は不要です。
+    </div>
+
+    <div class="field">
+      <label for="blogname">サイト名</label>
+      <input id="blogname" name="blogname" type="text" maxlength="200" value="{{ blogname }}" required>
+      <p class="help">テンプレート変数 <code>blogname</code> として公開サイトで利用されます。</p>
+    </div>
+
+    <div class="field">
+      <label for="blogdescription">サイトの説明</label>
+      <input id="blogdescription" name="blogdescription" type="text" maxlength="200" value="{{ blogdescription }}" required>
+      <p class="help">テンプレート変数 <code>blogdescription</code> として利用されます。</p>
+    </div>
+
+    <div class="field">
+      <label for="siteurl">サイト URL</label>
+      <input id="siteurl" name="siteurl" type="text" value="{{ siteurl }}" required>
+      <p class="help">例: <code>http://127.0.0.1:3000</code></p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="field">
+      <label>設定ファイル</label>
+      <p class="help"><code>work/config.toml</code></p>
+      <p class="help">初回起動時に <code>config.example.toml</code> から自動生成されます。</p>
+    </div>
+
+    <div class="actions">
+      <button class="button" type="submit">変更を保存</button>
+      <a class="button secondary" href="/admin">ダッシュボード</a>
+    </div>
+  </aside>
+</form>
+{% endblock %}

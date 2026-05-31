@@ -13,6 +13,7 @@ use crate::state::AppState;
 pub mod media;
 pub mod pages;
 pub mod posts;
+pub mod settings;
 pub mod widgets;
 
 #[derive(Template)]
@@ -29,6 +30,7 @@ pub fn router() -> Router<AppState> {
         .merge(pages::router())
         .merge(widgets::router())
         .merge(media::router())
+        .merge(settings::router())
 }
 
 async fn dashboard(State(state): State<AppState>) -> AppResult<impl IntoResponse> {

@@ -103,21 +103,6 @@ CREATE TABLE IF NOT EXISTS term_relationships (
     PRIMARY KEY (post_id, term_taxonomy_id)
 );
 
--- コメント -----------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS comments (
-    id           INTEGER PRIMARY KEY,
-    post_id      INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    parent_id    INTEGER REFERENCES comments(id) ON DELETE CASCADE,
-    user_id      INTEGER REFERENCES users(id) ON DELETE SET NULL,
-    author_name  TEXT    NOT NULL DEFAULT '',
-    author_email TEXT    NOT NULL DEFAULT '',
-    author_url   TEXT    NOT NULL DEFAULT '',
-    content      TEXT    NOT NULL DEFAULT '',
-    status       TEXT    NOT NULL DEFAULT 'hold',  -- hold / approve / spam / trash
-    created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
-);
-CREATE INDEX IF NOT EXISTS idx_comments_post_status ON comments(post_id, status);
-
 -- ページ（テンプレート / 固定ページ。本文は work/ 配下、DB にはメタ情報のみ） ----
 -- is_static=0: work/templates/ + MiniJinja、is_static=1: work/pages/ + 生 HTML
 CREATE TABLE IF NOT EXISTS pages (

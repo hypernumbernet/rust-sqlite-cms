@@ -23,7 +23,7 @@ Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェッ
 - 管理画面は Askama（コンパイル時型安全）、公開サイトは MiniJinja + `minijinja-autoreload`（ファイル編集で再起動不要で反映）。
 - 静的アセットは `work/templates/static/` を `/static` で配信。
 
-**未実装（主なもの）**: ユーザー認証・ログイン、メディアライブラリ（アップロード）、画像カルーセルウィジェット（画像・リンク対応、Phase 2前倒し予定・目玉機能）、コメント、タクソノミー（カテゴリ/タグ）、本格的なブログパーマリンク、サイト設定画面、メディア・コメント・ユーザー管理画面など。ナビゲーション上はリンクがあるが機能未実装。詳細は[ロードマップ](#ロードマップ)を参照。
+**未実装（主なもの）**: ユーザー認証・ログイン、メディアライブラリ（アップロード）、画像カルーセルウィジェット（画像・リンク対応、Phase 2前倒し予定・目玉機能）、タクソノミー（カテゴリ/タグ）、本格的なブログパーマリンク、サイト設定画面、メディア・ユーザー管理画面など。ナビゲーション上はリンクがあるが機能未実装。詳細は[ロードマップ](#ロードマップ)を参照。
 
 ## 設計思想
 
@@ -153,7 +153,6 @@ rust-sqlite-cms/
 | カテゴリ・タグ | `terms` + `term_taxonomy` + `term_relationships` | Phase 2 | ⏳（スキーマのみ） |
 | メディアライブラリ | DB メタデータ + `uploads/` ファイル | Phase 2 | 未着手（config のみ） |
 | 画像カルーセルウィジェット | 画像・リンクを扱う専用ウィジェット（Phase 2前倒し予定） | Phase 2 | 計画中（目玉機能として位置づけ） |
-| コメント | `comments`（承認・スパム状態） | Phase 2 | ⏳（スキーマのみ） |
 | ナビゲーションメニュー | `nav_menus` + `nav_menu_items` | Phase 2 | 未着手 |
 | RSS | `/feed/` | Phase 2 | 未着手 |
 | 予約公開 | `status = future` + 公開日時 | Phase 2 | 未着手 |
@@ -165,7 +164,7 @@ rust-sqlite-cms/
 
 ## データモデル概要
 
-現在の実装で**積極的に使用**されているのは以下のテーブルです。他のテーブル（users / terms / comments / postmeta など）は 0001_init.sql にスキーマ定義されていますが、Phase 1 時点ではコードパスで未使用です。
+現在の実装で**積極的に使用**されているのは以下のテーブルです。他のテーブル（users / terms / postmeta など）は 0001_init.sql にスキーマ定義されていますが、Phase 1 時点ではコードパスで未使用です。
 
 **主な関係（実装済み部分）**:
 
@@ -188,7 +187,6 @@ erDiagram
 | `posts` | コンテンツエントリ。本来の WP 風汎用テーブルだが、現在は主に `placeholder_id` 経由でお知らせエントリとして使用（`post_status`, `title`, `content`, `excerpt`, `post_name`） | ✅ 積極利用（プレースホルダー配下の CRUD） |
 | `users` / `usermeta` | ユーザーアカウント | ⏳（スキーマのみ、未使用） |
 | `terms` / `term_taxonomy` / `term_relationships` | カテゴリ・タグ | ⏳（スキーマのみ） |
-| `comments` | コメント | ⏳（スキーマのみ） |
 | `postmeta` | カスタムフィールド | ⏳（スキーマのみ） |
 
 ### SQLite スキーマ方針
@@ -215,9 +213,9 @@ erDiagram
 | **Editor** | 他人のコンテンツの編集・公開 |
 | **Author** | 自分のコンテンツの作成・公開 |
 | **Contributor** | コンテンツの作成（公開は不可） |
-| **Subscriber** | コメント・プロフィールのみ |
+| **Subscriber** | プロフィールのみ |
 
-Capability の例: `edit_posts`, `publish_posts`, `edit_others_posts`, `manage_options`, `moderate_comments`
+Capability の例: `edit_posts`, `publish_posts`, `edit_others_posts`, `manage_options`
 
 ## ルーティング（実装状況）
 
@@ -245,9 +243,9 @@ Capability の例: `edit_posts`, `publish_posts`, `edit_others_posts`, `manage_o
 | GET | `/admin/pages/new/{design}` | プリセット選択後の作成フォーム | ✅ |
 | GET, POST | `/admin/widgets` | ウィジェットタイプ一覧・設定編集（news 表示件数など） | ✅ |
 | GET, POST | `/admin/login` | ログイン（最終フェーズで有効化予定） | ⏳ |
-| - | `/admin/media`, `/admin/users`, `/admin/settings`, `/admin/comments` など | ナビゲーション上は存在するが未実装（404 またはスタブ） | ⏳ |
+| - | `/admin/media`, `/admin/users`, `/admin/settings` など | ナビゲーション上は存在するが未実装（404 またはスタブ） | ⏳ |
 
-サイドバー（`base.html`）にはメディア・コメント・ユーザー・設定へのリンクがありますが、これらは Phase 2 以降で実装予定です。
+サイドバー（`base.html`）にはメディア・ユーザー・設定へのリンクがありますが、これらは Phase 2 以降で実装予定です。
 
 ## ロードマップ
 
@@ -262,7 +260,7 @@ flowchart TB
   end
   subgraph p2 [Phase 2]
     direction TB
-    p2a["タクソノミー / メディア / コメント"]
+    p2a["タクソノミー / メディア"]
     p2b["メニュー / RSS / 予約公開"]
     p2a --> p2b
   end
@@ -302,14 +300,13 @@ flowchart TB
 2. 管理画面への認証ミドルウェア適用（未ログイン時はログインへ誘導）
 3. 画像カルーセルウィジェット（画像・リンクアップロード対応）の実装 — Phase 2前倒し・目玉機能
 4. メディアライブラリ（アップロード UI + `uploads/` 管理 + ページ/投稿への添付）
-5. その他 Phase 2 項目（コメント、タグ・カテゴリ、RSS など）
+5. その他 Phase 2 項目（タグ・カテゴリ、RSS など）
 
 ### Phase 2
 
 - 画像カルーセルウィジェット（画像・リンクアップロード対応） — 目玉機能として前倒し予定
 - カテゴリ・タグ
 - メディアライブラリ（アップロード・添付）
-- コメント（モデレーション）
 - ナビゲーションメニュー
 - RSS フィード
 - 予約公開

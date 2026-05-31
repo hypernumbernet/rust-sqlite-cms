@@ -109,3 +109,71 @@ pub fn build_image_style(float: &str, margin: &str) -> String {
     }
     parts.join(";")
 }
+
+/// カルーセルウィジェットタイプの設定。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CarouselWidgetConfig {
+    #[serde(default = "default_carousel_interval")]
+    pub interval: u32,
+    #[serde(default = "default_carousel_width")]
+    pub width: String,
+    #[serde(default = "default_carousel_height")]
+    pub height: String,
+}
+
+impl Default for CarouselWidgetConfig {
+    fn default() -> Self {
+        Self {
+            interval: default_carousel_interval(),
+            width: default_carousel_width(),
+            height: default_carousel_height(),
+        }
+    }
+}
+
+fn default_carousel_interval() -> u32 {
+    5
+}
+
+fn default_carousel_width() -> String {
+    "100%".to_string()
+}
+
+fn default_carousel_height() -> String {
+    "400px".to_string()
+}
+
+/// カルーセルのスライド間隔（秒）を検証する。
+pub fn validate_carousel_interval(interval: u32) -> Result<(), String> {
+    if !(1..=30).contains(&interval) {
+        return Err("スライド間隔は 1 から 30 秒の範囲で指定してください".to_string());
+    }
+    Ok(())
+}
+
+/// カルーセルの幅・高さ（CSS サイズ値）を簡易検証。
+pub fn validate_carousel_size(value: &str, field: &str) -> Result<(), String> {
+    let v = value.trim();
+    if v.is_empty() {
+        return Err(format!("{}を入力してください", field));
+    }
+    // 簡易チェック: 数値 + 単位 または % または auto
+    if v == "auto" || v.ends_with('%') {
+        return Ok(());
+    }
+    for unit in ["px", "em", "rem", "vh", "vw", "dvh"] {
+        if let Some(num) = v.strip_suffix(unit) {
+            if !num.is_empty() && num.parse::<f64>().is_ok() {
+                return Ok(());
+            }
+        }
+    }
+    // 生の数値も px 扱いで許可（例: "400"）
+    if v.parse::<f64>().is_ok() {
+        return Ok(());
+    }
+    Err(format!(
+        "{}は CSS サイズ形式（例: 100%、400px、50vh）で指定してください",
+        field
+    ))
+}

@@ -1,0 +1,66 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_widgets %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<style>
+  /* widgets/form_carousel */
+  .readonly {
+    margin: 0;
+    padding: 9px 10px;
+    background: #f6f7f7;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .size-row { display: flex; gap: 12px; }
+  .size-row .field { flex: 1; }
+</style>
+
+<form method="post" action="/admin/widgets/{{ type_key }}/edit" class="form-layout">
+  <section class="panel">
+    <div class="field">
+      <label>説明</label>
+      <p class="help">{{ description }}</p>
+      <p class="help">このタイプを使うプレースホルダーは <a href="/admin/posts">投稿</a> 画面で追加します。各プレースホルダー配下の「公開済みエントリ」がスライドになります。</p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="field">
+      <label>ウィジェットタイプ</label>
+      <p class="readonly">{{ type_label }}</p>
+      <p class="help"><code>{{ type_key }}</code></p>
+    </div>
+
+    <div class="field">
+      <label for="interval">スライド間隔（秒）</label>
+      <input id="interval" name="interval" type="number" min="1" max="30" value="{{ interval }}">
+      <p class="help">次のスライドに自動で切り替わるまでの秒数（1〜30）。</p>
+    </div>
+
+    <div class="size-row">
+      <div class="field">
+        <label for="width">領域の幅</label>
+        <input id="width" name="width" type="text" value="{{ width }}" placeholder="100%">
+        <p class="help">CSS サイズ（例: 100%、600px）</p>
+      </div>
+      <div class="field">
+        <label for="height">領域の高さ</label>
+        <input id="height" name="height" type="text" value="{{ height }}" placeholder="400px">
+        <p class="help">CSS サイズ（例: 400px、50vh）</p>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="button" type="submit">更新する</button>
+      <a class="button secondary" href="/admin/widgets">戻る</a>
+    </div>
+  </aside>
+</form>
+
+{% if !error_message.is_empty() %}
+<div class="notice error" style="margin-top:16px">{{ error_message }}</div>
+{% endif %}
+{% endblock %}

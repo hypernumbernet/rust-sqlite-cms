@@ -3,7 +3,7 @@ use sqlx::SqlitePool;
 
 use crate::error::AppResult;
 use crate::models::post::Post;
-use crate::models::widget::{build_image_style, NewsWidgetConfig, WidgetType};
+use crate::models::widget::{build_image_style, CarouselWidgetConfig, NewsWidgetConfig, WidgetType};
 use crate::repos::{media, placeholders, postmeta, posts, widget_types};
 
 /// 登録済みウィジェットタイプの定義。
@@ -25,6 +25,11 @@ pub const WIDGET_TYPES: &[WidgetTypeDef] = &[
         label: "画像",
         description: "メディアライブラリの画像を1枚表示します。回り込み・マージンを設定できます",
     },
+    WidgetTypeDef {
+        key: "carousel",
+        label: "画像カルーセル",
+        description: "複数の画像をスライドショー形式で表示します。各画像にリンクを設定可能",
+    },
 ];
 
 /// news ウィジェットがテンプレートへ渡す各項目。
@@ -44,6 +49,23 @@ pub struct ImageItem {
     pub float: String,
     pub margin: String,
     pub style: String,
+}
+
+/// カルーセルウィジェットの1スライド。
+#[derive(Debug, Clone, Serialize)]
+pub struct CarouselSlide {
+    pub image_url: String,
+    pub alt: String,
+    pub link_url: String,
+}
+
+/// カルーセルウィジェットがテンプレートへ渡すオブジェクト。
+#[derive(Debug, Clone, Serialize)]
+pub struct CarouselData {
+    pub slides: Vec<CarouselSlide>,
+    pub interval: u32,
+    pub width: String,
+    pub height: String,
 }
 
 impl From<Post> for NewsItem {
@@ -136,6 +158,94 @@ pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String
                 "変数 <code>{name}</code> は ImageItem（image_url / alt / link_url / style など）。\
                  float と margin は <code>{name}.style</code> に反映済みです。\
                  <code>has_{name}</code> は公開済み画像エントリがあるとき true です。"
+            ),
+        ),
+        "carousel" => (
+            format!(
+                r#"{{% if has_{name} %}}
+<div class="carousel" style="width:{{{{ {name}.width }}}}; height:{{{{ {name}.height }}}}; --interval: {{{{ {name}.interval }}}}s;">
+  <div class="carousel-track">
+    {{% for slide in {name}.slides %}}
+    <div class="carousel-slide">
+      {{% if slide.link_url %}}
+      <a href="{{{{ slide.link_url }}}}">
+        <img src="{{{{ slide.image_url }}}}" alt="{{{{ slide.alt }}}}">
+      </a>
+      {{% else %}}
+      <img src="{{{{ slide.image_url }}}}" alt="{{{{ slide.alt }}}}">
+      {{% endif %}}
+    </div>
+    {{% endfor %}}
+  </div>
+  {{% if {name}.slides | length > 1 %}}
+  <button class="carousel-prev" type="button" aria-label="前へ">‹</button>
+  <button class="carousel-next" type="button" aria-label="次へ">›</button>
+  <div class="carousel-dots">
+    {{% for slide in {name}.slides %}}<button class="carousel-dot" data-index="{{{{ loop.index0 }}}}" type="button"></button>{{% endfor %}}
+  </div>
+  {{% endif %}}
+</div>
+<style>
+.carousel {{ position:relative; overflow:hidden; border-radius:8px; background:#f3f4f6; }}
+.carousel-track {{ display:flex; height:100%; transition:transform 0.5s ease; }}
+.carousel-slide {{ flex:0 0 100%; height:100%; }}
+.carousel-slide img {{ width:100%; height:100%; object-fit:cover; display:block; }}
+.carousel-slide a {{ display:block; height:100%; }}
+.carousel-prev, .carousel-next {{ position:absolute; top:50%; transform:translateY(-50%); background:rgba(0,0,0,0.45); color:#fff; border:none; font-size:28px; width:40px; height:40px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; }}
+.carousel-prev {{ left:12px; }} .carousel-next {{ right:12px; }}
+.carousel-dots {{ position:absolute; bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:8px; }}
+.carousel-dot {{ width:10px; height:10px; border-radius:50%; background:rgba(255,255,255,0.6); border:none; padding:0; cursor:pointer; }}
+.carousel-dot.active {{ background:#fff; }}
+</style>
+<script>
+(function() {{
+  var root = document.currentScript.previousElementSibling;
+  if (!root || !root.classList.contains('carousel')) root = document.currentScript.parentElement.querySelector('.carousel');
+  if (!root) return;
+  var track = root.querySelector('.carousel-track');
+  var slides = track ? Array.prototype.slice.call(track.children) : [];
+  if (slides.length < 2) return;
+  var prev = root.querySelector('.carousel-prev');
+  var next = root.querySelector('.carousel-next');
+  var dots = Array.prototype.slice.call(root.querySelectorAll('.carousel-dot'));
+  var index = 0;
+  var intervalMs = (parseFloat(getComputedStyle(root).getPropertyValue('--interval')) || 5) * 1000;
+  var timer = null;
+
+  function go(i) {{
+    index = (i + slides.length) % slides.length;
+    track.style.transform = 'translateX(-' + (index * 100) + '%)';
+    dots.forEach(function(d, di) {{ d.classList.toggle('active', di === index); }});
+  }}
+
+  function start() {{
+    stop();
+    timer = setInterval(function() {{ go(index + 1); }}, intervalMs);
+  }}
+  function stop() {{ if (timer) clearInterval(timer); }}
+
+  if (prev) prev.addEventListener('click', function() {{ go(index - 1); start(); }});
+  if (next) next.addEventListener('click', function() {{ go(index + 1); start(); }});
+  dots.forEach(function(dot, di) {{
+    dot.addEventListener('click', function() {{ go(di); start(); }});
+  }});
+
+  root.addEventListener('mouseenter', stop);
+  root.addEventListener('mouseleave', start);
+
+  // init
+  track.style.transform = 'translateX(0)';
+  if (dots[0]) dots[0].classList.add('active');
+  start();
+}})();
+</script>
+{{% endif %}}"#
+            ),
+            format!(
+                "変数 <code>{name}</code> は CarouselData（slides の配列 + interval / width / height）。\
+                 各スライドは image_url / alt / link_url を持ちます。\
+                 例のスニペットは自動再生・前後ボタン・ドット付きのセルフコンテインド実装です。\
+                 <code>has_{name}</code> は公開済みスライドが1件以上あるとき true です。"
             ),
         ),
         other => (
@@ -300,6 +410,82 @@ async fn resolve_placeholder(
             ctx.insert(
                 format!("has_{}", placeholder.name),
                 serde_json::Value::Bool(true),
+            );
+        }
+        "carousel" => {
+            let config: CarouselWidgetConfig =
+                serde_json::from_str(&widget_type.config).unwrap_or_default();
+
+            let entries =
+                posts::list_published_for_placeholder_ordered(pool, placeholder.id, 100).await?;
+
+            let mut slides: Vec<CarouselSlide> = Vec::new();
+            for entry in entries {
+                let media_id_str = postmeta::get(pool, entry.id, "media_id").await?;
+                let media_id = match media_id_str {
+                    Some(value) => value.parse::<i64>().ok(),
+                    None => None,
+                };
+
+                let Some(media_id) = media_id else {
+                    tracing::warn!(
+                        placeholder = %placeholder.name,
+                        entry_id = entry.id,
+                        "carousel entry missing media_id"
+                    );
+                    continue;
+                };
+
+                let attachment = match media::find(pool, media_id).await {
+                    Ok(item) => item,
+                    Err(_) => {
+                        tracing::warn!(
+                            placeholder = %placeholder.name,
+                            media_id,
+                            "carousel entry references missing media"
+                        );
+                        continue;
+                    }
+                };
+
+                if !attachment.is_image() {
+                    tracing::warn!(
+                        placeholder = %placeholder.name,
+                        media_id,
+                        "carousel entry references non-image media"
+                    );
+                    continue;
+                }
+
+                let link_url = entry.content.trim().to_string();
+                let alt = if entry.title.trim().is_empty() {
+                    attachment.title.clone()
+                } else {
+                    entry.title.clone()
+                };
+
+                slides.push(CarouselSlide {
+                    image_url: attachment.public_url(),
+                    alt,
+                    link_url,
+                });
+            }
+
+            let has_slides = !slides.is_empty();
+            let data = CarouselData {
+                slides,
+                interval: config.interval,
+                width: config.width,
+                height: config.height,
+            };
+
+            ctx.insert(
+                placeholder.name.clone(),
+                serde_json::to_value(&data).expect("CarouselData is serializable"),
+            );
+            ctx.insert(
+                format!("has_{}", placeholder.name),
+                serde_json::Value::Bool(has_slides),
             );
         }
         other => {

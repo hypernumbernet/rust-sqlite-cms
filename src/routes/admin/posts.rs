@@ -171,6 +171,44 @@ struct ImageEntryFormTemplate {
     error_message: String,
 }
 
+#[derive(Debug, Clone)]
+struct CarouselEntryListItem {
+    id: i64,
+    alt: String,
+    thumbnail_url: String,
+    has_thumbnail: bool,
+    status_label: String,
+    updated_at: String,
+}
+
+#[derive(Template)]
+#[template(path = "admin/posts/entries/index_carousel.html")]
+struct CarouselEntryIndexTemplate {
+    placeholder_id: i64,
+    placeholder_name: String,
+    type_label: String,
+    entries: Vec<CarouselEntryListItem>,
+    has_entries: bool,
+    settings_url: String,
+}
+
+#[derive(Template)]
+#[template(path = "admin/posts/entries/form_carousel.html")]
+struct CarouselEntryFormTemplate {
+    heading: String,
+    action: String,
+    submit_label: String,
+    placeholder_name: String,
+    back_url: String,
+    title: String,
+    content: String,
+    is_draft: bool,
+    is_publish: bool,
+    media_items: Vec<MediaFormItem>,
+    has_media: bool,
+    error_message: String,
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/posts", get(placeholder_index))
@@ -356,6 +394,20 @@ async fn entry_index(
         return Ok(Html(html));
     }
 
+    if type_key == "carousel" {
+        let entries = build_carousel_entry_list(&state, id).await?;
+        let html = CarouselEntryIndexTemplate {
+            placeholder_id: id,
+            placeholder_name: placeholder.name,
+            type_label,
+            has_entries: !entries.is_empty(),
+            entries,
+            settings_url: format!("/admin/posts/placeholders/{id}/edit"),
+        }
+        .render()?;
+        return Ok(Html(html));
+    }
+
     let entries = posts::list_all_for_placeholder(&state.pool, id)
         .await?
         .into_iter()
@@ -386,6 +438,11 @@ async fn entry_new(
         return Ok(Html(html));
     }
 
+    if type_key == "carousel" {
+        let html = carousel_entry_form_template(&state, &placeholder, None, "", "").await?;
+        return Ok(Html(html));
+    }
+
     let html = EntryFormTemplate::new(&placeholder).render()?;
     Ok(Html(html))
 }
@@ -400,6 +457,10 @@ async fn entry_create(
 
     if type_key == "image" {
         return image_entry_save(&state, &placeholder, None, form).await;
+    }
+
+    if type_key == "carousel" {
+        return carousel_entry_save(&state, &placeholder, None, form).await;
     }
 
     let input = form.into_input(id);
@@ -420,6 +481,11 @@ async fn entry_edit(
         return Ok(Html(html));
     }
 
+    if type_key == "carousel" {
+        let html = carousel_entry_form_template(&state, &placeholder, Some(&entry), "", "").await?;
+        return Ok(Html(html));
+    }
+
     let html = EntryFormTemplate::edit(&placeholder, entry).render()?;
     Ok(Html(html))
 }
@@ -434,6 +500,10 @@ async fn entry_update(
 
     if type_key == "image" {
         return image_entry_save(&state, &placeholder, Some(entry_id), form).await;
+    }
+
+    if type_key == "carousel" {
+        return carousel_entry_save(&state, &placeholder, Some(entry_id), form).await;
     }
 
     let input = form.into_input(id);
@@ -497,6 +567,47 @@ async fn build_image_entry_list(state: &AppState, placeholder_id: i64) -> AppRes
             thumbnail_url,
             has_thumbnail,
             layout_summary,
+            status_label,
+            updated_at: super::format_updated_at(&post.updated_at),
+        });
+    }
+
+    Ok(items)
+}
+
+async fn build_carousel_entry_list(state: &AppState, placeholder_id: i64) -> AppResult<Vec<CarouselEntryListItem>> {
+    let posts = posts::list_all_for_placeholder(&state.pool, placeholder_id).await?;
+    let mut items = Vec::with_capacity(posts.len());
+
+    for post in posts {
+        let media_id = postmeta::get(&state.pool, post.id, "media_id").await?;
+
+        let (thumbnail_url, has_thumbnail) = if let Some(id_str) = media_id.as_deref() {
+            if let Ok(media_id) = id_str.parse::<i64>() {
+                if let Ok(item) = media::find(&state.pool, media_id).await {
+                    (item.public_url(), item.is_image())
+                } else {
+                    (String::new(), false)
+                }
+            } else {
+                (String::new(), false)
+            }
+        } else {
+            (String::new(), false)
+        };
+
+        let status_label = match post.post_status.as_str() {
+            "publish" => "公開",
+            "draft" => "下書き",
+            _ => "その他",
+        }
+        .to_string();
+
+        items.push(CarouselEntryListItem {
+            id: post.id,
+            alt: post.title,
+            thumbnail_url,
+            has_thumbnail,
             status_label,
             updated_at: super::format_updated_at(&post.updated_at),
         });
@@ -642,7 +753,130 @@ async fn image_entry_save(
     Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
 }
 
+async fn carousel_entry_form_template(
+    state: &AppState,
+    placeholder: &Placeholder,
+    entry: Option<&Post>,
+    error_message: &str,
+    media_id_override: &str,
+) -> AppResult<String> {
+    let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
+    let selected_media_id = if !media_id_override.is_empty() {
+        media_id_override.to_string()
+    } else if let Some(entry) = entry {
+        postmeta::get(&state.pool, entry.id, "media_id")
+            .await?
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let media_items = media::list_all(&state.pool)
+        .await?
+        .into_iter()
+        .filter(|item| item.is_image())
+        .map(|item| MediaFormItem {
+            id: item.id,
+            title: item.title.clone(),
+            public_url: item.public_url(),
+            selected: selected_media_id == item.id.to_string(),
+        })
+        .collect::<Vec<_>>();
+    let has_media = !media_items.is_empty();
+
+    let (heading, action, submit_label, title, content, _post_status, is_draft, is_publish) =
+        if let Some(entry) = entry {
+            let post_status = normalize_status(&entry.post_status);
+            let is_publish = post_status == "publish";
+            (
+                "スライドを編集".to_string(),
+                format!(
+                    "/admin/posts/placeholders/{}/entries/{}/edit",
+                    placeholder.id, entry.id
+                ),
+                "更新する".to_string(),
+                entry.title.clone(),
+                entry.content.clone(),
+                post_status,
+                !is_publish,
+                is_publish,
+            )
+        } else {
+            (
+                "スライドを追加".to_string(),
+                format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
+                "追加する".to_string(),
+                String::new(),
+                String::new(),
+                "draft".to_string(),
+                true,
+                false,
+            )
+        };
+
+    Ok(CarouselEntryFormTemplate {
+        heading,
+        action,
+        submit_label,
+        placeholder_name: placeholder.name.clone(),
+        back_url,
+        title,
+        content,
+        is_draft,
+        is_publish,
+        media_items,
+        has_media,
+        error_message: error_message.to_string(),
+    }
+    .render()?)
+}
+
+async fn carousel_entry_save(
+    state: &AppState,
+    placeholder: &Placeholder,
+    entry_id: Option<i64>,
+    form: EntryForm,
+) -> AppResult<Response> {
+    let id = placeholder.id;
+    let media_id_on_error = form.media_id.clone();
+
+    let parsed = match form.into_carousel_input(&state.pool, id).await {
+        Ok(input) => input,
+        Err(message) => {
+            let entry = if let Some(entry_id) = entry_id {
+                Some(posts::find_in_placeholder(&state.pool, id, entry_id).await?)
+            } else {
+                None
+            };
+            let html = carousel_entry_form_template(
+                state,
+                placeholder,
+                entry.as_ref(),
+                &message,
+                &media_id_on_error,
+            )
+            .await?;
+            return Ok(Html(html).into_response());
+        }
+    };
+
+    let post_id = if let Some(entry_id) = entry_id {
+        posts::update(&state.pool, entry_id, &parsed.post).await?;
+        entry_id
+    } else {
+        posts::insert(&state.pool, &parsed.post).await?
+    };
+
+    postmeta::set_many(&state.pool, post_id, &parsed.meta).await?;
+    Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
+}
+
 struct ImageEntryParsed {
+    post: PostInput,
+    meta: HashMap<String, String>,
+}
+
+struct CarouselEntryParsed {
     post: PostInput,
     meta: HashMap<String, String>,
 }
@@ -858,6 +1092,54 @@ impl EntryForm {
         meta.insert("margin".to_string(), margin);
 
         Ok(ImageEntryParsed {
+            post: PostInput {
+                placeholder_id,
+                title: alt,
+                content: link_url,
+                excerpt: String::new(),
+                post_status,
+                post_name,
+            },
+            meta,
+        })
+    }
+
+    async fn into_carousel_input(
+        self,
+        pool: &sqlx::SqlitePool,
+        placeholder_id: i64,
+    ) -> Result<CarouselEntryParsed, String> {
+        let media_id = self
+            .media_id
+            .trim()
+            .parse::<i64>()
+            .map_err(|_| "画像を選択してください".to_string())?;
+
+        let attachment = media::find(pool, media_id)
+            .await
+            .map_err(|_| "選択したメディアが見つかりません".to_string())?;
+        if !attachment.is_image() {
+            return Err("画像ファイルを選択してください".to_string());
+        }
+
+        let link_url = self.content.trim().to_string();
+        validate_image_link_url(&link_url)?;
+
+        let alt = self.title.trim().to_string();
+        let alt = if alt.is_empty() {
+            attachment.title.clone()
+        } else {
+            alt
+        };
+
+        let post_status = normalize_status(&self.post_status);
+        let post_name = normalize_slug(&self.post_name, &alt, "carousel");
+
+        let mut meta = HashMap::new();
+        meta.insert("media_id".to_string(), media_id.to_string());
+        // carousel では float / margin は不要（コンテナ全体でサイズ指定）
+
+        Ok(CarouselEntryParsed {
             post: PostInput {
                 placeholder_id,
                 title: alt,

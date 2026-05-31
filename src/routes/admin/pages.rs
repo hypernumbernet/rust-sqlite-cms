@@ -2,6 +2,7 @@ use askama::Template;
 use axum::{
     Form, Router,
     extract::{Path, State},
+    http::StatusCode,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -9,6 +10,7 @@ use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 use crate::models::page::{Page as PageRow, PageInput};
+use crate::page_render;
 use crate::presets;
 use crate::repos::pages;
 use crate::routes::url::{is_reserved_path, normalize_url_path};
@@ -60,6 +62,19 @@ struct PageGalleryTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "admin/pages/preview_error.html")]
+struct PagePreviewErrorTemplate {
+    status_code: u16,
+    status_label: String,
+    summary: String,
+    detail: String,
+    has_page: bool,
+    page_id: String,
+    page_name: String,
+    file_name: String,
+}
+
+#[derive(Template)]
 #[template(path = "admin/pages/form.html")]
 struct PageFormTemplate {
     heading: String,
@@ -84,6 +99,7 @@ pub fn router() -> Router<AppState> {
         .route("/admin/pages/new", get(new_gallery))
         .route("/admin/pages/new/{design}", get(new_form))
         .route("/admin/pages/{id}/edit", get(edit).post(update))
+        .route("/admin/pages/{id}/preview", get(preview))
         .route("/admin/pages/{id}/delete", post(destroy))
 }
 
@@ -255,6 +271,118 @@ async fn update(
     )?;
 
     Ok(Redirect::to("/admin/pages").into_response())
+}
+
+async fn preview(State(state): State<AppState>, Path(id): Path<i64>) -> Response {
+    let page = match pages::find(&state.pool, id).await {
+        Ok(page) => page,
+        Err(err) => return preview_error_response(err, None),
+    };
+
+    match page_render::render_page(&state, &page).await {
+        Ok(html) => wrap_preview_html(html.0, &page).into_response(),
+        Err(err) => preview_error_response(err, Some(&page)),
+    }
+}
+
+fn wrap_preview_html(mut html: String, page: &PageRow) -> Html<String> {
+    let name = if page.name.trim().is_empty() {
+        "（無題）"
+    } else {
+        page.name.as_str()
+    };
+    let unpublished_note = if page.is_published {
+        ""
+    } else {
+        "（未公開 — 公開サイトには表示されません）"
+    };
+
+    let banner = format!(
+        r#"<style id="cms-preview-banner-style">
+.cms-preview-banner {{
+  position: sticky;
+  top: 0;
+  z-index: 9999;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  background: #1d2327;
+  color: #f0f0f1;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  border-bottom: 2px solid #2271b1;
+}}
+.cms-preview-banner strong {{ color: #fff; }}
+.cms-preview-banner a {{ color: #9ec2e6; }}
+.cms-preview-banner .note {{ color: #c3c4c7; }}
+</style>
+<div class="cms-preview-banner" role="status">
+  <span><strong>プレビュー</strong> — {name}{unpublished_note}</span>
+  <span class="note"><a href="/admin/pages">ページ一覧に戻る</a></span>
+</div>"#
+    );
+
+    if let Some(pos) = html.to_lowercase().find("<body") {
+        if let Some(gt) = html[pos..].find('>') {
+            let insert_at = pos + gt + 1;
+            html.insert_str(insert_at, banner.as_str());
+            return Html(html);
+        }
+    }
+
+    html.insert_str(0, banner.as_str());
+    Html(html)
+}
+
+fn preview_error_response(err: AppError, page: Option<&PageRow>) -> Response {
+    let (status, status_label) = match &err {
+        AppError::NotFound => (StatusCode::NOT_FOUND, "Not Found"),
+        AppError::Conflict(_) => (StatusCode::CONFLICT, "Conflict"),
+        _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error"),
+    };
+
+    let summary = err.to_string();
+    let detail = format!("{err:?}");
+
+    let (has_page, page_id, page_name, file_name) = if let Some(page) = page {
+        (
+            true,
+            page.id.to_string(),
+            if page.name.trim().is_empty() {
+                "（無題）".to_string()
+            } else {
+                page.name.clone()
+            },
+            page.file_name.clone().unwrap_or_else(|| "—".to_string()),
+        )
+    } else {
+        (false, String::new(), String::new(), String::new())
+    };
+
+    let template = PagePreviewErrorTemplate {
+        status_code: status.as_u16(),
+        status_label: status_label.to_string(),
+        summary,
+        detail,
+        has_page,
+        page_id,
+        page_name,
+        file_name,
+    };
+
+    match template.render() {
+        Ok(body) => (status, Html(body)).into_response(),
+        Err(render_err) => {
+            tracing::error!(error = %render_err, "preview error template failed");
+            (status, summary_from_app_error(&err)).into_response()
+        }
+    }
+}
+
+fn summary_from_app_error(err: &AppError) -> String {
+    format!("{}\n\n{:?}", err, err)
 }
 
 async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<Redirect> {

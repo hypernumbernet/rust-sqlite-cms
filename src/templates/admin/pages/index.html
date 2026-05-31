@@ -99,6 +99,7 @@
         <td>{{ page.updated_at }}</td>
         <td>
           <div class="ops">
+            <a class="button secondary" href="/admin/pages/{{ page.id }}/preview" target="_blank" rel="noopener">プレビュー</a>
             {% if page.is_published && page.has_url %}
             <a class="button secondary" href="{{ page.url_path }}" target="_blank" rel="noopener">表示</a>
             {% endif %}

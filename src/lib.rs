@@ -3,6 +3,7 @@ pub mod db;
 pub mod error;
 pub mod media;
 pub mod models;
+pub mod page_render;
 pub mod presets;
 pub mod repos;
 pub mod routes;

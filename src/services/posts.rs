@@ -2,7 +2,7 @@
 
 use sqlx::SqlitePool;
 
-use crate::error::{DomainError, DomainResult};
+use crate::error::DomainResult;
 use crate::models::post::{Post, PostInput};
 use crate::repos::posts as posts_repo;
 
@@ -51,16 +51,5 @@ pub async fn update(
 
 /// 削除（status を 'trash' に更新するソフト削除）。
 pub async fn delete(pool: &SqlitePool, id: i64) -> DomainResult<()> {
-    // 簡易実装：直接 SQL で status 更新（将来的に repo メソッド化推奨）
-    let result = sqlx::query(
-        "UPDATE posts SET post_status = 'trash', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? AND post_type = 'post'"
-    )
-    .bind(id)
-    .execute(pool)
-    .await?;
-
-    if result.rows_affected() == 0 {
-        return Err(DomainError::NotFound);
-    }
-    Ok(())
+    posts_repo::delete(pool, id).await.map_err(Into::into)
 }

@@ -146,3 +146,38 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PostInput) -> AppResult<
 
     Ok(())
 }
+
+/// ソフト削除（post_status を 'trash' に更新）。ID指定（API / グローバル用途）。
+pub async fn delete(pool: &SqlitePool, id: i64) -> AppResult<()> {
+    let result = sqlx::query(
+        "UPDATE posts SET post_status = 'trash', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? AND post_type = 'post'"
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+    Ok(())
+}
+
+/// ソフト削除（post_status を 'trash' に更新）。プレースホルダー配下であることを検証。
+pub async fn delete_in_placeholder(
+    pool: &SqlitePool,
+    placeholder_id: i64,
+    id: i64,
+) -> AppResult<()> {
+    let result = sqlx::query(
+        "UPDATE posts SET post_status = 'trash', updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ? AND post_type = 'post' AND placeholder_id = ?"
+    )
+    .bind(id)
+    .bind(placeholder_id)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+    Ok(())
+}

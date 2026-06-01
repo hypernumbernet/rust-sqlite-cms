@@ -23,7 +23,14 @@
         <td>{{ entry.alt }}</td>
         <td><span class="status">{{ entry.status_label }}</span></td>
         <td>{{ entry.updated_at }}</td>
-        <td><a class="button secondary" href="/admin/posts/placeholders/{{ placeholder_id }}/entries/{{ entry.id }}/edit">編集</a></td>
+        <td>
+          <div class="op-actions">
+            <a class="button secondary" href="/admin/posts/placeholders/{{ placeholder_id }}/entries/{{ entry.id }}/edit">編集</a>
+            <form method="post" action="/admin/posts/placeholders/{{ placeholder_id }}/entries/{{ entry.id }}/delete" onsubmit="return confirm('このスライドを削除しますか？');">
+              <button class="button danger" type="submit">削除</button>
+            </form>
+          </div>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

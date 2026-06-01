@@ -250,6 +250,10 @@ pub fn router() -> Router<AppState> {
             "/admin/posts/placeholders/{id}/entries/{entry_id}/edit",
             get(entry_edit).post(entry_update),
         )
+        .route(
+            "/admin/posts/placeholders/{id}/entries/{entry_id}/delete",
+            post(entry_destroy),
+        )
 }
 
 async fn placeholder_index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
@@ -513,6 +517,33 @@ async fn entry_update(
     let input = form.into_input(id);
     posts::update(&state.pool, entry_id, &input).await?;
     Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
+}
+
+async fn entry_destroy(
+    State(state): State<AppState>,
+    Path((id, entry_id)): Path<(i64, i64)>,
+) -> AppResult<Response> {
+    let placeholder = placeholders::find(&state.pool, id).await?;
+    match posts::delete_in_placeholder(&state.pool, id, entry_id).await {
+        Ok(()) => Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response()),
+        Err(AppError::NotFound) => {
+            // 既に削除済み等の場合は一覧に戻す（冪等）
+            Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
+        }
+        Err(AppError::Conflict(message)) => {
+            let html = build_manage_template(
+                &state,
+                &placeholder,
+                "entries",
+                &message,
+                None,
+            )
+            .await?
+            .render()?;
+            Ok(Html(html).into_response())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 async fn placeholder_type_key(state: &AppState, placeholder: &Placeholder) -> AppResult<String> {

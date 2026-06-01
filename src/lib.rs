@@ -1,6 +1,7 @@
 pub mod api;
 pub mod config;
 pub mod db;
+pub mod dev;
 pub mod error;
 pub mod media;
 pub mod models;

@@ -1,0 +1,95 @@
+{% extends "admin/base.html" %}
+
+{% block title %}サンプル{% endblock %}
+{% block nav_samples %}active{% endblock %}
+{% block heading %}サンプルデータ{% endblock %}
+
+{% block content %}
+<style>
+  .danger-zone {
+    border: 2px solid #b32d2e;
+    border-radius: 6px;
+    padding: 20px;
+    background: #fff5f5;
+    margin: 20px 0;
+  }
+  .danger-zone h3 {
+    color: #b32d2e;
+    margin-top: 0;
+  }
+  .warning {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    padding: 12px 16px;
+    border-radius: 4px;
+    color: #856404;
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+  .result-box {
+    background: #e8f5e9;
+    border: 1px solid #81c784;
+    padding: 16px;
+    border-radius: 4px;
+    margin-top: 20px;
+  }
+</style>
+
+<div class="panel">
+  <h2>開発用サンプルデータ</h2>
+  <p>管理画面の動作確認や開発に便利なテストデータを投入できます。将来的には複数のサンプルセットを切り替えて適用できるようになります。</p>
+</div>
+
+<div class="danger-zone">
+  <h3>⚠️ 危険な操作</h3>
+  <div class="warning">
+    <strong>注意：</strong> この操作を実行すると、<strong>現在のデータベースと work/ ディレクトリの中身が完全に削除</strong>されます。
+    公開ページや管理画面で作成したすべてのデータが失われます。
+    <br><br>
+    実行後は <strong>サーバーの再起動（Ctrl+C → cargo run）</strong> を強く推奨します。
+  </div>
+
+  <form method="post" action="/admin/samples" onsubmit="return confirm('本当にすべてのデータを削除して基本テストデータを適用しますか？この操作は元に戻せません。');">
+    <input type="hidden" name="sample" value="basic">
+    <button type="submit" class="button danger" style="background:#b32d2e; color:white; border-color:#b32d2e;">
+      基本テストデータを適用する（全体リセット）
+    </button>
+    <a href="/admin" class="button secondary" style="margin-left: 12px;">キャンセル</a>
+  </form>
+</div>
+
+{% if !message.is_empty() %}
+<div class="success">{{ message }}</div>
+{% endif %}
+
+{% if !error_message.is_empty() %}
+<div class="error">{{ error_message }}</div>
+{% endif %}
+
+{% if let Some(result) = last_result %}
+<div class="result-box">
+  <h3>リセット完了</h3>
+  <p><strong>{{ result.message }}</strong></p>
+  <ul>
+    <li>プレースホルダー数: {{ result.placeholders_count }}</li>
+    <li>投稿数: {{ result.posts_count }}</li>
+    <li>メディア数: {{ result.media_count }}</li>
+  </ul>
+  <p style="color:#b32d2e; font-weight:600;">
+    このページを閉じて、サーバーを再起動してください。
+  </p>
+</div>
+{% endif %}
+
+<div class="panel" style="margin-top: 32px;">
+  <h3>今後追加予定のサンプル</h3>
+  <ul style="color: var(--muted);">
+    <li>最小構成（空の状態）</li>
+    <li>Eコマース風サンプル</li>
+    <li>ブログ特化サンプル</li>
+  </ul>
+  <p style="font-size: 13px; color: var(--muted);">
+    現在は「基本テストデータ」のみ利用可能です。
+  </p>
+</div>
+{% endblock %}

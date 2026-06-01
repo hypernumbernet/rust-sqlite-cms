@@ -15,6 +15,7 @@ use chrono::DateTime;
 pub mod media;
 pub mod pages;
 pub mod posts;
+pub mod samples;
 pub mod settings;
 pub mod widgets;
 
@@ -41,6 +42,7 @@ pub fn router() -> Router<AppState> {
         .merge(widgets::router())
         .merge(media::router())
         .merge(settings::router())
+        .merge(samples::router())
 }
 
 async fn dashboard(State(state): State<AppState>) -> AppResult<impl IntoResponse> {

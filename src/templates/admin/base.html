@@ -73,6 +73,30 @@
       gap: 20px;
       align-items: start;
     }
+    .placeholder-form-layout {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      align-items: stretch;
+    }
+    .placeholder-form-layout > .panel {
+      min-width: 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    @media (min-width: 860px) {
+      .placeholder-form-layout {
+        display: grid;
+        grid-template-columns: minmax(280px, 400px) minmax(0, 1fr);
+        align-items: start;
+      }
+      .placeholder-form-layout > .placeholder-form-inputs {
+        max-width: 400px;
+      }
+      .placeholder-form-layout > .placeholder-form-guide {
+        min-width: 0;
+      }
+    }
     .panel {
       background: #fff;
       border: 1px solid var(--border);

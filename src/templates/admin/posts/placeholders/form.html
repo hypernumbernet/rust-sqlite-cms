@@ -23,21 +23,22 @@
     font-size: 12px;
     line-height: 1.6;
     white-space: pre-wrap;
+    overflow-x: auto;
+    max-width: 100%;
+    word-break: break-word;
+  }
+  .dynamic-config-fields {
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 12px;
+    background: #fafafa;
+    margin-bottom: 8px;
   }
   .delete-form { margin: 18px 0 0; }
 </style>
 
-<form method="post" action="{{ action }}" class="form-layout">
-  <section class="panel">
-    <div class="field">
-      <label>テンプレートでの利用例</label>
-      <p class="example-label">ウィジェットタイプ: <strong>{{ widget_type_label }}</strong>{% if is_edit %} · プレースホルダー名: <strong><code>{{ name }}</code></strong>{% endif %}</p>
-      <pre class="example">{{ template_example }}</pre>
-      <p class="help">{{ template_help|safe }}</p>
-    </div>
-  </section>
-
-  <aside class="panel">
+<form method="post" action="{{ action }}" class="placeholder-form-layout">
+  <section class="panel placeholder-form-inputs">
     <div class="field">
       <label for="name">プレースホルダー名</label>
       <input id="name" name="name" type="text" value="{{ name }}" required pattern="[A-Za-z_][A-Za-z0-9_]*">
@@ -61,12 +62,10 @@
         未入力の項目はウィジェットタイプのデフォルト値が使用されます。
       </p>
 
-      <!-- 動的生成された入力欄がここに入る -->
-      <div id="dynamic-config-fields" style="border: 1px solid var(--border); border-radius: 4px; padding: 12px; background: #fafafa; margin-bottom: 8px;">
+      <div id="dynamic-config-fields" class="dynamic-config-fields">
         <!-- JSで生成 -->
       </div>
 
-      <!-- 実際の送信値（JSで動的フィールドからJSONを構築してセット） -->
       <input type="hidden" id="config" name="config" value="{{ config }}">
 
       <details style="margin-top: 4px;">
@@ -82,7 +81,16 @@
       {% endif %}
       <a class="button secondary" href="/admin/posts">戻る</a>
     </div>
-  </aside>
+  </section>
+
+  <section class="panel placeholder-form-guide">
+    <div class="field">
+      <label>テンプレートでの利用例</label>
+      <p class="example-label">ウィジェットタイプ: <strong>{{ widget_type_label }}</strong>{% if is_edit %} · プレースホルダー名: <strong><code>{{ name }}</code></strong>{% endif %}</p>
+      <pre class="example">{{ template_example }}</pre>
+      <p class="help">{{ template_help|safe }}</p>
+    </div>
+  </section>
 </form>
 
 {% if is_edit %}

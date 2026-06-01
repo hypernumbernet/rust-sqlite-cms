@@ -136,6 +136,8 @@ struct PlaceholderManageTemplate {
     widget_types: Vec<WidgetTypeOption>,
     config: String,
     config_schema: String,
+    template_example: String,
+    template_help: String,
     error_message: String,
 }
 
@@ -1000,6 +1002,7 @@ async fn build_manage_template(
     };
 
     let is_settings_tab = active_tab == "settings";
+    let (template_example, template_help) = widgets::template_usage(&type_key, &name);
 
     Ok(PlaceholderManageTemplate {
         placeholder_id: id,
@@ -1024,6 +1027,8 @@ async fn build_manage_template(
         widget_types,
         config,
         config_schema,
+        template_example,
+        template_help,
         error_message: error_message.to_string(),
     })
 }

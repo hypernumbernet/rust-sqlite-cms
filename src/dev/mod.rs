@@ -4,4 +4,4 @@
 
 pub mod reset;
 
-pub use reset::perform_basic_reset;
+pub use reset::{perform_basic_append, perform_basic_reset};

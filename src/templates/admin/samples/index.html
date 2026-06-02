@@ -26,6 +26,15 @@
     font-size: 14px;
     margin-bottom: 16px;
   }
+  .info-box {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+    padding: 12px 16px;
+    border-radius: 4px;
+    color: #1565c0;
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
   .result-box {
     background: #e8f5e9;
     border: 1px solid #81c784;
@@ -40,6 +49,22 @@
   <p>管理画面の動作確認や開発に便利なテストデータを投入できます。将来的には複数のサンプルセットを切り替えて適用できるようになります。</p>
 </div>
 
+<div class="panel">
+  <h3>基本テストデータを追加</h3>
+  <div class="info-box">
+    既存のデータベースと work/ ディレクトリは<strong>そのまま保持</strong>し、基本テストデータを追加します。
+    プレースホルダー名・投稿スラッグ・メディアファイル名のいずれかが既にある場合は、<strong>追加を中止</strong>します（上書きしません）。
+    サーバーの再起動は不要です。
+  </div>
+  <form method="post" action="/admin/samples" onsubmit="return confirm('基本テストデータを既存データに追加しますか？同名のデータがある場合は追加されません。');">
+    <input type="hidden" name="sample" value="basic">
+    <input type="hidden" name="action" value="append">
+    <button type="submit" class="button primary">
+      基本テストデータを追加する
+    </button>
+  </form>
+</div>
+
 <div class="danger-zone">
   <h3>⚠️ 危険な操作</h3>
   <div class="warning">
@@ -51,6 +76,7 @@
 
   <form method="post" action="/admin/samples" onsubmit="return confirm('本当にすべてのデータを削除して基本テストデータを適用しますか？この操作は元に戻せません。');">
     <input type="hidden" name="sample" value="basic">
+    <input type="hidden" name="action" value="reset">
     <button type="submit" class="button danger" style="background:#b32d2e; color:white; border-color:#b32d2e;">
       基本テストデータを適用する（全体リセット）
     </button>
@@ -68,16 +94,18 @@
 
 {% if let Some(result) = last_result %}
 <div class="result-box">
-  <h3>リセット完了</h3>
+  <h3>{{ result_heading }}</h3>
   <p><strong>{{ result.message }}</strong></p>
   <ul>
     <li>プレースホルダー数: {{ result.placeholders_count }}</li>
     <li>投稿数: {{ result.posts_count }}</li>
     <li>メディア数: {{ result.media_count }}</li>
   </ul>
+  {% if show_restart_notice %}
   <p style="color:#b32d2e; font-weight:600;">
     このページを閉じて、サーバーを再起動してください。
   </p>
+  {% endif %}
 </div>
 {% endif %}
 

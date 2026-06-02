@@ -99,6 +99,15 @@ pub fn type_label(type_key: &str) -> &str {
         .unwrap_or(type_key)
 }
 
+/// ウィジェットタイプの説明文を返す（静的レジストリのみ）。
+pub fn type_description(type_key: &str) -> &str {
+    WIDGET_TYPES
+        .iter()
+        .find(|def| def.key == type_key)
+        .map(|def| def.description)
+        .unwrap_or("")
+}
+
 /// 管理画面向けに、プレースホルダー名を埋め込んだ MiniJinja 利用例と説明文を返す。
 pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String) {
     let name = {
@@ -455,10 +464,18 @@ async fn resolve_placeholder(
             insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
         }
         other => {
-            tracing::warn!(
+            tracing::debug!(
                 widget_type = other,
                 placeholder = %placeholder.name,
-                "unknown widget type"
+                "generic widget type render"
+            );
+            let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+            frag_ctx.insert("config".to_string(), instance_config.clone());
+            let rendered =
+                insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+            ctx.insert(
+                format!("has_{}", placeholder.name),
+                serde_json::Value::Bool(rendered),
             );
         }
     }
@@ -471,12 +488,15 @@ async fn insert_placeholder_html(
     placeholder_name: &str,
     widget_type: &WidgetType,
     frag_ctx: serde_json::Map<String, serde_json::Value>,
-) {
+) -> bool {
     if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
         ctx.insert(
             format!("{}_html", placeholder_name),
             serde_json::Value::String(html),
         );
+        true
+    } else {
+        false
     }
 }
 

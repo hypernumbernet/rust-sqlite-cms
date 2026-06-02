@@ -1,10 +1,43 @@
 use serde::{Deserialize, Serialize};
 
+/// ウィジェットタイプのエクスポート/インポート用パッケージ（format_version 1）。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WidgetPackage {
+    pub format_version: u32,
+    pub type_key: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    pub config: String,
+    pub html_template: String,
+    pub config_schema: String,
+}
+
+/// インポート時の衝突解決モード。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WidgetImportMode {
+    /// 既存行があれば上書き、なければ新規作成。
+    Overwrite,
+    /// 既存行があれば更新しない。
+    Skip,
+}
+
+/// インポート結果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WidgetImportAction {
+    Created,
+    Updated,
+    Skipped,
+}
+
 /// `widget_types` テーブルの行に対応する。
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct WidgetType {
     pub id: i64,
     pub type_key: String,
+    pub label: String,
+    pub description: String,
     pub config: String,
     /// ウィジェットを構成するHTML/MiniJinjaフラグメント（ウィジェット画面で編集）。
     pub html_template: String,

@@ -14,6 +14,7 @@ use crate::models::placeholder::{validate_name, Placeholder, PlaceholderInput};
 use crate::models::post::{Post, PostInput};
 use crate::models::widget::{validate_image_float, validate_image_link_url, validate_image_margin};
 use crate::repos::{media, placeholders, postmeta, posts, widget_types};
+use crate::services;
 use crate::state::AppState;
 use crate::widgets::{self};
 
@@ -1109,7 +1110,7 @@ async fn widget_type_options(
         .into_iter()
         .map(|row| WidgetTypeOption {
             id: row.id,
-            label: widgets::type_label(&row.type_key).to_string(),
+            label: services::widgets::display_label(&row),
             selected: Some(row.id) == selected_id,
         })
         .collect())

@@ -1,12 +1,13 @@
 use axum::{
     extract::{Path, State},
-    routing::{get, patch},
+    routing::{get, patch, post},
     Json, Router,
 };
 use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
-use crate::models::widget::WidgetType;
+use crate::models::widget::{WidgetImportAction, WidgetImportMode, WidgetPackage, WidgetType};
+use crate::repos::widget_types as widget_types_repo;
 use crate::services;
 use crate::state::AppState;
 
@@ -18,15 +19,35 @@ struct UpdateWidgetConfigRequest {
     html_template: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ImportWidgetRequest {
+    package: WidgetPackage,
+    #[serde(default = "default_import_mode")]
+    mode: String,
+}
+
+fn default_import_mode() -> String {
+    "overwrite".to_string()
+}
+
 #[derive(serde::Serialize)]
 struct WidgetListResponse {
     items: Vec<WidgetType>,
 }
 
+#[derive(serde::Serialize)]
+struct ImportWidgetResponse {
+    type_key: String,
+    action: String,
+    message: String,
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/widgets", get(list))
-        .route("/widgets/{type_key}", patch(update_config))
+        .route("/widgets/import", post(import_widget))
+        .route("/widgets/{type_key}/export", get(export_widget))
+        .route("/widgets/{type_key}", patch(update_config).delete(destroy))
 }
 
 async fn list(State(state): State<AppState>) -> ApiResult<Json<WidgetListResponse>> {
@@ -34,37 +55,74 @@ async fn list(State(state): State<AppState>) -> ApiResult<Json<WidgetListRespons
     Ok(Json(WidgetListResponse { items }))
 }
 
+async fn export_widget(
+    State(state): State<AppState>,
+    Path(type_key): Path<String>,
+) -> ApiResult<Json<WidgetPackage>> {
+    let package = services::widgets::export_package(&state.pool, &type_key).await?;
+    Ok(Json(package))
+}
+
+async fn import_widget(
+    State(state): State<AppState>,
+    Json(payload): Json<ImportWidgetRequest>,
+) -> ApiResult<Json<ImportWidgetResponse>> {
+    let mode = parse_import_mode(&payload.mode)?;
+    let (action, message) =
+        services::widgets::import_package(&state.pool, &payload.package, mode).await?;
+
+    let type_key = payload.package.type_key.trim().to_string();
+    Ok(Json(ImportWidgetResponse {
+        type_key,
+        action: import_action_str(action).to_string(),
+        message,
+    }))
+}
+
+fn parse_import_mode(mode: &str) -> ApiResult<WidgetImportMode> {
+    match mode.trim() {
+        "overwrite" => Ok(WidgetImportMode::Overwrite),
+        "skip" => Ok(WidgetImportMode::Skip),
+        other => Err(ApiError::Validation(format!(
+            "mode は overwrite または skip を指定してください（got: {other}）"
+        ))),
+    }
+}
+
+fn import_action_str(action: WidgetImportAction) -> &'static str {
+    match action {
+        WidgetImportAction::Created => "created",
+        WidgetImportAction::Updated => "updated",
+        WidgetImportAction::Skipped => "skipped",
+    }
+}
+
+async fn destroy(
+    State(state): State<AppState>,
+    Path(type_key): Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    services::widgets::delete(&state.pool, &type_key).await?;
+    Ok(Json(serde_json::json!({
+        "type_key": type_key,
+        "action": "deleted"
+    })))
+}
+
 async fn update_config(
     State(state): State<AppState>,
     Path(type_key): Path<String>,
     Json(payload): Json<UpdateWidgetConfigRequest>,
 ) -> ApiResult<Json<WidgetType>> {
-    // 存在確認
-    let _ = services::widgets::list_all(&state.pool).await?; // 簡易
-    // より良いのは find_by_key をサービスに追加することだが、現時点は repo 直接回避のため list で代用
+    let current = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
 
-    // html_template が省略された場合は既存値を維持（後方互換）
     let current_html = if let Some(h) = &payload.html_template {
         h.clone()
     } else {
-        // 簡易: list から探す（本当は find_by_key を使うべき）
-        let items = services::widgets::list_all(&state.pool).await?;
-        items
-            .into_iter()
-            .find(|w| w.type_key == type_key)
-            .map(|w| w.html_template)
-            .unwrap_or_default()
+        current.html_template
     };
 
     services::widgets::update_config(&state.pool, &type_key, &payload.config, &current_html).await?;
 
-    // 更新後再取得
-    let items = services::widgets::list_all(&state.pool).await?;
-    let updated = items
-        .into_iter()
-        .find(|w| w.type_key == type_key)
-        .ok_or(ApiError::NotFound)?;
-
+    let updated = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
     Ok(Json(updated))
 }
-

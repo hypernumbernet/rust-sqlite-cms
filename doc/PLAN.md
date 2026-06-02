@@ -13,7 +13,7 @@ Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェッ
 - 管理ダッシュボード: `/admin`（`options` 由来のサイト名・説明を表示）
 - お知らせ管理: `/admin/posts` でプレースホルダー（テンプレート変数名）の定義と、各プレースホルダー配下のエントリ CRUD（投稿タブ + 設定タブの統合管理画面）
 - ページ管理: `/admin/pages` でサイトページ CRUD。プリセット（ランディング/シンプルページ/お知らせ一覧など）からの作成、MiniJinja テンプレート vs 静的 HTML の選択、URL パス割り当て、公開/非公開、トップページ特別扱い
-- ウィジェット: `/admin/widgets` で HTML 構成（`html_template`）とインスタンス設定スキーマ（`config_schema`）を編集・保存。完成したウィジェットタイプは DB に保持され、将来はエクスポート/インポートによる配布・共有を想定。各ページへの配置はプレースホルダー（`/admin/posts`）でインスタンスを作り、テンプレートに `{{ 名前_html | safe }}` を書くだけ
+- ウィジェット: `/admin/widgets` で HTML 構成（`html_template`）とインスタンス設定スキーマ（`config_schema`）を編集・保存。JSON パッケージのエクスポート/インポートで他サイトとタイプ定義を共有可能。各ページへの配置はプレースホルダー（`/admin/posts`）でインスタンスを作り、テンプレートに `{{ 名前_html | safe }}` を書くだけ
 - サイト設定: `/admin/settings` でサイト名・説明・サイト URL（`options` + `work/config.toml` の `[site]`）
 - 作業ディレクトリ: `work/templates/`（MiniJinja・autoreload 対応）と `work/pages/`（静的 HTML）をファイルベースで管理
 
@@ -203,9 +203,9 @@ rust-sqlite-cms/
 |------|------|
 | ウィジェットタイプの編集と DB への保存 | ✅ `/admin/widgets` で `html_template` / `config_schema` を更新 |
 | REST API による参照・更新 | ✅ `/api/v1/widgets`（一覧・`config` / `html_template` の PATCH） |
-| パッケージのエクスポート / インポート、他サイト・他ユーザーへの配布 | ⏳ 未実装（設計上の目標。JSON やアーカイブでの共有を Phase 2 以降で検討） |
+| パッケージのエクスポート / インポート、他サイト・他ユーザーへの配布 | ✅ JSON パッケージ（`format_version: 1`）。管理画面（一覧インポート・各行/編集画面エクスポート）と `/api/v1/widgets/{type_key}/export`・`POST /api/v1/widgets/import` |
 
-完成したウィジェット（タイプ定義 + 必要なら既定スキーマ）は、まず自サイトの `widget_types` として保持します。将来的にはエクスポートしてテンプレート集やコミュニティと共有し、別インストールへインポートして同じ見た目を再現できるようにする想定です。
+完成したウィジェット（タイプ定義 + 必要なら既定スキーマ）は、まず自サイトの `widget_types` として保持します。`WidgetPackage`（`type_key`, `label`, `description`, `config`, `html_template`, `config_schema`）を JSON でエクスポートし、別インストールへインポートして同じ HTML 構成を再現できます。カスタム `type_key` の新規登録にも対応（汎用レンダリングは `config` + `html_template`）。
 
 ### データの流れ（公開時）
 
@@ -238,7 +238,7 @@ flowchart LR
 | サイト設定（key-value） | `options` テーブル | Phase 1 | ✅ |
 | ウィジェット（HTML 構成・型定義） | `widget_types`（`html_template`, `config_schema`, `config`） | Phase 1 | ✅（/admin/widgets） |
 | ウィジェットインスタンス（ページごとの設定・配置） | `placeholders.config` + テンプレートへの `{{ *_html }}` | Phase 1 | ✅（/admin/posts + `/admin/pages` テンプレート編集） |
-| ウィジェットのエクスポート / 配布・共有 | （設計中: パッケージ形式） | Phase 2 | ⏳ 未着手 |
+| ウィジェットのエクスポート / 配布・共有 | `WidgetPackage` JSON | Phase 2 | ✅ |
 | ユーザー・ロール | `users` + ロール + capabilities | 最終 | 未着手（スキーマ未導入） |
 | カテゴリ・タグ | `terms` + `term_taxonomy` + `term_relationships` | Phase 2 | 未着手（スキーマ未導入） |
 | メディアライブラリ | DB メタデータ + `uploads/` ファイル | Phase 2 | 未着手（config のみ） |
@@ -326,6 +326,8 @@ Capability の例: `edit_posts`, `publish_posts`, `edit_others_posts`, `manage_o
 | GET, POST | `/admin/pages` | ページ一覧・作成（プリセット選択）・編集・削除（テンプレートへのウィジェット配置） | ✅ |
 | GET | `/admin/pages/new/{design}` | プリセット選択後の作成フォーム | ✅ |
 | GET, POST | `/admin/widgets` | ウィジェットタイプ一覧・HTML 構成（`html_template`）と `config_schema` の編集 | ✅ |
+| GET | `/admin/widgets/{type_key}/export` | ウィジェットタイプの JSON エクスポート | ✅ |
+| POST | `/admin/widgets/import` | JSON パッケージのインポート（上書き/スキップ） | ✅ |
 | GET, POST | `/admin/login` | ログイン（最終フェーズで有効化予定） | ⏳ |
 | GET, POST | `/admin/settings` | サイト設定（blogname / blogdescription / siteurl） | ✅ |
 | - | `/admin/users` など | ナビゲーション上は存在するが未実装（404 またはスタブ） | ⏳ |
@@ -386,13 +388,13 @@ flowchart TB
 1. ユーザー認証・ログイン（`tower-sessions` + argon2、パスワードハッシュ、セッション管理、`/admin/login`）
 2. 管理画面への認証ミドルウェア適用（未ログイン時はログインへ誘導）
 3. 画像カルーセルウィジェット（画像・リンクアップロード対応）の実装 — Phase 2前倒し・目玉機能
-4. ウィジェットのエクスポート / インポート（他サイト・他ユーザーとの配布・共有）
+4. ~~ウィジェットのエクスポート / インポート~~（完了）
 5. メディアライブラリ（アップロード UI + `uploads/` 管理 + ページ/投稿への添付）
 6. その他 Phase 2 項目（タグ・カテゴリ、RSS など）
 
 ### Phase 2
 
-- ウィジェットのエクスポート / インポート（完成したウィジェットタイプのパッケージ化と共有）
+- ~~ウィジェットのエクスポート / インポート~~（完了: `WidgetPackage` JSON）
 - 画像カルーセルウィジェット（画像・リンクアップロード対応） — 目玉機能として前倒し予定
 - カテゴリ・タグ
 - メディアライブラリ（アップロード・添付）

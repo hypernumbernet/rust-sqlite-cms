@@ -33,6 +33,7 @@
     border-radius: 3px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
+  .delete-form { margin: 18px 0 0; }
 </style>
 
 <form method="post" action="{{ action }}">
@@ -88,6 +89,7 @@
 
     <div class="actions" style="margin-top: 20px;">
       <button class="button" type="submit">更新する</button>
+      <a class="button secondary" href="{{ export_url }}">JSON をダウンロード</a>
       <a class="button secondary" href="/admin/widgets">戻る</a>
     </div>
   </div>
@@ -96,4 +98,8 @@
 {% if !error_message.is_empty() %}
 <div class="notice error" style="margin-top:16px">{{ error_message }}</div>
 {% endif %}
+
+<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('ウィジェット「{{ type_label }}」を削除しますか？\nプレースホルダーが紐付いている場合は削除できません。');">
+  <button class="button danger" type="submit">削除する</button>
+</form>
 {% endblock %}

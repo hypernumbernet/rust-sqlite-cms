@@ -6,7 +6,7 @@ use crate::models::widget::{WidgetType, WidgetTypeInput};
 /// 全ウィジェットタイプを type_key 順で取得する。
 pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<WidgetType>> {
     Ok(sqlx::query_as::<_, WidgetType>(
-        "SELECT id, type_key, config, html_template, config_schema, updated_at
+        "SELECT id, type_key, label, description, config, html_template, config_schema, updated_at
          FROM widget_types
          ORDER BY type_key ASC, id ASC",
     )
@@ -17,7 +17,7 @@ pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<WidgetType>> {
 /// type_key でウィジェットタイプを取得する。存在しなければ `NotFound`。
 pub async fn find_by_key(pool: &SqlitePool, type_key: &str) -> AppResult<WidgetType> {
     sqlx::query_as::<_, WidgetType>(
-        "SELECT id, type_key, config, html_template, config_schema, updated_at
+        "SELECT id, type_key, label, description, config, html_template, config_schema, updated_at
          FROM widget_types
          WHERE type_key = ?",
     )
@@ -27,10 +27,20 @@ pub async fn find_by_key(pool: &SqlitePool, type_key: &str) -> AppResult<WidgetT
     .ok_or(AppError::NotFound)
 }
 
+/// type_key が存在するか。
+pub async fn exists_by_key(pool: &SqlitePool, type_key: &str) -> AppResult<bool> {
+    let row: Option<(i64,)> =
+        sqlx::query_as("SELECT 1 FROM widget_types WHERE type_key = ? LIMIT 1")
+            .bind(type_key)
+            .fetch_optional(pool)
+            .await?;
+    Ok(row.is_some())
+}
+
 /// ID でウィジェットタイプを取得する。存在しなければ `NotFound`。
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<WidgetType> {
     sqlx::query_as::<_, WidgetType>(
-        "SELECT id, type_key, config, html_template, config_schema, updated_at
+        "SELECT id, type_key, label, description, config, html_template, config_schema, updated_at
          FROM widget_types
          WHERE id = ?",
     )
@@ -38,6 +48,38 @@ pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<WidgetType> {
     .fetch_optional(pool)
     .await?
     .ok_or(AppError::NotFound)
+}
+
+/// パッケージ内容でウィジェットタイプを挿入または更新する。
+pub async fn upsert_package(
+    pool: &SqlitePool,
+    type_key: &str,
+    label: &str,
+    description: &str,
+    config: &str,
+    html_template: &str,
+    config_schema: &str,
+) -> AppResult<()> {
+    sqlx::query(
+        "INSERT INTO widget_types (type_key, label, description, config, html_template, config_schema)
+         VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT(type_key) DO UPDATE SET
+             label = excluded.label,
+             description = excluded.description,
+             config = excluded.config,
+             html_template = excluded.html_template,
+             config_schema = excluded.config_schema,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')",
+    )
+    .bind(type_key)
+    .bind(label)
+    .bind(description)
+    .bind(config)
+    .bind(html_template)
+    .bind(config_schema)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 /// ウィジェットタイプの設定（config + html_template）を更新する。
@@ -119,6 +161,34 @@ pub async fn update_with_schema(
     .bind(old_type_key)
     .execute(pool)
     .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+
+    Ok(())
+}
+
+/// このウィジェットタイプを参照するプレースホルダー件数。
+pub async fn count_placeholder_references(pool: &SqlitePool, type_key: &str) -> AppResult<i64> {
+    let count: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*)
+         FROM placeholders p
+         INNER JOIN widget_types w ON p.widget_type_id = w.id
+         WHERE w.type_key = ?",
+    )
+    .bind(type_key)
+    .fetch_one(pool)
+    .await?;
+    Ok(count.0)
+}
+
+/// type_key でウィジェットタイプを削除する。
+pub async fn delete_by_type_key(pool: &SqlitePool, type_key: &str) -> AppResult<()> {
+    let result = sqlx::query("DELETE FROM widget_types WHERE type_key = ?")
+        .bind(type_key)
+        .execute(pool)
+        .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);

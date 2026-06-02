@@ -14,6 +14,8 @@ use crate::repos::widget_types as widget_types_repo;
 use crate::services;
 use crate::state::AppState;
 
+use super::{auth::AuthUser, layout};
+
 #[derive(Debug, Deserialize)]
 struct WidgetTypeForm {
     #[serde(default)]
@@ -43,6 +45,7 @@ struct WidgetTypeListItem {
 #[derive(Template)]
 #[template(path = "admin/widgets/index.html")]
 struct WidgetIndexTemplate {
+    user_display_name: String,
     widget_types: Vec<WidgetTypeListItem>,
     success_message: String,
     error_message: String,
@@ -52,6 +55,7 @@ struct WidgetIndexTemplate {
 #[derive(Template)]
 #[template(path = "admin/widgets/form_edit.html")]
 struct WidgetEditFormTemplate {
+    user_display_name: String,
     heading: String,
     action: String,
     delete_action: String,
@@ -74,6 +78,7 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn index(
+    auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<WidgetIndexQuery>,
 ) -> AppResult<impl IntoResponse> {
@@ -83,6 +88,7 @@ async fn index(
         .map(WidgetTypeListItem::from)
         .collect::<Vec<_>>();
     let html = WidgetIndexTemplate {
+        user_display_name: layout::user_display_name(&auth),
         widget_types,
         success_message: query.success_message,
         error_message: query.error_message,
@@ -182,16 +188,18 @@ fn redirect_index_with_error(message: &str) -> Response {
 }
 
 async fn edit(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(type_key): Path<String>,
 ) -> AppResult<impl IntoResponse> {
     let widget_type = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
-    let html = render_widget_edit_form(&widget_type, "")?;
+    let html = render_widget_edit_form(&auth, &widget_type, "")?;
 
     Ok(Html(html))
 }
 
 async fn update(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(old_type_key): Path<String>,
     Form(form): Form<WidgetTypeForm>,
@@ -217,7 +225,7 @@ async fn update(
     )
     .await
     {
-        let html_page = render_widget_edit_form(&widget_type, &message.to_string())?;
+        let html_page = render_widget_edit_form(&auth, &widget_type, &message.to_string())?;
         return Ok(Html(html_page).into_response());
     }
 
@@ -239,11 +247,16 @@ async fn destroy(
     }
 }
 
-fn render_widget_edit_form(widget_type: &WidgetType, error_message: &str) -> AppResult<String> {
+fn render_widget_edit_form(
+    auth: &AuthUser,
+    widget_type: &WidgetType,
+    error_message: &str,
+) -> AppResult<String> {
     let label = services::widgets::display_label(widget_type);
     let description = services::widgets::display_description(widget_type);
 
     let template = WidgetEditFormTemplate {
+        user_display_name: layout::user_display_name(auth),
         heading: format!("{} を編集", label),
         action: format!("/admin/widgets/{}/edit", widget_type.type_key),
         delete_action: format!("/admin/widgets/{}/delete", widget_type.type_key),

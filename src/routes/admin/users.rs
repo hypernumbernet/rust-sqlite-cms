@@ -13,6 +13,8 @@ use crate::repos::users as users_repo;
 use crate::services::users::{self, CreateUserParams, UpdateUserParams};
 use crate::state::AppState;
 
+use super::{auth::AuthUser, layout};
+
 #[derive(Debug, Deserialize, Default)]
 struct UserForm {
     #[serde(default)]
@@ -53,6 +55,7 @@ impl UserListItem {
 #[derive(Template)]
 #[template(path = "admin/users/index.html")]
 struct UserIndexTemplate {
+    user_display_name: String,
     users: Vec<UserListItem>,
     has_users: bool,
     error_message: String,
@@ -61,6 +64,7 @@ struct UserIndexTemplate {
 #[derive(Template)]
 #[template(path = "admin/users/form.html")]
 struct UserFormTemplate {
+    user_display_name: String,
     heading: String,
     action: String,
     submit_label: String,
@@ -81,13 +85,14 @@ pub fn router() -> Router<AppState> {
         .route("/admin/users/{id}/delete", post(destroy))
 }
 
-async fn index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
-    let html = render_index(&state, "").await?;
+async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+    let html = render_index(&auth, &state, "").await?;
     Ok(Html(html))
 }
 
-async fn new_form() -> AppResult<impl IntoResponse> {
+async fn new_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
     let html = UserFormTemplate {
+        user_display_name: layout::user_display_name(&auth),
         heading: "ユーザーを追加".to_string(),
         action: "/admin/users/new".to_string(),
         submit_label: "追加する".to_string(),
@@ -104,6 +109,7 @@ async fn new_form() -> AppResult<impl IntoResponse> {
 }
 
 async fn create(
+    auth: AuthUser,
     State(state): State<AppState>,
     Form(form): Form<UserForm>,
 ) -> AppResult<Response> {
@@ -121,6 +127,7 @@ async fn create(
         Err(err) => {
             let message = domain_error_message(&err);
             let html = UserFormTemplate {
+                user_display_name: layout::user_display_name(&auth),
                 heading: "ユーザーを追加".to_string(),
                 action: "/admin/users/new".to_string(),
                 submit_label: "追加する".to_string(),
@@ -139,15 +146,17 @@ async fn create(
 }
 
 async fn edit_form(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<impl IntoResponse> {
     let user = users_repo::find(&state.pool, id).await?;
-    let html = user_form_template(&user, "")?;
+    let html = user_form_template(&auth, &user, "")?;
     Ok(Html(html))
 }
 
 async fn update(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Form(form): Form<UserForm>,
@@ -170,13 +179,14 @@ async fn update(
             let message = domain_error_message(&err);
             let mut display_user = user;
             display_user.display_name = form.display_name;
-            let html = user_form_template(&display_user, &message)?;
+            let html = user_form_template(&auth, &display_user, &message)?;
             Ok(Html(html).into_response())
         }
     }
 }
 
 async fn destroy(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Response> {
@@ -185,13 +195,13 @@ async fn destroy(
     match users::delete(&state.pool, &user).await {
         Ok(()) => Ok(Redirect::to("/admin/users").into_response()),
         Err(err) => {
-            let html = render_index(&state, &domain_error_message(&err)).await?;
+            let html = render_index(&auth, &state, &domain_error_message(&err)).await?;
             Ok(Html(html).into_response())
         }
     }
 }
 
-async fn render_index(state: &AppState, error_message: &str) -> AppResult<String> {
+async fn render_index(auth: &AuthUser, state: &AppState, error_message: &str) -> AppResult<String> {
     let users = users_repo::list_all(&state.pool)
         .await?
         .into_iter()
@@ -203,6 +213,7 @@ async fn render_index(state: &AppState, error_message: &str) -> AppResult<String
     let has_users = !users.is_empty();
 
     Ok(UserIndexTemplate {
+        user_display_name: layout::user_display_name(auth),
         users,
         has_users,
         error_message: error_message.to_string(),
@@ -210,8 +221,9 @@ async fn render_index(state: &AppState, error_message: &str) -> AppResult<String
     .render()?)
 }
 
-fn user_form_template(user: &User, error_message: &str) -> AppResult<String> {
+fn user_form_template(auth: &AuthUser, user: &User, error_message: &str) -> AppResult<String> {
     Ok(UserFormTemplate {
+        user_display_name: layout::user_display_name(auth),
         heading: "ユーザーを編集".to_string(),
         action: format!("/admin/users/{}/edit", user.id),
         submit_label: "変更を保存".to_string(),

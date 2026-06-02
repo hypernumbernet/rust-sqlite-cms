@@ -12,6 +12,8 @@ use crate::models::media::MediaInput;
 use crate::repos::media as media_repo;
 use crate::state::AppState;
 
+use super::{auth::AuthUser, layout};
+
 #[derive(Debug, Clone)]
 struct MediaListItem {
     id: i64,
@@ -26,6 +28,7 @@ struct MediaListItem {
 #[derive(Template)]
 #[template(path = "admin/media/index.html")]
 struct MediaIndexTemplate {
+    user_display_name: String,
     media_items: Vec<MediaListItem>,
     has_media: bool,
     error_message: String,
@@ -39,12 +42,13 @@ pub fn router() -> Router<AppState> {
         .route("/admin/media/{id}/delete", post(delete))
 }
 
-async fn index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
-    let html = render_index(&state, "", "").await?;
+async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+    let html = render_index(&auth, &state, "", "").await?;
     Ok(Html(html))
 }
 
 async fn upload(
+    auth: AuthUser,
     State(state): State<AppState>,
     mut multipart: Multipart,
 ) -> AppResult<Response> {
@@ -71,14 +75,14 @@ async fn upload(
         return match process_upload(&state, uploads_root, &original_name, &data).await {
             Ok(()) => Ok(Redirect::to("/admin/media").into_response()),
             Err(AppError::Conflict(message)) => {
-                let html = render_index(&state, &message, "").await?;
+                let html = render_index(&auth, &state, &message, "").await?;
                 Ok(Html(html).into_response())
             }
             Err(err) => Err(err),
         };
     }
 
-    let html = render_index(&state, "ファイルが選択されていません", "").await?;
+    let html = render_index(&auth, &state, "ファイルが選択されていません", "").await?;
     Ok(Html(html).into_response())
 }
 
@@ -118,6 +122,7 @@ async fn process_upload(
 }
 
 async fn render_index(
+    auth: &AuthUser,
     state: &AppState,
     error_message: &str,
     success_message: &str,
@@ -138,6 +143,7 @@ async fn render_index(
     let has_media = !media_items.is_empty();
 
     Ok(MediaIndexTemplate {
+        user_display_name: layout::user_display_name(auth),
         media_items,
         has_media,
         error_message: error_message.to_string(),

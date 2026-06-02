@@ -18,6 +18,8 @@ use crate::services;
 use crate::state::AppState;
 use crate::widgets::{self};
 
+use super::{auth::AuthUser, layout};
+
 #[derive(Debug, Deserialize)]
 struct PlaceholderForm {
     name: String,
@@ -97,6 +99,7 @@ struct TrashListItem {
 #[derive(Template)]
 #[template(path = "admin/posts/trash/index.html")]
 struct TrashIndexTemplate {
+    user_display_name: String,
     items: Vec<TrashListItem>,
     has_items: bool,
 }
@@ -104,6 +107,7 @@ struct TrashIndexTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/placeholders/index.html")]
 struct PlaceholderIndexTemplate {
+    user_display_name: String,
     placeholders: Vec<PlaceholderListItem>,
     has_placeholders: bool,
 }
@@ -111,6 +115,7 @@ struct PlaceholderIndexTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/placeholders/form.html")]
 struct PlaceholderFormTemplate {
+    user_display_name: String,
     heading: String,
     action: String,
     submit_label: String,
@@ -132,6 +137,7 @@ struct PlaceholderFormTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/placeholders/manage.html")]
 struct PlaceholderManageTemplate {
+    user_display_name: String,
     placeholder_id: i64,
     placeholder_name: String,
     type_key: String,
@@ -162,6 +168,7 @@ struct PlaceholderManageTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/entries/form.html")]
 struct EntryFormTemplate {
+    user_display_name: String,
     heading: String,
     action: String,
     submit_label: String,
@@ -198,6 +205,7 @@ struct MediaFormItem {
 #[derive(Template)]
 #[template(path = "admin/posts/entries/form_image.html")]
 struct ImageEntryFormTemplate {
+    user_display_name: String,
     heading: String,
     action: String,
     submit_label: String,
@@ -229,6 +237,7 @@ struct CarouselEntryListItem {
 #[derive(Template)]
 #[template(path = "admin/posts/entries/form_carousel.html")]
 struct CarouselEntryFormTemplate {
+    user_display_name: String,
     heading: String,
     action: String,
     submit_label: String,
@@ -282,27 +291,31 @@ pub fn router() -> Router<AppState> {
         )
 }
 
-async fn placeholder_index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+async fn placeholder_index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let type_map = widget_type_map(&state).await?;
     let placeholders = placeholders::list_all(&state.pool)
         .await?
         .into_iter()
         .map(|p| PlaceholderListItem::from_placeholder(p, &type_map))
         .collect::<Vec<_>>();
+    let has_placeholders = !placeholders.is_empty();
     let html = PlaceholderIndexTemplate {
-        has_placeholders: !placeholders.is_empty(),
+        user_display_name: layout::user_display_name(&auth),
         placeholders,
+        has_placeholders,
     }
     .render()?;
 
     Ok(Html(html))
 }
 
-async fn trash_index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+async fn trash_index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let items = build_trash_list(&state).await?;
+    let has_items = !items.is_empty();
     let html = TrashIndexTemplate {
-        has_items: !items.is_empty(),
+        user_display_name: layout::user_display_name(&auth),
         items,
+        has_items,
     }
     .render()?;
 
@@ -362,8 +375,9 @@ async fn build_trash_list(state: &AppState) -> AppResult<Vec<TrashListItem>> {
         .collect())
 }
 
-async fn placeholder_new(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+async fn placeholder_new(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let html = build_placeholder_form(
+        &auth,
         &state,
         "プレースホルダーを追加",
         "/admin/posts/placeholders/new",
@@ -383,6 +397,7 @@ async fn placeholder_new(State(state): State<AppState>) -> AppResult<impl IntoRe
 }
 
 async fn placeholder_create(
+    auth: AuthUser,
     State(state): State<AppState>,
     Form(form): Form<PlaceholderForm>,
 ) -> AppResult<Response> {
@@ -391,7 +406,8 @@ async fn placeholder_create(
         Err(message) => {
             let widget_type_id = form.widget_type_id.trim().parse::<i64>().ok();
             let html = build_placeholder_form(
-                &state,
+        &auth,
+        &state,
                 "プレースホルダーを追加",
                 "/admin/posts/placeholders/new",
                 "追加する",
@@ -412,7 +428,8 @@ async fn placeholder_create(
     if let Err(err) = placeholders::insert(&state.pool, &input).await {
         if let AppError::Conflict(message) = err {
             let html = build_placeholder_form(
-                &state,
+        &auth,
+        &state,
                 "プレースホルダーを追加",
                 "/admin/posts/placeholders/new",
                 "追加する",
@@ -439,6 +456,7 @@ async fn placeholder_edit(Path(id): Path<i64>) -> Redirect {
 }
 
 async fn placeholder_update(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Form(form): Form<PlaceholderForm>,
@@ -449,7 +467,8 @@ async fn placeholder_update(
         Err(message) => {
             let widget_type_id = form.widget_type_id.trim().parse::<i64>().ok();
             let html = build_manage_template(
-                &state,
+        &auth,
+        &state,
                 &placeholder,
                 "settings",
                 &message,
@@ -468,7 +487,8 @@ async fn placeholder_update(
     if let Err(err) = placeholders::update(&state.pool, id, &input).await {
         if let AppError::Conflict(message) = err {
             let html = build_manage_template(
-                &state,
+        &auth,
+        &state,
                 &placeholder,
                 "settings",
                 &message,
@@ -485,6 +505,7 @@ async fn placeholder_update(
 }
 
 async fn placeholder_destroy(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Response> {
@@ -493,7 +514,8 @@ async fn placeholder_destroy(
         Err(AppError::Conflict(message)) => {
             let placeholder = placeholders::find(&state.pool, id).await?;
             let html = build_manage_template(
-                &state,
+        &auth,
+        &state,
                 &placeholder,
                 "settings",
                 &message,
@@ -508,6 +530,7 @@ async fn placeholder_destroy(
 }
 
 async fn placeholder_manage(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Query(query): Query<ManageQuery>,
@@ -518,13 +541,14 @@ async fn placeholder_manage(
     } else {
         "entries"
     };
-    let html = build_manage_template(&state, &placeholder, active_tab, "", None)
+    let html = build_manage_template(&auth, &state, &placeholder, active_tab, "", None)
         .await?
         .render()?;
     Ok(Html(html))
 }
 
 async fn entry_new(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<impl IntoResponse> {
@@ -532,20 +556,21 @@ async fn entry_new(
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
-        let html = image_entry_form_template(&state, &placeholder, None, "", "").await?;
+        let html = image_entry_form_template(&auth, &state, &placeholder, None, "", "").await?;
         return Ok(Html(html));
     }
 
     if type_key == "carousel" {
-        let html = carousel_entry_form_template(&state, &placeholder, None, "", "").await?;
+        let html = carousel_entry_form_template(&auth, &state, &placeholder, None, "", "").await?;
         return Ok(Html(html));
     }
 
-    let html = EntryFormTemplate::new(&placeholder).render()?;
+    let html = EntryFormTemplate::new(layout::user_display_name(&auth), &placeholder).render()?;
     Ok(Html(html))
 }
 
 async fn entry_create(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Form(form): Form<EntryForm>,
@@ -554,11 +579,11 @@ async fn entry_create(
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
-        return image_entry_save(&state, &placeholder, None, form).await;
+        return image_entry_save(&auth, &state, &placeholder, None, form).await;
     }
 
     if type_key == "carousel" {
-        return carousel_entry_save(&state, &placeholder, None, form).await;
+        return carousel_entry_save(&auth, &state, &placeholder, None, form).await;
     }
 
     let input = form.into_input(id);
@@ -567,6 +592,7 @@ async fn entry_create(
 }
 
 async fn entry_edit(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path((id, entry_id)): Path<(i64, i64)>,
 ) -> AppResult<impl IntoResponse> {
@@ -575,20 +601,21 @@ async fn entry_edit(
     let entry = posts::find_in_placeholder(&state.pool, id, entry_id).await?;
 
     if type_key == "image" {
-        let html = image_entry_form_template(&state, &placeholder, Some(&entry), "", "").await?;
+        let html = image_entry_form_template(&auth, &state, &placeholder, Some(&entry), "", "").await?;
         return Ok(Html(html));
     }
 
     if type_key == "carousel" {
-        let html = carousel_entry_form_template(&state, &placeholder, Some(&entry), "", "").await?;
+        let html = carousel_entry_form_template(&auth, &state, &placeholder, Some(&entry), "", "").await?;
         return Ok(Html(html));
     }
 
-    let html = EntryFormTemplate::edit(&placeholder, entry).render()?;
+    let html = EntryFormTemplate::edit(layout::user_display_name(&auth), &placeholder, entry).render()?;
     Ok(Html(html))
 }
 
 async fn entry_update(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path((id, entry_id)): Path<(i64, i64)>,
     Form(form): Form<EntryForm>,
@@ -597,11 +624,11 @@ async fn entry_update(
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
-        return image_entry_save(&state, &placeholder, Some(entry_id), form).await;
+        return image_entry_save(&auth, &state, &placeholder, Some(entry_id), form).await;
     }
 
     if type_key == "carousel" {
-        return carousel_entry_save(&state, &placeholder, Some(entry_id), form).await;
+        return carousel_entry_save(&auth, &state, &placeholder, Some(entry_id), form).await;
     }
 
     let input = form.into_input(id);
@@ -610,6 +637,7 @@ async fn entry_update(
 }
 
 async fn entry_destroy(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path((id, entry_id)): Path<(i64, i64)>,
 ) -> AppResult<Response> {
@@ -622,7 +650,8 @@ async fn entry_destroy(
         }
         Err(AppError::Conflict(message)) => {
             let html = build_manage_template(
-                &state,
+        &auth,
+        &state,
                 &placeholder,
                 "entries",
                 &message,
@@ -742,6 +771,7 @@ async fn build_carousel_entry_list(state: &AppState, placeholder_id: i64) -> App
 }
 
 async fn image_entry_form_template(
+    auth: &AuthUser,
     state: &AppState,
     placeholder: &Placeholder,
     entry: Option<&Post>,
@@ -818,6 +848,7 @@ async fn image_entry_form_template(
         };
 
     Ok(ImageEntryFormTemplate {
+        user_display_name: layout::user_display_name(auth),
         heading,
         action,
         submit_label,
@@ -839,6 +870,7 @@ async fn image_entry_form_template(
 }
 
 async fn image_entry_save(
+    auth: &AuthUser,
     state: &AppState,
     placeholder: &Placeholder,
     entry_id: Option<i64>,
@@ -856,6 +888,7 @@ async fn image_entry_save(
                 None
             };
             let html = image_entry_form_template(
+                auth,
                 state,
                 placeholder,
                 entry.as_ref(),
@@ -879,6 +912,7 @@ async fn image_entry_save(
 }
 
 async fn carousel_entry_form_template(
+    auth: &AuthUser,
     state: &AppState,
     placeholder: &Placeholder,
     entry: Option<&Post>,
@@ -940,6 +974,7 @@ async fn carousel_entry_form_template(
         };
 
     Ok(CarouselEntryFormTemplate {
+        user_display_name: layout::user_display_name(auth),
         heading,
         action,
         submit_label,
@@ -957,6 +992,7 @@ async fn carousel_entry_form_template(
 }
 
 async fn carousel_entry_save(
+    auth: &AuthUser,
     state: &AppState,
     placeholder: &Placeholder,
     entry_id: Option<i64>,
@@ -974,6 +1010,7 @@ async fn carousel_entry_save(
                 None
             };
             let html = carousel_entry_form_template(
+                auth,
                 state,
                 placeholder,
                 entry.as_ref(),
@@ -1007,6 +1044,7 @@ struct CarouselEntryParsed {
 }
 
 async fn build_manage_template(
+    auth: &AuthUser,
     state: &AppState,
     placeholder: &Placeholder,
     active_tab: &str,
@@ -1080,6 +1118,7 @@ async fn build_manage_template(
     let (template_example, template_help) = widgets::template_usage(&type_key, &name);
 
     Ok(PlaceholderManageTemplate {
+        user_display_name: layout::user_display_name(auth),
         placeholder_id: id,
         placeholder_name: placeholder.name.clone(),
         type_key,
@@ -1109,6 +1148,7 @@ async fn build_manage_template(
 }
 
 async fn build_placeholder_form(
+    auth: &AuthUser,
     state: &AppState,
     heading: &str,
     action: &str,
@@ -1128,6 +1168,7 @@ async fn build_placeholder_form(
     let config_schema = widget_config_schema(&state.pool, effective_type_id).await?;
 
     Ok(PlaceholderFormTemplate {
+        user_display_name: layout::user_display_name(auth),
         heading: heading.to_string(),
         action: action.to_string(),
         submit_label: submit_label.to_string(),
@@ -1394,9 +1435,10 @@ impl EntryForm {
 }
 
 impl EntryFormTemplate {
-    fn new(placeholder: &Placeholder) -> Self {
+    fn new(user_display_name: String, placeholder: &Placeholder) -> Self {
         let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
         Self {
+            user_display_name,
             heading: "投稿を追加".to_string(),
             action: format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
             submit_label: "追加する".to_string(),
@@ -1412,12 +1454,13 @@ impl EntryFormTemplate {
         }
     }
 
-    fn edit(placeholder: &Placeholder, entry: Post) -> Self {
+    fn edit(user_display_name: String, placeholder: &Placeholder, entry: Post) -> Self {
         let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
         let post_status = normalize_status(&entry.post_status);
         let is_publish = post_status == "publish";
 
         Self {
+            user_display_name,
             heading: "投稿を編集".to_string(),
             action: format!(
                 "/admin/posts/placeholders/{}/entries/{}/edit",

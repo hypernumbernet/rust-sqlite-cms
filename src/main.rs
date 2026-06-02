@@ -5,7 +5,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 use rust_sqlite_cms::{
     config::AppConfig, db, error::AppResult, media,
     repos::{options, pages, users},
-    routes, state::AppState,
+    routes, session, state::AppState,
     theme::{self, Templates},
 };
 
@@ -42,13 +42,16 @@ async fn main() -> AppResult<()> {
     let templates = Arc::new(Templates::new(theme::templates_dir(&config.paths.work_dir)));
     let static_dir = theme::static_dir(&config.paths.work_dir);
     let uploads_dir = media::uploads_dir(&config.paths.uploads_dir);
+    let session_layer = session::session_layer(&config);
     let state = AppState {
         pool,
         config: Arc::new(config),
         templates,
     };
 
-    let app = routes::router(static_dir, uploads_dir).with_state(state);
+    let app = routes::router(static_dir, uploads_dir)
+        .layer(session_layer)
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     tracing::info!("公開サイト: http://{bind_addr}/");

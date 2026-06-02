@@ -11,6 +11,8 @@ use crate::error::AppResult;
 use crate::services;
 use crate::state::AppState;
 
+use super::{auth::AuthUser, layout};
+
 // 読み取り用に repos を残す（または services 経由に完全移行）
 use crate::repos::options;
 
@@ -26,6 +28,7 @@ struct SettingsForm {
 #[derive(Template)]
 #[template(path = "admin/settings/form.html")]
 struct SettingsFormTemplate {
+    user_display_name: String,
     blogname: String,
     blogdescription: String,
     siteurl: String,
@@ -43,6 +46,7 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn show(
+    auth: AuthUser,
     State(state): State<AppState>,
     Query(query): Query<ShowQuery>,
 ) -> AppResult<impl IntoResponse> {
@@ -51,18 +55,19 @@ async fn show(
     } else {
         ""
     };
-    let html = render_form(&state, "", success_message, None).await?;
+    let html = render_form(&auth, &state, "", success_message, None).await?;
     Ok(Html(html))
 }
 
 async fn save(
+    auth: AuthUser,
     State(state): State<AppState>,
     Form(form): Form<SettingsForm>,
 ) -> AppResult<Response> {
     match validate(&form) {
         Ok(()) => {}
         Err(message) => {
-            let html = render_form(&state, &message, "", Some(&form)).await?;
+            let html = render_form(&auth, &state, &message, "", Some(&form)).await?;
             return Ok(Html(html).into_response());
         }
     }
@@ -77,6 +82,7 @@ async fn save(
 }
 
 async fn render_form(
+    auth: &AuthUser,
     state: &AppState,
     error_message: &str,
     success_message: &str,
@@ -92,6 +98,7 @@ async fn render_form(
     };
 
     Ok(SettingsFormTemplate {
+        user_display_name: layout::user_display_name(auth),
         blogname,
         blogdescription,
         siteurl,

@@ -2,6 +2,7 @@ use askama::Template;
 use axum::{
     Router,
     extract::State,
+    middleware,
     response::{Html, IntoResponse},
     routing::get,
 };
@@ -12,6 +13,8 @@ use crate::state::AppState;
 
 use chrono::DateTime;
 
+pub mod auth;
+pub mod layout;
 pub mod media;
 pub mod pages;
 pub mod posts;
@@ -31,12 +34,15 @@ pub(crate) fn format_updated_at(iso: &str) -> String {
 #[derive(Template)]
 #[template(path = "admin/dashboard.html")]
 struct DashboardTemplate {
+    user_display_name: String,
     blogname: String,
     blogdescription: String,
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new()
+    let public = auth::router();
+
+    let protected = Router::new()
         .route("/admin", get(dashboard))
         .merge(posts::router())
         .merge(pages::router())
@@ -45,9 +51,15 @@ pub fn router() -> Router<AppState> {
         .merge(settings::router())
         .merge(users::router())
         .merge(samples::router())
+        .route_layer(middleware::from_fn(auth::require_admin_auth));
+
+    public.merge(protected)
 }
 
-async fn dashboard(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+async fn dashboard(
+    auth: auth::AuthUser,
+    State(state): State<AppState>,
+) -> AppResult<impl IntoResponse> {
     let blogname = options::get(&state.pool, "blogname")
         .await?
         .unwrap_or_else(|| state.config.site.title.clone());
@@ -56,6 +68,7 @@ async fn dashboard(State(state): State<AppState>) -> AppResult<impl IntoResponse
         .unwrap_or_else(|| state.config.site.tagline.clone());
 
     let html = DashboardTemplate {
+        user_display_name: layout::user_display_name(&auth),
         blogname,
         blogdescription,
     }

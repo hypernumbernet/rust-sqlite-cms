@@ -1,7 +1,7 @@
 //! ユーザー管理サービス（CRUD・パスワードハッシュ・admin 保護）。
 
 use argon2::{
-    password_hash::{PasswordHasher, SaltString},
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
 use rand::rngs::OsRng;
@@ -20,6 +20,39 @@ pub fn hash_password(plain: &str) -> DomainResult<String> {
         .hash_password(plain.as_bytes(), &salt)
         .map_err(|e| DomainError::Internal(anyhow::anyhow!("password hash failed: {e}")))?;
     Ok(hash.to_string())
+}
+
+pub fn verify_password(plain: &str, hash: &str) -> bool {
+    let Ok(parsed) = PasswordHash::new(hash) else {
+        return false;
+    };
+    Argon2::default()
+        .verify_password(plain.as_bytes(), &parsed)
+        .is_ok()
+}
+
+const AUTH_FAILED_MSG: &str = "ログイン名またはパスワードが正しくありません";
+
+/// ログイン名とパスワードでユーザーを認証する。
+pub async fn authenticate(
+    pool: &SqlitePool,
+    login: &str,
+    password: &str,
+) -> DomainResult<User> {
+    let login = login.trim();
+    if login.is_empty() || password.is_empty() {
+        return Err(DomainError::Validation(AUTH_FAILED_MSG.to_string()));
+    }
+
+    let Some(user) = users_repo::find_by_login(pool, login).await? else {
+        return Err(DomainError::Validation(AUTH_FAILED_MSG.to_string()));
+    };
+
+    if !verify_password(password, &user.password_hash) {
+        return Err(DomainError::Validation(AUTH_FAILED_MSG.to_string()));
+    }
+
+    Ok(user)
 }
 
 pub struct CreateUserParams<'a> {

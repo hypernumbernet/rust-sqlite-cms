@@ -18,6 +18,8 @@ use crate::services;
 use crate::state::AppState;
 use crate::theme;
 
+use super::{auth::AuthUser, layout};
+
 #[derive(Debug, Deserialize)]
 struct PageForm {
     name: String,
@@ -53,12 +55,14 @@ struct PresetCard {
 #[derive(Template)]
 #[template(path = "admin/pages/index.html")]
 struct PageIndexTemplate {
+    user_display_name: String,
     pages: Vec<PageListItem>,
 }
 
 #[derive(Template)]
 #[template(path = "admin/pages/gallery.html")]
 struct PageGalleryTemplate {
+    user_display_name: String,
     presets: Vec<PresetCard>,
 }
 
@@ -78,6 +82,7 @@ struct PagePreviewErrorTemplate {
 #[derive(Template)]
 #[template(path = "admin/pages/form.html")]
 struct PageFormTemplate {
+    user_display_name: String,
     heading: String,
     action: String,
     submit_label: String,
@@ -104,18 +109,22 @@ pub fn router() -> Router<AppState> {
         .route("/admin/pages/{id}/delete", post(destroy))
 }
 
-async fn index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let pages = pages::list_all(&state.pool)
         .await?
         .into_iter()
         .map(PageListItem::from)
         .collect::<Vec<_>>();
-    let html = PageIndexTemplate { pages }.render()?;
+    let html = PageIndexTemplate {
+        user_display_name: layout::user_display_name(&auth),
+        pages,
+    }
+    .render()?;
 
     Ok(Html(html))
 }
 
-async fn new_gallery() -> AppResult<impl IntoResponse> {
+async fn new_gallery(auth: AuthUser) -> AppResult<impl IntoResponse> {
     let presets = presets::PRESETS
         .iter()
         .map(|preset| PresetCard {
@@ -124,12 +133,16 @@ async fn new_gallery() -> AppResult<impl IntoResponse> {
             description: preset.description.to_string(),
         })
         .collect::<Vec<_>>();
-    let html = PageGalleryTemplate { presets }.render()?;
+    let html = PageGalleryTemplate {
+        user_display_name: layout::user_display_name(&auth),
+        presets,
+    }
+    .render()?;
 
     Ok(Html(html))
 }
 
-async fn new_form(Path(design): Path<String>) -> AppResult<impl IntoResponse> {
+async fn new_form(auth: AuthUser, Path(design): Path<String>) -> AppResult<impl IntoResponse> {
     let (name, content, is_static) = if design == "blank" {
         (String::new(), String::new(), false)
     } else {
@@ -139,6 +152,7 @@ async fn new_form(Path(design): Path<String>) -> AppResult<impl IntoResponse> {
     };
 
     let html = page_form_template(
+        layout::user_display_name(&auth),
         "ページを追加",
         "/admin/pages",
         "作成する",
@@ -159,13 +173,14 @@ async fn new_form(Path(design): Path<String>) -> AppResult<impl IntoResponse> {
 }
 
 async fn create(
+    auth: AuthUser,
     State(state): State<AppState>,
     Form(form): Form<PageForm>,
 ) -> AppResult<Response> {
     let input = match form.into_input(false) {
         Ok(input) => input,
         Err(AppError::Conflict(message)) => {
-            let html = conflict_form_response(&form, false, None, false, message)?.render()?;
+            let html = conflict_form_response(&auth, &form, false, None, false, message)?.render()?;
             return Ok(Html(html).into_response());
         }
         Err(err) => return Err(err),
@@ -174,7 +189,8 @@ async fn create(
     if let Err(err) = services::pages::create_page(&state.pool, &state.config, &input).await {
         let app_err: AppError = err.into();
         if matches!(app_err, AppError::Conflict(_)) {
-            let html = conflict_form_response(&form, false, None, false, app_err.to_string())?.render()?;
+            let html =
+                conflict_form_response(&auth, &form, false, None, false, app_err.to_string())?.render()?;
             return Ok(Html(html).into_response());
         }
         return Err(app_err);
@@ -183,7 +199,11 @@ async fn create(
     Ok(Redirect::to("/admin/pages").into_response())
 }
 
-async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<impl IntoResponse> {
+async fn edit(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> AppResult<impl IntoResponse> {
     let page = pages::find(&state.pool, id).await?;
     let content = match &page.file_name {
         Some(file_name) => theme::read_page_content(
@@ -197,6 +217,7 @@ async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<i
 
     let is_home = page.is_home();
     let html = page_form_template(
+        layout::user_display_name(&auth),
         if is_home {
             "トップページを編集"
         } else {
@@ -221,6 +242,7 @@ async fn edit(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<i
 }
 
 async fn update(
+    auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
     Form(form): Form<PageForm>,
@@ -231,7 +253,8 @@ async fn update(
     let input = match form.into_input(is_home) {
         Ok(input) => input,
         Err(AppError::Conflict(message)) => {
-            let html = conflict_form_response(&form, true, Some(id), is_home, message)?.render()?;
+            let html =
+                conflict_form_response(&auth, &form, true, Some(id), is_home, message)?.render()?;
             return Ok(Html(html).into_response());
         }
         Err(err) => return Err(err),
@@ -240,7 +263,15 @@ async fn update(
     if let Err(err) = services::pages::update_page(&state.pool, &state.config, id, &input).await {
         let app_err: AppError = err.into();
         if matches!(app_err, AppError::Conflict(_)) {
-            let html = conflict_form_response(&form, true, Some(id), is_home, app_err.to_string())?.render()?;
+            let html = conflict_form_response(
+                &auth,
+                &form,
+                true,
+                Some(id),
+                is_home,
+                app_err.to_string(),
+            )?
+            .render()?;
             return Ok(Html(html).into_response());
         }
         return Err(app_err);
@@ -367,6 +398,7 @@ async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResul
 }
 
 fn page_form_template(
+    user_display_name: String,
     heading: &str,
     action: &str,
     submit_label: &str,
@@ -382,6 +414,7 @@ fn page_form_template(
     delete_action: &str,
 ) -> PageFormTemplate {
     PageFormTemplate {
+        user_display_name,
         heading: heading.to_string(),
         action: action.to_string(),
         submit_label: submit_label.to_string(),
@@ -401,6 +434,7 @@ fn page_form_template(
 
 /// バリデーション衝突時にフォームを再描画し、画面上で alert する。
 fn conflict_form_response(
+    auth: &AuthUser,
     form: &PageForm,
     is_edit: bool,
     id: Option<i64>,
@@ -431,6 +465,7 @@ fn conflict_form_response(
     };
 
     Ok(page_form_template(
+        layout::user_display_name(auth),
         heading,
         &action,
         submit_label,

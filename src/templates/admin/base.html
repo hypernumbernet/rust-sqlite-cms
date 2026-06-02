@@ -60,6 +60,22 @@
     }
     .topbar h1 { margin: 0; font-size: 18px; }
     .topbar .user { color: var(--muted); font-size: 13px; }
+    .topbar .user-form {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0;
+    }
+    .topbar .logout-btn {
+      padding: 6px 12px;
+      font-size: 13px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .topbar .logout-btn:hover { background: var(--bg); }
     .content { padding: 24px; }
     a { color: var(--accent); }
 
@@ -274,7 +290,10 @@
     <div class="main">
       <header class="topbar">
         <h1>{% block heading %}管理画面{% endblock %}</h1>
-        <span class="user">ようこそ</span>
+        <form method="post" action="/admin/logout" class="user-form">
+          <span class="user">{{ user_display_name }} さん</span>
+          <button type="submit" class="logout-btn">ログアウト</button>
+        </form>
       </header>
       <main class="content">
         {% block content %}{% endblock %}

@@ -148,7 +148,8 @@ pub async fn ensure_default_admin(pool: &SqlitePool) -> AppResult<()> {
     tracing::warn!(
         login = PROTECTED_LOGIN,
         password = %plain_password,
-        "既定の管理ユーザー admin を作成しました。初回パスワードはこのログに一度だけ記録されます（ログイン機能は未実装）。本番環境ではログの取り扱いに注意してください。"
+        "既定の管理ユーザー admin を作成しました。初回パスワードはこのログに一度だけ記録されます。\
+         /admin/login からログインしてください。本番環境ではログの取り扱いに注意してください。"
     );
 
     Ok(())

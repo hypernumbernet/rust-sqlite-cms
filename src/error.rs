@@ -55,6 +55,9 @@ pub enum AppError {
 
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+
+    #[error("session error: {0}")]
+    Session(#[from] tower_sessions::session::Error),
 }
 
 pub type AppResult<T> = Result<T, AppError>;

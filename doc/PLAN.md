@@ -24,7 +24,7 @@ Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェッ
 - 管理画面は Askama（コンパイル時型安全）、公開サイトは MiniJinja + `minijinja-autoreload`（ファイル編集で再起動不要で反映）。
 - 静的アセットは `work/templates/static/` を `/static` で配信。
 
-**未実装（主なもの）**: ユーザー認証・ログイン、タクソノミー（カテゴリ/タグ）、ユーザー管理画面など。詳細は[ロードマップ](#ロードマップ)を参照。
+**未実装（主なもの）**: REST API 認証、ロール/capability による細かい権限制御、タクソノミー（カテゴリ/タグ）など。詳細は[ロードマップ](#ロードマップ)を参照。
 
 ## 設計思想
 
@@ -71,7 +71,7 @@ flowchart TB
 - **theme**: `work/` ディレクトリの初期化・I/O（read/write/remove for templates/pages/static）、MiniJinja エンジン（autoreload）。
 - **widgets**: プレースホルダー解決、`html_template` のサーバーサイドレンダリング、公開サイト向けコンテキスト構築（`{{ name_html }}` や `has_news` などの変数）。
 - **templates**: 管理画面は `src/templates/admin/` の Askama（型安全）、公開は `work/templates/` の MiniJinja（ランタイム差し替え可能）。
-- **auth / services**: サービス層を導入済み（`src/services/`）。HTML 管理画面と JSON API が同じ業務ロジックを共有。認証ミドルウェアは将来のフェーズで `/api` と `/admin` の両方に適用予定。
+- **auth / services**: サービス層を導入済み（`src/services/`）。HTML 管理画面と JSON API が同じ業務ロジックを共有。管理画面（`/admin/*`）には認証ミドルウェアを適用済み。REST API（`/api/v1`）への認証は未実装。
 
 ### Phase 1.5 以降のアーキテクチャ（API 導入後）
 
@@ -118,7 +118,7 @@ flowchart TB
 | 日時 | `chrono` | ✅ | 作成・更新・公開日時 |
 | エラー | `thiserror` + `anyhow` | ✅ | `AppError` で集約し `IntoResponse` |
 | ウィジェット/コンテキスト | `serde_json` | ✅ | プレースホルダー解決と MiniJinja 渡し用 |
-| 認証 | `tower-sessions` + `argon2` | ⏳ | セッション Cookie（最終フェーズ） |
+| 認証 | `tower-sessions` + `argon2` | ✅ | 管理画面（`/admin/*`）のセッション Cookie ログイン |
 | スラッグ生成 | （自前実装） | ✅ | `posts.rs` 内の簡易 slugify（`slug` クレート未使用） |
 
 - **Rust edition**: `2024`（Rust **1.85 以降**を想定）
@@ -304,7 +304,7 @@ Capability の例: `edit_posts`, `publish_posts`, `edit_others_posts`, `manage_o
 
 ## ルーティング（実装状況）
 
-公開サイトと管理画面向けの HTML ルートを提供します。認証は未実装のため、すべての管理画面はログインなしでアクセス可能です。
+公開サイトと管理画面向けの HTML ルートを提供します。管理画面（`/admin/login`・`/admin/logout` を除く）はログイン必須です。
 
 ### 公開サイト
 
@@ -329,9 +329,10 @@ Capability の例: `edit_posts`, `publish_posts`, `edit_others_posts`, `manage_o
 | GET, POST | `/admin/widgets` | ウィジェットタイプ一覧・HTML 構成（`html_template`）と `config_schema` の編集 | ✅ |
 | GET | `/admin/widgets/{type_key}/export` | ウィジェットタイプの JSON エクスポート | ✅ |
 | POST | `/admin/widgets/import` | JSON パッケージのインポート（上書き/スキップ） | ✅ |
-| GET, POST | `/admin/login` | ログイン（最終フェーズで有効化予定） | ⏳ |
+| GET, POST | `/admin/login` | ログイン | ✅ |
+| POST | `/admin/logout` | ログアウト | ✅ |
 | GET, POST | `/admin/settings` | サイト設定（blogname / blogdescription / siteurl） | ✅ |
-| - | `/admin/users` など | ナビゲーション上は存在するが未実装（404 またはスタブ） | ⏳ |
+| GET, POST | `/admin/users` … | 管理ユーザー CRUD | ✅ |
 
 サイドバー（`base.html`）にはメディア・ユーザー・設定へのリンクがありますが、これらは Phase 2 以降で実装予定です。
 
@@ -386,9 +387,8 @@ flowchart TB
 
 **次の予定（優先順）**:
 
-1. ユーザー認証・ログイン（`tower-sessions` + argon2、パスワードハッシュ、セッション管理、`/admin/login`）
-2. 管理画面への認証ミドルウェア適用（未ログイン時はログインへ誘導）
-3. 画像カルーセルウィジェット（画像・リンクアップロード対応）の実装 — Phase 2前倒し・目玉機能
+1. REST API（`/api/v1`）への認証ミドルウェア適用
+2. 画像カルーセルウィジェット（画像・リンクアップロード対応）の実装 — Phase 2前倒し・目玉機能
 4. ~~ウィジェットのエクスポート / インポート~~（完了）
 5. メディアライブラリ（アップロード UI + `uploads/` 管理 + ページ/投稿への添付）
 6. その他 Phase 2 項目（タグ・カテゴリ、RSS など）
@@ -419,9 +419,8 @@ flowchart TB
 
 ### 最終
 
-- ユーザー・ログイン（`tower-sessions` + argon2）
-- ロール / capability と管理画面の認証ミドルウェア
-- `/admin/login`・ログアウト
+- ロール / capability とサービス層での権限検証
+- CSRF トークン（管理画面 POST）
 
 ## 開発フロー
 
@@ -432,10 +431,10 @@ flowchart TB
 ## セキュリティ上の考慮（設計 / 実装状況）
 
 - **XSS**: テンプレートエンジンの自動 HTML エスケープを利用（管理画面: Askama、公開サイト: MiniJinja の `.html` 既定エスケープ）。生 HTML（静的ページ）は明示的なサニタイズ方針を文書化予定。
-- **CSRF**: 管理画面の POST フォームにはまだ CSRF トークン未付与（認証実装と合わせて導入予定）。
-- **認証**: 未実装。設計では argon2 + tower-sessions を予定。セッション Cookie は HttpOnly / Secure（本番）を推奨。
-- **アップロード**: 設計段階。MIME 検証、サイズ上限、実行可能拡張子の拒否を予定。`uploads_dir` は config で定義済みだが未使用。
-- **その他**: 現時点では全管理画面が誰でもアクセス可能。認証導入まで本番公開は非推奨。
+- **CSRF**: 管理画面の POST フォームにはまだ CSRF トークン未付与（今後導入予定）。
+- **認証**: 管理画面（`/admin/*`）は `tower-sessions` + argon2 によるセッションログインを実装済み。REST API（`/api/v1`）は未保護。本番では `CMS_SESSION_SECRET` の設定を推奨。
+- **アップロード**: 設計段階。MIME 検証、サイズ上限、実行可能拡張子の拒否を予定。
+- **その他**: REST API は認証なし。本番では API 保護の導入を推奨。
 
 ## 非目標（Non-Goals）
 

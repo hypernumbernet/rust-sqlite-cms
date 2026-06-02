@@ -233,6 +233,7 @@ flowchart LR
 | 機能 | データモデル | フェーズ | 状態 |
 |------|-------------|----------|------|
 | お知らせ（ニュースウィジェット） | `placeholders` + `widget_types`（JSON config） + `posts`（`placeholder_id` 紐付け、status=draft/publish） | Phase 1 | ✅ 実装済み（/admin/posts） |
+| 投稿ゴミ箱（一覧・復元・完全削除） | `posts.post_status = trash`（ソフト削除） | Phase 1 | ✅（/admin/posts/trash。REST API は未提供） |
 | サイトページ（トップ・テンプレート・静的 HTML） | `pages` テーブル + `work/templates/`（MiniJinja） / `work/pages/`（生 HTML） | Phase 1 | ✅ 実装済み（/admin/pages + プリセット） |
 | 公開ステータス | `posts.post_status`（draft/publish）、`pages.is_published` | Phase 1 | ✅ |
 | サイト設定（key-value） | `options` テーブル | Phase 1 | ✅ |

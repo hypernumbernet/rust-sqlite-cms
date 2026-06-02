@@ -147,6 +147,53 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PostInput) -> AppResult<
     Ok(())
 }
 
+/// ゴミ箱内の投稿を新しい順で取得する（全プレースホルダー横断）。
+pub async fn list_trashed(pool: &SqlitePool) -> AppResult<Vec<Post>> {
+    Ok(sqlx::query_as::<_, Post>(
+        "SELECT id, placeholder_id, post_status, post_name, title, content, excerpt, published_at, created_at, updated_at
+         FROM posts
+         WHERE post_type = 'post' AND post_status = 'trash'
+         ORDER BY datetime(updated_at) DESC, id DESC",
+    )
+    .fetch_all(pool)
+    .await?)
+}
+
+/// ゴミ箱から復元する。`published_at` があれば公開、なければ下書きに戻す。
+pub async fn restore(pool: &SqlitePool, id: i64) -> AppResult<()> {
+    let result = sqlx::query(
+        "UPDATE posts
+         SET post_status = CASE WHEN published_at IS NOT NULL THEN 'publish' ELSE 'draft' END,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+         WHERE id = ? AND post_type = 'post' AND post_status = 'trash'",
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+
+    Ok(())
+}
+
+/// ゴミ箱内の投稿を物理削除する（postmeta は CASCADE）。
+pub async fn purge(pool: &SqlitePool, id: i64) -> AppResult<()> {
+    let result = sqlx::query(
+        "DELETE FROM posts WHERE id = ? AND post_type = 'post' AND post_status = 'trash'",
+    )
+    .bind(id)
+    .execute(pool)
+    .await?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+
+    Ok(())
+}
+
 /// ソフト削除（post_status を 'trash' に更新）。ID指定（API / グローバル用途）。
 pub async fn delete(pool: &SqlitePool, id: i64) -> AppResult<()> {
     let result = sqlx::query(

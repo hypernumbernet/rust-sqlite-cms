@@ -84,6 +84,23 @@ struct EntryListItem {
     updated_at: String,
 }
 
+#[derive(Debug, Clone)]
+struct TrashListItem {
+    id: i64,
+    title: String,
+    post_name: String,
+    placeholder_name: String,
+    type_label: String,
+    trashed_at: String,
+}
+
+#[derive(Template)]
+#[template(path = "admin/posts/trash/index.html")]
+struct TrashIndexTemplate {
+    items: Vec<TrashListItem>,
+    has_items: bool,
+}
+
 #[derive(Template)]
 #[template(path = "admin/posts/placeholders/index.html")]
 struct PlaceholderIndexTemplate {
@@ -229,6 +246,12 @@ struct CarouselEntryFormTemplate {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/posts", get(placeholder_index))
+        .route("/admin/posts/trash", get(trash_index))
+        .route(
+            "/admin/posts/trash/{id}/restore",
+            post(trash_restore),
+        )
+        .route("/admin/posts/trash/{id}/purge", post(trash_purge))
         .route(
             "/admin/posts/placeholders/new",
             get(placeholder_new).post(placeholder_create),
@@ -273,6 +296,70 @@ async fn placeholder_index(State(state): State<AppState>) -> AppResult<impl Into
     .render()?;
 
     Ok(Html(html))
+}
+
+async fn trash_index(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+    let items = build_trash_list(&state).await?;
+    let html = TrashIndexTemplate {
+        has_items: !items.is_empty(),
+        items,
+    }
+    .render()?;
+
+    Ok(Html(html))
+}
+
+async fn trash_restore(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> AppResult<Response> {
+    match posts::restore(&state.pool, id).await {
+        Ok(()) => Ok(Redirect::to("/admin/posts/trash").into_response()),
+        Err(AppError::NotFound) => Ok(Redirect::to("/admin/posts/trash").into_response()),
+        Err(err) => Err(err),
+    }
+}
+
+async fn trash_purge(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> AppResult<Response> {
+    match posts::purge(&state.pool, id).await {
+        Ok(()) => Ok(Redirect::to("/admin/posts/trash").into_response()),
+        Err(AppError::NotFound) => Ok(Redirect::to("/admin/posts/trash").into_response()),
+        Err(err) => Err(err),
+    }
+}
+
+async fn build_trash_list(state: &AppState) -> AppResult<Vec<TrashListItem>> {
+    let type_map = widget_type_map(state).await?;
+    let placeholder_by_id: HashMap<i64, Placeholder> = placeholders::list_all(&state.pool)
+        .await?
+        .into_iter()
+        .map(|p| (p.id, p))
+        .collect();
+
+    let trashed = posts::list_trashed(&state.pool).await?;
+    Ok(trashed
+        .into_iter()
+        .filter_map(|post| {
+            let placeholder_id = post.placeholder_id?;
+            let placeholder = placeholder_by_id.get(&placeholder_id)?;
+            let type_key = type_map
+                .get(&placeholder.widget_type_id)
+                .map(String::as_str)
+                .unwrap_or("unknown");
+            let post_name = post.post_name.unwrap_or_default();
+            Some(TrashListItem {
+                id: post.id,
+                title: post.title,
+                post_name,
+                placeholder_name: placeholder.name.clone(),
+                type_label: widgets::type_label(type_key).to_string(),
+                trashed_at: super::format_updated_at(&post.updated_at),
+            })
+        })
+        .collect())
 }
 
 async fn placeholder_new(State(state): State<AppState>) -> AppResult<impl IntoResponse> {

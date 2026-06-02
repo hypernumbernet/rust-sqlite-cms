@@ -53,3 +53,18 @@ pub async fn update(
 pub async fn delete(pool: &SqlitePool, id: i64) -> DomainResult<()> {
     posts_repo::delete(pool, id).await.map_err(Into::into)
 }
+
+/// ゴミ箱内の投稿一覧（全プレースホルダー横断）。
+pub async fn list_trashed(pool: &SqlitePool) -> DomainResult<Vec<Post>> {
+    posts_repo::list_trashed(pool).await.map_err(Into::into)
+}
+
+/// ゴミ箱から復元する。
+pub async fn restore(pool: &SqlitePool, id: i64) -> DomainResult<()> {
+    posts_repo::restore(pool, id).await.map_err(Into::into)
+}
+
+/// ゴミ箱から物理削除する。
+pub async fn purge(pool: &SqlitePool, id: i64) -> DomainResult<()> {
+    posts_repo::purge(pool, id).await.map_err(Into::into)
+}

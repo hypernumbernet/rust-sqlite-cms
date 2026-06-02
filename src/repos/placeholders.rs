@@ -85,15 +85,27 @@ pub async fn delete(pool: &SqlitePool, id: i64) -> AppResult<()> {
         ));
     }
 
+    let mut tx = pool.begin().await?;
+
+    // ゴミ箱の投稿は FK 参照が残るため物理削除（postmeta は CASCADE）
+    sqlx::query(
+        "DELETE FROM posts
+         WHERE placeholder_id = ? AND post_type = 'post' AND post_status = 'trash'",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
     let result = sqlx::query("DELETE FROM placeholders WHERE id = ?")
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     if result.rows_affected() == 0 {
         return Err(AppError::NotFound);
     }
 
+    tx.commit().await?;
     Ok(())
 }
 

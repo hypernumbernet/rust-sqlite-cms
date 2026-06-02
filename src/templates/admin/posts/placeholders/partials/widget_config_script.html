@@ -1,0 +1,117 @@
+<script>
+window.__WIDGET_CONFIG_SCHEMA__ = {{ config_schema | safe }};
+</script>
+<script>
+(function() {
+  const schemaEl = document.getElementById('dynamic-config-fields');
+  const hiddenConfig = document.getElementById('config');
+  const rawTextarea = document.getElementById('config-raw');
+  const widgetTypeSelect = document.getElementById('widget_type_id');
+  if (!schemaEl || !hiddenConfig) return;
+
+  let currentConfig = {};
+  try {
+    currentConfig = JSON.parse(hiddenConfig.value || '{}');
+  } catch (e) {
+    currentConfig = {};
+  }
+
+  let currentSchema = window.__WIDGET_CONFIG_SCHEMA__ || {};
+
+  function renderFields(schema, values) {
+    schemaEl.innerHTML = '';
+    const fields = (schema && schema.fields) || [];
+    if (fields.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'help';
+      p.textContent = 'このウィジェットタイプにインスタンス固有の設定項目はありません。';
+      schemaEl.appendChild(p);
+      return;
+    }
+
+    fields.forEach(field => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'field';
+      wrapper.style.marginBottom = '10px';
+
+      const label = document.createElement('label');
+      label.textContent = field.label || field.key;
+      label.style.display = 'block';
+      label.style.marginBottom = '4px';
+      label.style.fontSize = '13px';
+
+      let input;
+      if (field.type === 'number') {
+        input = document.createElement('input');
+        input.type = 'number';
+        if (field.min !== undefined) input.min = field.min;
+        if (field.max !== undefined) input.max = field.max;
+        if (field.step !== undefined) input.step = field.step;
+      } else {
+        input = document.createElement('input');
+        input.type = 'text';
+      }
+
+      input.name = 'dynamic_' + field.key;
+      input.value = (values && values[field.key] !== undefined) ? values[field.key] : (field.default ?? '');
+      input.style.width = '100%';
+      input.style.fontFamily = 'ui-monospace, monospace';
+      input.addEventListener('input', updateHiddenConfig);
+
+      wrapper.appendChild(label);
+      wrapper.appendChild(input);
+      if (field.help) {
+        const help = document.createElement('p');
+        help.className = 'help';
+        help.style.marginTop = '2px';
+        help.style.fontSize = '11px';
+        help.textContent = field.help;
+        wrapper.appendChild(help);
+      }
+      schemaEl.appendChild(wrapper);
+    });
+  }
+
+  function updateHiddenConfig() {
+    const fields = (currentSchema && currentSchema.fields) || [];
+    const newValues = {};
+    fields.forEach(field => {
+      const input = document.querySelector('input[name="dynamic_' + field.key + '"]');
+      if (input) {
+        let val = input.value;
+        if (field.type === 'number' && val !== '') val = parseFloat(val);
+        newValues[field.key] = val;
+      }
+    });
+    hiddenConfig.value = JSON.stringify(newValues, null, 2);
+    if (rawTextarea) rawTextarea.value = hiddenConfig.value;
+  }
+
+  if (rawTextarea) {
+    rawTextarea.addEventListener('input', function() {
+      hiddenConfig.value = rawTextarea.value;
+      try {
+        currentConfig = JSON.parse(rawTextarea.value || '{}');
+        renderFields(currentSchema, currentConfig);
+      } catch (e) {}
+    });
+  }
+
+  renderFields(currentSchema, currentConfig);
+
+  if (widgetTypeSelect) {
+    widgetTypeSelect.addEventListener('change', function() {
+      if (confirm('ウィジェットタイプを変更しました。設定フォームを最新のスキーマで更新するためページを再読み込みしますか？')) {
+        location.reload();
+      }
+    });
+  }
+
+  const form = schemaEl.closest('form');
+  if (form) {
+    form.addEventListener('submit', function() {
+      updateHiddenConfig();
+    });
+  }
+})();
+</script>

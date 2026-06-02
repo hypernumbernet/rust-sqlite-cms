@@ -985,21 +985,8 @@ async fn build_manage_template(
     };
 
     let widget_types = widget_type_options(state, widget_type_id).await?;
-    let effective_type_id = widget_type_id.or_else(|| {
-        widget_types
-            .iter()
-            .find(|option| option.selected)
-            .map(|option| option.id)
-            .or_else(|| widget_types.first().map(|option| option.id))
-    });
-    let config_schema = if let Some(wt_id) = effective_type_id {
-        widget_types::find(&state.pool, wt_id)
-            .await
-            .map(|wt| wt.config_schema)
-            .unwrap_or_else(|_| "{}".to_string())
-    } else {
-        "{}".to_string()
-    };
+    let effective_type_id = effective_widget_type_id(&widget_types, widget_type_id);
+    let config_schema = widget_config_schema(&state.pool, effective_type_id).await?;
 
     let is_settings_tab = active_tab == "settings";
     let (template_example, template_help) = widgets::template_usage(&type_key, &name);
@@ -1047,29 +1034,10 @@ async fn build_placeholder_form(
     config: &str,
 ) -> AppResult<PlaceholderFormTemplate> {
     let widget_types = widget_type_options(state, widget_type_id).await?;
-    let effective_type_id = widget_type_id.or_else(|| {
-        widget_types
-            .iter()
-            .find(|option| option.selected)
-            .map(|option| option.id)
-            .or_else(|| widget_types.first().map(|option| option.id))
-    });
-    let type_key = if let Some(id) = effective_type_id {
-        widget_types::find(&state.pool, id).await?.type_key
-    } else {
-        "news".to_string()
-    };
+    let effective_type_id = effective_widget_type_id(&widget_types, widget_type_id);
+    let type_key = widget_type_key(&state.pool, effective_type_id).await?;
     let (template_example, template_help) = widgets::template_usage(&type_key, name);
-
-    // 選択されたウィジェットタイプのインスタンス設定スキーマを取得（動的フォーム生成用）
-    let config_schema = if let Some(id) = effective_type_id {
-        match widget_types::find(&state.pool, id).await {
-            Ok(wt) => wt.config_schema,
-            Err(_) => "{}".to_string(),
-        }
-    } else {
-        "{}".to_string()
-    };
+    let config_schema = widget_config_schema(&state.pool, effective_type_id).await?;
 
     Ok(PlaceholderFormTemplate {
         heading: heading.to_string(),
@@ -1095,6 +1063,41 @@ async fn widget_type_map(state: &AppState) -> AppResult<std::collections::HashMa
         .into_iter()
         .map(|t| (t.id, t.type_key))
         .collect())
+}
+
+fn effective_widget_type_id(
+    widget_types: &[WidgetTypeOption],
+    widget_type_id: Option<i64>,
+) -> Option<i64> {
+    widget_type_id.or_else(|| {
+        widget_types
+            .iter()
+            .find(|option| option.selected)
+            .map(|option| option.id)
+            .or_else(|| widget_types.first().map(|option| option.id))
+    })
+}
+
+async fn widget_config_schema(pool: &sqlx::SqlitePool, widget_type_id: Option<i64>) -> AppResult<String> {
+    if let Some(id) = widget_type_id {
+        Ok(widget_types::find(pool, id)
+            .await
+            .map(|wt| wt.config_schema)
+            .unwrap_or_else(|_| "{}".to_string()))
+    } else {
+        Ok("{}".to_string())
+    }
+}
+
+async fn widget_type_key(pool: &sqlx::SqlitePool, widget_type_id: Option<i64>) -> AppResult<String> {
+    if let Some(id) = widget_type_id {
+        Ok(widget_types::find(pool, id)
+            .await
+            .map(|wt| wt.type_key)
+            .unwrap_or_else(|_| "news".to_string()))
+    } else {
+        Ok("news".to_string())
+    }
 }
 
 async fn widget_type_options(

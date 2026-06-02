@@ -1,0 +1,13 @@
+<div class="field">
+  <label>インスタンス設定</label>
+  <p class="help" style="margin-bottom: 8px;">
+    ウィジェットマスターで定義されたスキーマに基づいて入力欄が自動生成されます。<br>
+    未入力の項目はウィジェットタイプのデフォルト値が使用されます。
+  </p>
+  <div id="dynamic-config-fields" class="dynamic-config-fields"></div>
+  <input type="hidden" id="config" name="config" value="{{ config }}">
+  <details class="config-json-details">
+    <summary>JSONで直接編集（上級者向け）</summary>
+    <textarea id="config-raw" class="config-json-raw" rows="3">{{ config }}</textarea>
+  </details>
+</div>

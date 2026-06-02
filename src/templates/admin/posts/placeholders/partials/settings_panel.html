@@ -1,35 +1,7 @@
 <form method="post" action="{{ settings_action }}" class="settings-form placeholder-form-layout">
   <section class="panel placeholder-form-inputs">
-    <div class="field">
-      <label for="name">プレースホルダー名</label>
-      <input id="name" name="name" type="text" value="{{ name }}" required pattern="[A-Za-z_][A-Za-z0-9_]*">
-      <p class="help">英字またはアンダースコアで始まる識別子（例: <code>news</code>）。</p>
-    </div>
-
-    <div class="field">
-      <label for="widget_type_id">ウィジェットタイプ</label>
-      <select id="widget_type_id" name="widget_type_id" required>
-        {% for widget_type in widget_types %}
-        <option value="{{ widget_type.id }}"{% if widget_type.selected %} selected{% endif %}>{{ widget_type.label }}</option>
-        {% endfor %}
-      </select>
-      <p class="help">ウィジェットの見た目（HTML）は <a href="/admin/widgets">ウィジェット</a> 画面で編集します。</p>
-    </div>
-
-    <div class="field">
-      <label>インスタンス設定</label>
-      <p class="help" style="margin-bottom: 8px;">
-        ウィジェットマスターで定義されたスキーマに基づいて入力欄が自動生成されます。<br>
-        未入力の項目はウィジェットタイプのデフォルト値が使用されます。
-      </p>
-      <div id="dynamic-config-fields" class="dynamic-config-fields">
-      </div>
-      <input type="hidden" id="config" name="config" value="{{ config }}">
-      <details style="margin-top: 4px;">
-        <summary style="cursor: pointer; font-size: 12px; color: var(--muted);">JSONで直接編集（上級者向け）</summary>
-        <textarea id="config-raw" rows="3" style="font-family: ui-monospace, monospace; font-size: 12px; width: 100%; margin-top: 6px;">{{ config }}</textarea>
-      </details>
-    </div>
+    {% include "admin/posts/placeholders/partials/placeholder_name_and_type.html" %}
+    {% include "admin/posts/placeholders/partials/placeholder_instance_config.html" %}
 
     <div class="actions">
       <button class="button" type="submit">設定を更新</button>
@@ -37,134 +9,13 @@
     </div>
   </section>
 
-  <section class="panel placeholder-form-guide">
-    <div class="field">
-      <label>テンプレートでの利用例</label>
-      <p class="example-label">ウィジェットタイプ: <strong>{{ type_label }}</strong> · プレースホルダー名: <strong><code>{{ name }}</code></strong></p>
-      <pre class="example">{{ template_example }}</pre>
-      <p class="help">{{ template_help|safe }}</p>
-    </div>
-  </section>
+  {% let guide_show_name = true %}
+  {% let widget_type_label = type_label %}
+  {% include "admin/posts/placeholders/partials/placeholder_guide_panel.html" %}
 </form>
 
-<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('このプレースホルダーを削除しますか？');">
+<form method="post" action="{{ delete_action }}" class="placeholder-delete-form" onsubmit="return confirm('このプレースホルダーを削除しますか？');">
   <button class="button danger" type="submit">削除する</button>
 </form>
 
-<script>
-window.__WIDGET_CONFIG_SCHEMA__ = {{ config_schema | safe }};
-</script>
-<script>
-(function() {
-  const schemaEl = document.querySelector('#dynamic-config-fields');
-  const hiddenConfig = document.getElementById('config');
-  const rawTextarea = document.getElementById('config-raw');
-  const widgetTypeSelect = document.getElementById('widget_type_id');
-  if (!schemaEl || !hiddenConfig) return;
-
-  let currentConfig = {};
-  try {
-    currentConfig = JSON.parse(hiddenConfig.value || '{}');
-  } catch (e) {
-    currentConfig = {};
-  }
-
-  let currentSchema = window.__WIDGET_CONFIG_SCHEMA__ || {};
-
-  function renderFields(schema, values) {
-    schemaEl.innerHTML = '';
-    const fields = (schema && schema.fields) || [];
-    if (fields.length === 0) {
-      const p = document.createElement('p');
-      p.className = 'help';
-      p.textContent = 'このウィジェットタイプにインスタンス固有の設定項目はありません。';
-      schemaEl.appendChild(p);
-      return;
-    }
-
-    fields.forEach(field => {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'field';
-      wrapper.style.marginBottom = '10px';
-
-      const label = document.createElement('label');
-      label.textContent = field.label || field.key;
-      label.style.display = 'block';
-      label.style.marginBottom = '4px';
-      label.style.fontSize = '13px';
-
-      let input;
-      if (field.type === 'number') {
-        input = document.createElement('input');
-        input.type = 'number';
-        if (field.min !== undefined) input.min = field.min;
-        if (field.max !== undefined) input.max = field.max;
-        if (field.step !== undefined) input.step = field.step;
-      } else {
-        input = document.createElement('input');
-        input.type = 'text';
-      }
-
-      input.name = 'dynamic_' + field.key;
-      input.value = (values && values[field.key] !== undefined) ? values[field.key] : (field.default ?? '');
-      input.style.width = '100%';
-      input.style.fontFamily = 'ui-monospace, monospace';
-      input.addEventListener('input', updateHiddenConfig);
-
-      wrapper.appendChild(label);
-      wrapper.appendChild(input);
-      if (field.help) {
-        const help = document.createElement('p');
-        help.className = 'help';
-        help.style.marginTop = '2px';
-        help.style.fontSize = '11px';
-        help.textContent = field.help;
-        wrapper.appendChild(help);
-      }
-      schemaEl.appendChild(wrapper);
-    });
-  }
-
-  function updateHiddenConfig() {
-    const fields = (currentSchema && currentSchema.fields) || [];
-    const newValues = {};
-    fields.forEach(field => {
-      const input = document.querySelector('input[name="dynamic_' + field.key + '"]');
-      if (input) {
-        let val = input.value;
-        if (field.type === 'number' && val !== '') val = parseFloat(val);
-        newValues[field.key] = val;
-      }
-    });
-    hiddenConfig.value = JSON.stringify(newValues, null, 2);
-    if (rawTextarea) rawTextarea.value = hiddenConfig.value;
-  }
-
-  if (rawTextarea) {
-    rawTextarea.addEventListener('input', function() {
-      hiddenConfig.value = rawTextarea.value;
-      try {
-        currentConfig = JSON.parse(rawTextarea.value || '{}');
-        renderFields(currentSchema, currentConfig);
-      } catch (e) {}
-    });
-  }
-
-  renderFields(currentSchema, currentConfig);
-
-  if (widgetTypeSelect) {
-    widgetTypeSelect.addEventListener('change', function() {
-      if (confirm('ウィジェットタイプを変更しました。設定フォームを最新のスキーマで更新するためページを再読み込みしますか？')) {
-        location.reload();
-      }
-    });
-  }
-
-  const form = schemaEl.closest('form');
-  if (form) {
-    form.addEventListener('submit', function() {
-      updateHiddenConfig();
-    });
-  }
-})();
-</script>
+{% include "admin/posts/placeholders/partials/widget_config_script.html" %}

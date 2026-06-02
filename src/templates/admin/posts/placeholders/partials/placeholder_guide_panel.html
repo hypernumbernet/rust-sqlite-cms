@@ -1,0 +1,10 @@
+<section class="panel placeholder-form-guide">
+  <div class="field">
+    <label>テンプレートでの利用例</label>
+    <p class="placeholder-example-label">
+      ウィジェットタイプ: <strong>{{ widget_type_label }}</strong>{% if guide_show_name %} · プレースホルダー名: <strong><code>{{ name }}</code></strong>{% endif %}
+    </p>
+    <pre class="placeholder-example">{{ template_example }}</pre>
+    <p class="help">{{ template_help|safe }}</p>
+  </div>
+</section>

@@ -13,7 +13,7 @@ use rust_sqlite_cms::{
     config::AppConfig,
     db,
     media,
-    repos::{options, pages},
+    repos::{options, pages, users},
     routes,
     state::AppState,
     theme::{self, Templates},
@@ -58,6 +58,10 @@ impl TestApp {
         options::ensure_defaults(&pool, &config)
             .await
             .expect("failed to ensure defaults");
+
+        users::ensure_default_admin(&pool)
+            .await
+            .expect("failed to ensure default admin");
 
         pages::ensure_index_page(&pool)
             .await

@@ -5,6 +5,7 @@
 //! すべての HTTP アダプタ（HTML ルート / JSON API）から利用される。
 
 pub mod media;
+pub mod users;
 pub mod options;
 pub mod pages;
 pub mod placeholders;

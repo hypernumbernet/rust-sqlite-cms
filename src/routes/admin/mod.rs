@@ -17,6 +17,7 @@ pub mod pages;
 pub mod posts;
 pub mod samples;
 pub mod settings;
+pub mod users;
 pub mod widgets;
 
 /// データベースに保存されている ISO8601 (UTC, Z suffix) 形式の日時文字列を
@@ -42,6 +43,7 @@ pub fn router() -> Router<AppState> {
         .merge(widgets::router())
         .merge(media::router())
         .merge(settings::router())
+        .merge(users::router())
         .merge(samples::router())
 }
 

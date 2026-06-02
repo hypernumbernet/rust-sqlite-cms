@@ -1,0 +1,77 @@
+{% extends "admin/base.html" %}
+
+{% block title %}ユーザー{% endblock %}
+{% block nav_users %}active{% endblock %}
+{% block heading %}ユーザー{% endblock %}
+
+{% block content %}
+<style>
+  .panel { padding: 0; overflow: hidden; }
+  .login { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+  .badge-default {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1px 8px;
+    vertical-align: middle;
+    font-weight: normal;
+  }
+  .ops { display: flex; gap: 8px; align-items: center; }
+  .ops form { margin: 0; }
+</style>
+
+{% if !error_message.is_empty() %}
+<div class="error">{{ error_message }}</div>
+{% endif %}
+
+<div class="toolbar">
+  <p>管理画面にアクセスするアカウントを管理します。既定の <code>admin</code> ユーザーは削除できません（ログイン機能は未実装）。</p>
+  <a class="button" href="/admin/users/new">ユーザーを追加</a>
+</div>
+
+<section class="panel">
+  {% if has_users %}
+  <table>
+    <thead>
+      <tr>
+        <th>ログイン名</th>
+        <th>表示名</th>
+        <th>ロール</th>
+        <th>更新日</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for user in users %}
+      <tr>
+        <td>
+          <span class="login">{{ user.login }}</span>
+          {% if user.is_protected %}
+          <span class="badge-default">既定</span>
+          {% endif %}
+        </td>
+        <td>{{ user.display_name }}</td>
+        <td>{{ user.role_label }}</td>
+        <td>{{ user.updated_at }}</td>
+        <td>
+          <div class="ops">
+            <a class="button secondary" href="/admin/users/{{ user.id }}/edit">編集</a>
+            {% if user.can_delete %}
+            <form method="post" action="/admin/users/{{ user.id }}/delete" onsubmit="return confirm('このユーザーを削除しますか？');">
+              <button class="button danger" type="submit">削除</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty" style="padding: 32px; text-align: center; color: var(--muted);">ユーザーが登録されていません。</p>
+  {% endif %}
+</section>
+{% endblock %}

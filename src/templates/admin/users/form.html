@@ -1,0 +1,51 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_users %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<p class="breadcrumb"><a href="/admin/users">ユーザー</a></p>
+
+{% if !error_message.is_empty() %}
+<div class="error">{{ error_message }}</div>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form-layout">
+  <section class="panel">
+    <div class="field">
+      <label for="login">ログイン名</label>
+      {% if login_readonly %}
+      <input id="login" name="login" type="text" value="{{ login }}" readonly>
+      <p class="help">既定ユーザー <code>admin</code> のログイン名は変更できません。</p>
+      {% else %}
+      <input id="login" name="login" type="text" maxlength="60" value="{{ login }}" required>
+      <p class="help">英数字・ハイフン・アンダースコアのみ。ログイン機能実装時に使用します。</p>
+      {% endif %}
+    </div>
+
+    <div class="field">
+      <label for="display_name">表示名</label>
+      <input id="display_name" name="display_name" type="text" maxlength="100" value="{{ display_name }}" required>
+    </div>
+
+    <div class="field">
+      <label>ロール</label>
+      <p class="help">{{ role_label }}（現時点では管理者ロールのみ）</p>
+    </div>
+
+    <div class="field">
+      <label for="password">パスワード{% if is_edit %}（変更時のみ）{% endif %}</label>
+      <input id="password" name="password" type="password" autocomplete="new-password" {% if !is_edit %}required{% endif %}>
+      <p class="help">{{ password_help }}</p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="actions">
+      <button class="button" type="submit">{{ submit_label }}</button>
+      <a class="button secondary" href="/admin/users">一覧に戻る</a>
+    </div>
+  </aside>
+</form>
+{% endblock %}

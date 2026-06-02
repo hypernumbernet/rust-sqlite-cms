@@ -1,4 +1,5 @@
 pub mod media;
+pub mod user;
 pub mod option;
 pub mod page;
 pub mod placeholder;

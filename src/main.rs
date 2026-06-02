@@ -3,7 +3,9 @@ use std::sync::Arc;
 use tracing_subscriber::{EnvFilter, fmt};
 
 use rust_sqlite_cms::{
-    config::AppConfig, db, error::AppResult, media, repos::{options, pages}, routes, state::AppState,
+    config::AppConfig, db, error::AppResult, media,
+    repos::{options, pages, users},
+    routes, state::AppState,
     theme::{self, Templates},
 };
 
@@ -26,6 +28,9 @@ async fn main() -> AppResult<()> {
 
     options::ensure_defaults(&pool, &config).await?;
     tracing::info!("既定の options を確認しました");
+
+    users::ensure_default_admin(&pool).await?;
+    tracing::info!("既定の管理ユーザーを確認しました");
 
     theme::ensure_seeded(&config.paths.work_dir)?;
     theme::ensure_pages_dir(&config.paths.work_dir)?;

@@ -49,7 +49,7 @@ const BASIC_PLACEHOLDERS: &[PlaceholderSpec] = &[
         config: "{}",
     },
     PlaceholderSpec {
-        name: "main-carousel",
+        name: "main_carousel",
         type_key: "carousel",
         config: r#"{"interval": 4, "width": "100%", "height": "420px"}"#,
     },

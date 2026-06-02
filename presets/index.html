@@ -132,6 +132,8 @@
     .news-title { margin: 0 0 6px; font-weight: 700; }
     .news-excerpt { margin: 0; color: var(--muted); }
     .empty-news { margin: 0; color: var(--muted); }
+    .carousel-section { padding: 0 0 48px; }
+    .carousel-section .container { max-width: min(1120px, calc(100% - 40px)); }
     footer {
       background: #111827;
       color: #d1d5db;
@@ -178,6 +180,12 @@
           <h2>CMS でお知らせをすばやく更新</h2>
           <p>このトップページのお知らせ欄は、`/admin/posts` から作成・編集した公開済み投稿を表示しています。</p>
         </div>
+      </div>
+    </section>
+
+    <section id="carousel" class="carousel-section">
+      <div class="container">
+        {{ main_carousel_html | safe }}
       </div>
     </section>
 

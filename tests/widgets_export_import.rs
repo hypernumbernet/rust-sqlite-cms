@@ -90,7 +90,7 @@ async fn api_export_and_import() {
     let app = common::TestApp::new().await;
 
     let res = app
-        .api_request("GET", "/api/v1/widgets/news/export", None)
+        .api_request_authed("GET", "/api/v1/widgets/news/export", None)
         .await;
     assert_eq!(res.status(), 200);
 
@@ -105,7 +105,7 @@ async fn api_export_and_import() {
     });
 
     let res = app
-        .api_request(
+        .api_request_authed(
             "POST",
             "/api/v1/widgets/import",
             Some(json!({
@@ -117,7 +117,7 @@ async fn api_export_and_import() {
     assert_eq!(res.status(), 200);
 
     let res = app
-        .api_request("GET", "/api/v1/widgets/api_widget/export", None)
+        .api_request_authed("GET", "/api/v1/widgets/api_widget/export", None)
         .await;
     assert_eq!(res.status(), 200);
 }

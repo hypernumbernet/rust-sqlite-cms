@@ -149,29 +149,70 @@ impl TestApp {
         self.app.clone().oneshot(req).await.expect("request failed")
     }
 
-    /// APIリクエストを送信する便利メソッド
-    pub async fn api_request(
+    /// POST /api/v1/session して Set-Cookie を返す。
+    pub async fn login_api_session(&self) -> String {
+        let body = serde_json::json!({
+            "login": "admin",
+            "password": TEST_ADMIN_PASSWORD,
+        });
+        let response = self
+            .app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("http://localhost/api/v1/session")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .expect("api session login failed");
+
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "api session login should succeed"
+        );
+
+        extract_session_cookie(&response)
+    }
+
+    /// ログイン済み Cookie 付きで API へリクエストする。
+    pub async fn api_request_authed(
         &self,
         method: &str,
         path: &str,
         body: Option<serde_json::Value>,
     ) -> axum::http::Response<axum::body::Body> {
+        let cookie = self.login_api_session().await;
+        self.api_request(method, path, body, Some(&cookie)).await
+    }
+
+    /// API リクエストを送信する（cookie が None の場合は未認証）。
+    pub async fn api_request(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<serde_json::Value>,
+        cookie: Option<&str>,
+    ) -> axum::http::Response<axum::body::Body> {
         let uri = format!("http://localhost{}", path);
         let method = method.parse::<Method>().unwrap();
 
+        let mut builder = Request::builder().method(method).uri(uri);
+
+        if let Some(cookie) = cookie {
+            builder = builder.header("cookie", cookie);
+        }
+
         let req = if let Some(json_body) = body {
-            Request::builder()
-                .method(method)
-                .uri(uri)
+            builder
                 .header("content-type", "application/json")
                 .body(json_body.to_string())
                 .unwrap()
         } else {
-            Request::builder()
-                .method(method)
-                .uri(uri)
-                .body(String::new())
-                .unwrap()
+            builder.body(String::new()).unwrap()
         };
 
         self.app

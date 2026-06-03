@@ -113,6 +113,9 @@ pub enum ApiError {
     #[error("bad request: {0}")]
     BadRequest(String),
 
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
+
     #[error("internal server error")]
     Internal(#[from] anyhow::Error),
 }
@@ -126,6 +129,7 @@ impl IntoResponse for ApiError {
             ApiError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg.clone()),
             ApiError::Validation(msg) => (StatusCode::BAD_REQUEST, "validation_error", msg.clone()),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg.clone()),
+            ApiError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "unauthorized", msg.clone()),
             ApiError::Internal(_) => {
                 tracing::error!(error = %self, "API internal server error");
                 (

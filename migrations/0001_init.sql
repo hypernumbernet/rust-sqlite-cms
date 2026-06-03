@@ -1,10 +1,12 @@
--- 統合初期スキーマ（旧 migrations 0001〜0005 を単一ファイル化）
+-- 統合初期スキーマ（migrations を単一ファイル化）
 -- 日時はすべて UTC の ISO8601 文字列(TEXT)で保持する。
 
 -- ウィジェットタイプ（コードレジストリと 1:1、設定のみ DB 保持） -------------
 CREATE TABLE IF NOT EXISTS widget_types (
     id            INTEGER PRIMARY KEY,
     type_key      TEXT NOT NULL UNIQUE,
+    label         TEXT NOT NULL DEFAULT '',
+    description   TEXT NOT NULL DEFAULT '',
     config        TEXT NOT NULL DEFAULT '{}',
     html_template TEXT NOT NULL DEFAULT '',
     config_schema TEXT NOT NULL DEFAULT '{}',
@@ -71,11 +73,25 @@ CREATE TABLE IF NOT EXISTS pages (
 );
 CREATE INDEX IF NOT EXISTS idx_pages_published ON pages(is_published);
 
+-- 管理ユーザー -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+    id            INTEGER PRIMARY KEY,
+    login         TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    display_name  TEXT NOT NULL DEFAULT '',
+    password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'administrator',
+    created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_users_login ON users(login);
+
 -- 初期シードデータ ---------------------------------------------------------
 -- テンプレート（presets/index.html など）が参照する "news" プレースホルダー
-INSERT INTO widget_types (type_key, config, html_template, config_schema)
+INSERT INTO widget_types (type_key, label, description, config, html_template, config_schema)
 VALUES (
     'news',
+    'お知らせ',
+    '公開済みの投稿を新しい順に表示します',
     '{"limit":5}',
     '{% if has_items %}
   {% for item in items %}
@@ -109,30 +125,63 @@ INSERT INTO placeholders (name, widget_type_id)
 SELECT 'news', id FROM widget_types WHERE type_key = 'news';
 
 -- 画像ウィジェットタイプ（単一表示）
-INSERT INTO widget_types (type_key, config, html_template, config_schema)
+INSERT INTO widget_types (type_key, label, description, config, html_template, config_schema)
 VALUES (
     'image',
-    '{}',
+    '画像',
+    'メディアライブラリの画像を1枚表示します。幅・高さ・収め方・角丸と、エントリごとの回り込み・マージンを設定できます',
+    '{"width":"100%","height":"auto","object_fit":"cover","border_radius":"0"}',
     '{% if has_item %}
 <figure class="widget-image" style="{{ item.style }}">
   {% if item.link_url %}
   <a href="{{ item.link_url }}">
-    <img src="{{ item.image_url }}" alt="{{ item.alt }}">
+    <img src="{{ item.image_url }}" alt="{{ item.alt }}" style="{{ item.img_style }}">
   </a>
   {% else %}
-  <img src="{{ item.image_url }}" alt="{{ item.alt }}">
+  <img src="{{ item.image_url }}" alt="{{ item.alt }}" style="{{ item.img_style }}">
   {% endif %}
 </figure>
 {% endif %}',
     '{
-  "fields": []
+  "fields": [
+    {
+      "key": "width",
+      "label": "表示幅",
+      "type": "text",
+      "default": "100%",
+      "help": "例: 100%, 600px"
+    },
+    {
+      "key": "height",
+      "label": "表示高さ",
+      "type": "text",
+      "default": "auto",
+      "help": "例: auto, 320px, 40vh"
+    },
+    {
+      "key": "object_fit",
+      "label": "画像の収め方",
+      "type": "text",
+      "default": "cover",
+      "help": "cover, contain, fill, none, scale-down"
+    },
+    {
+      "key": "border_radius",
+      "label": "角丸",
+      "type": "text",
+      "default": "0",
+      "help": "例: 0, 8px, 50%"
+    }
+  ]
 }'
 );
 
 -- 画像カルーセルウィジェットタイプ
-INSERT INTO widget_types (type_key, config, html_template, config_schema)
+INSERT INTO widget_types (type_key, label, description, config, html_template, config_schema)
 VALUES (
     'carousel',
+    '画像カルーセル',
+    '複数の画像をスライドショー形式で表示します。各画像にリンクを設定可能',
     '{"interval":5,"width":"100%","height":"400px"}',
     '{% if has_carousel %}
 <div class="carousel" style="width:{{ carousel.width }}; height:{{ carousel.height }}; --interval: {{ carousel.interval }}s;">

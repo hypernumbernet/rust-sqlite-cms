@@ -3,7 +3,10 @@ use sqlx::SqlitePool;
 
 use crate::error::AppResult;
 use crate::models::post::Post;
-use crate::models::widget::{build_image_style, CarouselWidgetConfig, NewsWidgetConfig, WidgetType};
+use crate::models::widget::{
+    build_image_img_style, build_image_style, CarouselWidgetConfig, ImageWidgetConfig,
+    NewsWidgetConfig, WidgetType,
+};
 use crate::repos::{media, placeholders, postmeta, posts, widget_types};
 
 /// 登録済みウィジェットタイプの定義。
@@ -23,7 +26,7 @@ pub const WIDGET_TYPES: &[WidgetTypeDef] = &[
     WidgetTypeDef {
         key: "image",
         label: "画像",
-        description: "メディアライブラリの画像を1枚表示します。回り込み・マージンを設定できます",
+        description: "メディアライブラリの画像を1枚表示します。幅・高さ・収め方・角丸と、エントリごとの回り込み・マージンを設定できます",
     },
     WidgetTypeDef {
         key: "carousel",
@@ -48,7 +51,14 @@ pub struct ImageItem {
     pub link_url: String,
     pub float: String,
     pub margin: String,
+    /// figure 用（float / margin）
     pub style: String,
+    pub width: String,
+    pub height: String,
+    pub object_fit: String,
+    pub border_radius: String,
+    /// img 用（width / height / object-fit / border-radius）
+    pub img_style: String,
 }
 
 /// カルーセルウィジェットの1スライド。
@@ -151,7 +161,7 @@ pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String
         ),
         "image" => format!(
             "上級者向け（インライン）: <code>has_{name}</code> / <code>{name}</code> オブジェクト \
-             （image_url / alt / style など）を直接参照も可能。"
+             （image_url / alt / style / img_style / width / height など）を直接参照も可能。"
         ),
         "carousel" => format!(
             "上級者向け（インライン）: <code>has_{name}</code> / <code>{name}.slides</code> など \
@@ -258,6 +268,31 @@ async fn resolve_placeholder(
             insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
         }
         "image" => {
+            let mut img_cfg: ImageWidgetConfig =
+                serde_json::from_str(&widget_type.config).unwrap_or_default();
+            if let Some(width) = instance_config.get("width").and_then(|v| v.as_str()) {
+                if !width.trim().is_empty() {
+                    img_cfg.width = width.to_string();
+                }
+            }
+            if let Some(height) = instance_config.get("height").and_then(|v| v.as_str()) {
+                if !height.trim().is_empty() {
+                    img_cfg.height = height.to_string();
+                }
+            }
+            if let Some(object_fit) = instance_config.get("object_fit").and_then(|v| v.as_str()) {
+                if !object_fit.trim().is_empty() {
+                    img_cfg.object_fit = object_fit.to_string();
+                }
+            }
+            if let Some(border_radius) =
+                instance_config.get("border_radius").and_then(|v| v.as_str())
+            {
+                if !border_radius.trim().is_empty() {
+                    img_cfg.border_radius = border_radius.to_string();
+                }
+            }
+
             let entries =
                 posts::list_published_for_placeholder_ordered(pool, placeholder.id, 1).await?;
             let Some(entry) = entries.into_iter().next() else {
@@ -341,6 +376,12 @@ async fn resolve_placeholder(
             let float = float?.unwrap_or_else(|| "none".to_string());
             let margin = margin?.unwrap_or_default();
             let style = build_image_style(&float, &margin);
+            let img_style = build_image_img_style(
+                &img_cfg.width,
+                &img_cfg.height,
+                &img_cfg.object_fit,
+                &img_cfg.border_radius,
+            );
 
             let item = ImageItem {
                 image_url: attachment.public_url(),
@@ -349,6 +390,11 @@ async fn resolve_placeholder(
                 float,
                 margin,
                 style,
+                width: img_cfg.width,
+                height: img_cfg.height,
+                object_fit: img_cfg.object_fit,
+                border_radius: img_cfg.border_radius,
+                img_style,
             };
 
             ctx.insert(

@@ -46,7 +46,7 @@ const BASIC_PLACEHOLDERS: &[PlaceholderSpec] = &[
     PlaceholderSpec {
         name: "hero",
         type_key: "image",
-        config: "{}",
+        config: r#"{"width": "100%", "height": "280px", "object_fit": "cover", "border_radius": "12px"}"#,
     },
     PlaceholderSpec {
         name: "main_carousel",

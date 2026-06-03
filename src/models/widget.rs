@@ -82,9 +82,45 @@ pub fn validate_news_limit(limit: i64) -> Result<(), String> {
     Ok(())
 }
 
-/// image ウィジェットタイプの設定（共通設定なし）。
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ImageWidgetConfig {}
+/// image ウィジェットタイプのプレースホルダー単位設定。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageWidgetConfig {
+    #[serde(default = "default_image_width")]
+    pub width: String,
+    #[serde(default = "default_image_height")]
+    pub height: String,
+    #[serde(default = "default_image_object_fit")]
+    pub object_fit: String,
+    #[serde(default = "default_image_border_radius")]
+    pub border_radius: String,
+}
+
+impl Default for ImageWidgetConfig {
+    fn default() -> Self {
+        Self {
+            width: default_image_width(),
+            height: default_image_height(),
+            object_fit: default_image_object_fit(),
+            border_radius: default_image_border_radius(),
+        }
+    }
+}
+
+fn default_image_width() -> String {
+    "100%".to_string()
+}
+
+fn default_image_height() -> String {
+    "auto".to_string()
+}
+
+fn default_image_object_fit() -> String {
+    "cover".to_string()
+}
+
+fn default_image_border_radius() -> String {
+    "0".to_string()
+}
 
 /// image エントリの float 値を検証する。
 pub fn validate_image_float(float: &str) -> Result<(), String> {
@@ -137,7 +173,7 @@ pub fn validate_image_link_url(url: &str) -> Result<(), String> {
     }
 }
 
-/// image エントリ用の postmeta からインライン style を組み立てる。
+/// image エントリ用の figure インライン style（float / margin）を組み立てる。
 pub fn build_image_style(float: &str, margin: &str) -> String {
     let mut parts = Vec::new();
     if float == "left" || float == "right" {
@@ -148,6 +184,49 @@ pub fn build_image_style(float: &str, margin: &str) -> String {
         parts.push(format!("margin:{margin}"));
     }
     parts.join(";")
+}
+
+/// image の img 要素用インライン style（プレースホルダー単位のサイズ・収め方・角丸）。
+pub fn build_image_img_style(
+    width: &str,
+    height: &str,
+    object_fit: &str,
+    border_radius: &str,
+) -> String {
+    let mut parts = vec![
+        format!("width:{}", width.trim()),
+        format!("height:{}", height.trim()),
+        "display:block".to_string(),
+    ];
+    let height = height.trim();
+    if height != "auto" {
+        parts.push(format!("object-fit:{}", object_fit.trim()));
+    }
+    let radius = border_radius.trim();
+    if !radius.is_empty() && radius != "0" {
+        parts.push(format!("border-radius:{radius}"));
+    }
+    parts.join(";")
+}
+
+/// image の object-fit 値を検証する。
+pub fn validate_image_object_fit(value: &str) -> Result<(), String> {
+    match value.trim() {
+        "cover" | "contain" | "fill" | "none" | "scale-down" => Ok(()),
+        _ => Err(
+            "画像の収め方は cover、contain、fill、none、scale-down から選択してください"
+                .to_string(),
+        ),
+    }
+}
+
+/// image の角丸（CSS サイズ値）を検証する。空は 0 扱い。
+pub fn validate_image_border_radius(value: &str) -> Result<(), String> {
+    let v = value.trim();
+    if v.is_empty() || v == "0" {
+        return Ok(());
+    }
+    validate_css_size(v, "角丸")
 }
 
 /// カルーセルウィジェットタイプの設定。
@@ -191,13 +270,12 @@ pub fn validate_carousel_interval(interval: u32) -> Result<(), String> {
     Ok(())
 }
 
-/// カルーセルの幅・高さ（CSS サイズ値）を簡易検証。
-pub fn validate_carousel_size(value: &str, field: &str) -> Result<(), String> {
+/// CSS サイズ値を簡易検証（幅・高さ・角丸など共通）。
+pub fn validate_css_size(value: &str, field: &str) -> Result<(), String> {
     let v = value.trim();
     if v.is_empty() {
         return Err(format!("{}を入力してください", field));
     }
-    // 簡易チェック: 数値 + 単位 または % または auto
     if v == "auto" || v.ends_with('%') {
         return Ok(());
     }
@@ -208,7 +286,6 @@ pub fn validate_carousel_size(value: &str, field: &str) -> Result<(), String> {
             }
         }
     }
-    // 生の数値も px 扱いで許可（例: "400"）
     if v.parse::<f64>().is_ok() {
         return Ok(());
     }
@@ -216,4 +293,61 @@ pub fn validate_carousel_size(value: &str, field: &str) -> Result<(), String> {
         "{}は CSS サイズ形式（例: 100%、400px、50vh）で指定してください",
         field
     ))
+}
+
+/// カルーセルの幅・高さ（CSS サイズ値）を簡易検証。
+pub fn validate_carousel_size(value: &str, field: &str) -> Result<(), String> {
+    validate_css_size(value, field)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_widget_config_defaults() {
+        let cfg = ImageWidgetConfig::default();
+        assert_eq!(cfg.width, "100%");
+        assert_eq!(cfg.height, "auto");
+        assert_eq!(cfg.object_fit, "cover");
+        assert_eq!(cfg.border_radius, "0");
+
+        let json = serde_json::to_string(&cfg).unwrap();
+        let parsed: ImageWidgetConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.width, "100%");
+    }
+
+    #[test]
+    fn validate_image_object_fit_accepts_known_values() {
+        for v in ["cover", "contain", "fill", "none", "scale-down"] {
+            assert!(validate_image_object_fit(v).is_ok(), "{}", v);
+        }
+        assert!(validate_image_object_fit("stretch").is_err());
+    }
+
+    #[test]
+    fn image_border_radius_validation() {
+        assert!(validate_image_border_radius("").is_ok());
+        assert!(validate_image_border_radius("0").is_ok());
+        assert!(validate_image_border_radius("8px").is_ok());
+        assert!(validate_image_border_radius("50%").is_ok());
+        assert!(validate_image_border_radius("bad").is_err());
+    }
+
+    #[test]
+    fn build_image_img_style_fixed_height_includes_object_fit() {
+        let style = build_image_img_style("100%", "280px", "cover", "12px");
+        assert!(style.contains("width:100%"));
+        assert!(style.contains("height:280px"));
+        assert!(style.contains("object-fit:cover"));
+        assert!(style.contains("border-radius:12px"));
+    }
+
+    #[test]
+    fn build_image_img_style_auto_height_omits_object_fit() {
+        let style = build_image_img_style("100%", "auto", "cover", "0");
+        assert!(style.contains("height:auto"));
+        assert!(!style.contains("object-fit"));
+        assert!(!style.contains("border-radius"));
+    }
 }

@@ -2,6 +2,19 @@
 
 use super::auth::AuthUser;
 
-pub fn user_display_name(auth: &AuthUser) -> String {
-    auth.display_name.clone()
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// base.html が参照する共通レイアウト値。各 Template struct に 1 フィールドだけ持たせる。
+pub struct AdminLayoutCtx {
+    pub user_display_name: String,
+    pub app_version: &'static str,
+}
+
+impl AdminLayoutCtx {
+    pub fn new(auth: &AuthUser) -> Self {
+        Self {
+            user_display_name: auth.display_name.clone(),
+            app_version: APP_VERSION,
+        }
+    }
 }

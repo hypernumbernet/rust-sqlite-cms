@@ -28,7 +28,7 @@ struct SettingsForm {
 #[derive(Template)]
 #[template(path = "admin/settings/form.html")]
 struct SettingsFormTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     blogname: String,
     blogdescription: String,
     siteurl: String,
@@ -98,7 +98,7 @@ async fn render_form(
     };
 
     Ok(SettingsFormTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         blogname,
         blogdescription,
         siteurl,

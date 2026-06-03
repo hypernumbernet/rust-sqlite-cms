@@ -34,7 +34,7 @@ pub(crate) fn format_updated_at(iso: &str) -> String {
 #[derive(Template)]
 #[template(path = "admin/dashboard.html")]
 struct DashboardTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     blogname: String,
     blogdescription: String,
 }
@@ -68,7 +68,7 @@ async fn dashboard(
         .unwrap_or_else(|| state.config.site.tagline.clone());
 
     let html = DashboardTemplate {
-        user_display_name: layout::user_display_name(&auth),
+        layout: layout::AdminLayoutCtx::new(&auth),
         blogname,
         blogdescription,
     }

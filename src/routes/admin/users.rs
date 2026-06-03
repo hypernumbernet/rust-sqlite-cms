@@ -55,7 +55,7 @@ impl UserListItem {
 #[derive(Template)]
 #[template(path = "admin/users/index.html")]
 struct UserIndexTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     users: Vec<UserListItem>,
     has_users: bool,
     error_message: String,
@@ -64,7 +64,7 @@ struct UserIndexTemplate {
 #[derive(Template)]
 #[template(path = "admin/users/form.html")]
 struct UserFormTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     heading: String,
     action: String,
     submit_label: String,
@@ -92,7 +92,7 @@ async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl 
 
 async fn new_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
     let html = UserFormTemplate {
-        user_display_name: layout::user_display_name(&auth),
+        layout: layout::AdminLayoutCtx::new(&auth),
         heading: "ユーザーを追加".to_string(),
         action: "/admin/users/new".to_string(),
         submit_label: "追加する".to_string(),
@@ -127,7 +127,7 @@ async fn create(
         Err(err) => {
             let message = domain_error_message(&err);
             let html = UserFormTemplate {
-                user_display_name: layout::user_display_name(&auth),
+                layout: layout::AdminLayoutCtx::new(&auth),
                 heading: "ユーザーを追加".to_string(),
                 action: "/admin/users/new".to_string(),
                 submit_label: "追加する".to_string(),
@@ -213,7 +213,7 @@ async fn render_index(auth: &AuthUser, state: &AppState, error_message: &str) ->
     let has_users = !users.is_empty();
 
     Ok(UserIndexTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         users,
         has_users,
         error_message: error_message.to_string(),
@@ -223,7 +223,7 @@ async fn render_index(auth: &AuthUser, state: &AppState, error_message: &str) ->
 
 fn user_form_template(auth: &AuthUser, user: &User, error_message: &str) -> AppResult<String> {
     Ok(UserFormTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         heading: "ユーザーを編集".to_string(),
         action: format!("/admin/users/{}/edit", user.id),
         submit_label: "変更を保存".to_string(),

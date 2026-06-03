@@ -45,7 +45,7 @@ struct WidgetTypeListItem {
 #[derive(Template)]
 #[template(path = "admin/widgets/index.html")]
 struct WidgetIndexTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     widget_types: Vec<WidgetTypeListItem>,
     success_message: String,
     error_message: String,
@@ -55,7 +55,7 @@ struct WidgetIndexTemplate {
 #[derive(Template)]
 #[template(path = "admin/widgets/form_edit.html")]
 struct WidgetEditFormTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     heading: String,
     action: String,
     delete_action: String,
@@ -88,7 +88,7 @@ async fn index(
         .map(WidgetTypeListItem::from)
         .collect::<Vec<_>>();
     let html = WidgetIndexTemplate {
-        user_display_name: layout::user_display_name(&auth),
+        layout: layout::AdminLayoutCtx::new(&auth),
         widget_types,
         success_message: query.success_message,
         error_message: query.error_message,
@@ -256,7 +256,7 @@ fn render_widget_edit_form(
     let description = services::widgets::display_description(widget_type);
 
     let template = WidgetEditFormTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         heading: format!("{} を編集", label),
         action: format!("/admin/widgets/{}/edit", widget_type.type_key),
         delete_action: format!("/admin/widgets/{}/delete", widget_type.type_key),

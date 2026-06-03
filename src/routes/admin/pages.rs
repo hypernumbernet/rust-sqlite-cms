@@ -55,14 +55,14 @@ struct PresetCard {
 #[derive(Template)]
 #[template(path = "admin/pages/index.html")]
 struct PageIndexTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     pages: Vec<PageListItem>,
 }
 
 #[derive(Template)]
 #[template(path = "admin/pages/gallery.html")]
 struct PageGalleryTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     presets: Vec<PresetCard>,
 }
 
@@ -82,7 +82,7 @@ struct PagePreviewErrorTemplate {
 #[derive(Template)]
 #[template(path = "admin/pages/form.html")]
 struct PageFormTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     heading: String,
     action: String,
     submit_label: String,
@@ -116,7 +116,7 @@ async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl 
         .map(PageListItem::from)
         .collect::<Vec<_>>();
     let html = PageIndexTemplate {
-        user_display_name: layout::user_display_name(&auth),
+        layout: layout::AdminLayoutCtx::new(&auth),
         pages,
     }
     .render()?;
@@ -134,7 +134,7 @@ async fn new_gallery(auth: AuthUser) -> AppResult<impl IntoResponse> {
         })
         .collect::<Vec<_>>();
     let html = PageGalleryTemplate {
-        user_display_name: layout::user_display_name(&auth),
+        layout: layout::AdminLayoutCtx::new(&auth),
         presets,
     }
     .render()?;
@@ -152,7 +152,7 @@ async fn new_form(auth: AuthUser, Path(design): Path<String>) -> AppResult<impl 
     };
 
     let html = page_form_template(
-        layout::user_display_name(&auth),
+        layout::AdminLayoutCtx::new(&auth),
         "ページを追加",
         "/admin/pages",
         "作成する",
@@ -217,7 +217,7 @@ async fn edit(
 
     let is_home = page.is_home();
     let html = page_form_template(
-        layout::user_display_name(&auth),
+        layout::AdminLayoutCtx::new(&auth),
         if is_home {
             "トップページを編集"
         } else {
@@ -398,7 +398,7 @@ async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResul
 }
 
 fn page_form_template(
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     heading: &str,
     action: &str,
     submit_label: &str,
@@ -414,7 +414,7 @@ fn page_form_template(
     delete_action: &str,
 ) -> PageFormTemplate {
     PageFormTemplate {
-        user_display_name,
+        layout,
         heading: heading.to_string(),
         action: action.to_string(),
         submit_label: submit_label.to_string(),
@@ -465,7 +465,7 @@ fn conflict_form_response(
     };
 
     Ok(page_form_template(
-        layout::user_display_name(auth),
+        layout::AdminLayoutCtx::new(auth),
         heading,
         &action,
         submit_label,

@@ -28,7 +28,7 @@ struct MediaListItem {
 #[derive(Template)]
 #[template(path = "admin/media/index.html")]
 struct MediaIndexTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     media_items: Vec<MediaListItem>,
     has_media: bool,
     error_message: String,
@@ -143,7 +143,7 @@ async fn render_index(
     let has_media = !media_items.is_empty();
 
     Ok(MediaIndexTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         media_items,
         has_media,
         error_message: error_message.to_string(),

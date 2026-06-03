@@ -99,7 +99,7 @@ struct TrashListItem {
 #[derive(Template)]
 #[template(path = "admin/posts/trash/index.html")]
 struct TrashIndexTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     items: Vec<TrashListItem>,
     has_items: bool,
 }
@@ -107,7 +107,7 @@ struct TrashIndexTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/placeholders/index.html")]
 struct PlaceholderIndexTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     placeholders: Vec<PlaceholderListItem>,
     has_placeholders: bool,
 }
@@ -115,7 +115,7 @@ struct PlaceholderIndexTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/placeholders/form.html")]
 struct PlaceholderFormTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     heading: String,
     action: String,
     submit_label: String,
@@ -137,7 +137,7 @@ struct PlaceholderFormTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/placeholders/manage.html")]
 struct PlaceholderManageTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     placeholder_id: i64,
     placeholder_name: String,
     type_key: String,
@@ -168,7 +168,7 @@ struct PlaceholderManageTemplate {
 #[derive(Template)]
 #[template(path = "admin/posts/entries/form.html")]
 struct EntryFormTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     heading: String,
     action: String,
     submit_label: String,
@@ -205,7 +205,7 @@ struct MediaFormItem {
 #[derive(Template)]
 #[template(path = "admin/posts/entries/form_image.html")]
 struct ImageEntryFormTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     heading: String,
     action: String,
     submit_label: String,
@@ -237,7 +237,7 @@ struct CarouselEntryListItem {
 #[derive(Template)]
 #[template(path = "admin/posts/entries/form_carousel.html")]
 struct CarouselEntryFormTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     heading: String,
     action: String,
     submit_label: String,
@@ -300,7 +300,7 @@ async fn placeholder_index(auth: AuthUser, State(state): State<AppState>) -> App
         .collect::<Vec<_>>();
     let has_placeholders = !placeholders.is_empty();
     let html = PlaceholderIndexTemplate {
-        user_display_name: layout::user_display_name(&auth),
+        layout: layout::AdminLayoutCtx::new(&auth),
         placeholders,
         has_placeholders,
     }
@@ -313,7 +313,7 @@ async fn trash_index(auth: AuthUser, State(state): State<AppState>) -> AppResult
     let items = build_trash_list(&state).await?;
     let has_items = !items.is_empty();
     let html = TrashIndexTemplate {
-        user_display_name: layout::user_display_name(&auth),
+        layout: layout::AdminLayoutCtx::new(&auth),
         items,
         has_items,
     }
@@ -565,7 +565,7 @@ async fn entry_new(
         return Ok(Html(html));
     }
 
-    let html = EntryFormTemplate::new(layout::user_display_name(&auth), &placeholder).render()?;
+    let html = EntryFormTemplate::new(layout::AdminLayoutCtx::new(&auth), &placeholder).render()?;
     Ok(Html(html))
 }
 
@@ -610,7 +610,7 @@ async fn entry_edit(
         return Ok(Html(html));
     }
 
-    let html = EntryFormTemplate::edit(layout::user_display_name(&auth), &placeholder, entry).render()?;
+    let html = EntryFormTemplate::edit(layout::AdminLayoutCtx::new(&auth), &placeholder, entry).render()?;
     Ok(Html(html))
 }
 
@@ -848,7 +848,7 @@ async fn image_entry_form_template(
         };
 
     Ok(ImageEntryFormTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         heading,
         action,
         submit_label,
@@ -974,7 +974,7 @@ async fn carousel_entry_form_template(
         };
 
     Ok(CarouselEntryFormTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         heading,
         action,
         submit_label,
@@ -1118,7 +1118,7 @@ async fn build_manage_template(
     let (template_example, template_help) = widgets::template_usage(&type_key, &name);
 
     Ok(PlaceholderManageTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         placeholder_id: id,
         placeholder_name: placeholder.name.clone(),
         type_key,
@@ -1168,7 +1168,7 @@ async fn build_placeholder_form(
     let config_schema = widget_config_schema(&state.pool, effective_type_id).await?;
 
     Ok(PlaceholderFormTemplate {
-        user_display_name: layout::user_display_name(auth),
+        layout: layout::AdminLayoutCtx::new(auth),
         heading: heading.to_string(),
         action: action.to_string(),
         submit_label: submit_label.to_string(),
@@ -1435,10 +1435,10 @@ impl EntryForm {
 }
 
 impl EntryFormTemplate {
-    fn new(user_display_name: String, placeholder: &Placeholder) -> Self {
+    fn new(layout: layout::AdminLayoutCtx, placeholder: &Placeholder) -> Self {
         let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
         Self {
-            user_display_name,
+            layout,
             heading: "投稿を追加".to_string(),
             action: format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
             submit_label: "追加する".to_string(),
@@ -1454,13 +1454,13 @@ impl EntryFormTemplate {
         }
     }
 
-    fn edit(user_display_name: String, placeholder: &Placeholder, entry: Post) -> Self {
+    fn edit(layout: layout::AdminLayoutCtx, placeholder: &Placeholder, entry: Post) -> Self {
         let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
         let post_status = normalize_status(&entry.post_status);
         let is_publish = post_status == "publish";
 
         Self {
-            user_display_name,
+            layout,
             heading: "投稿を編集".to_string(),
             action: format!(
                 "/admin/posts/placeholders/{}/entries/{}/edit",

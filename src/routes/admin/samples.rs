@@ -16,7 +16,7 @@ use super::{auth::AuthUser, layout};
 #[derive(Template)]
 #[template(path = "admin/samples/index.html")]
 struct SamplesTemplate {
-    user_display_name: String,
+    layout: layout::AdminLayoutCtx,
     message: String,
     error_message: String,
     last_result: Option<ResetSummary>,
@@ -53,7 +53,7 @@ pub fn router() -> Router<AppState> {
 
 async fn show(auth: AuthUser, State(_state): State<AppState>) -> AppResult<impl IntoResponse> {
     let html = SamplesTemplate {
-        user_display_name: layout::user_display_name(&auth),
+        layout: layout::AdminLayoutCtx::new(&auth),
         message: String::new(),
         error_message: String::new(),
         last_result: None,
@@ -107,7 +107,7 @@ async fn apply(
             };
 
             let html = SamplesTemplate {
-                user_display_name: layout::user_display_name(&auth),
+                layout: layout::AdminLayoutCtx::new(&auth),
                 message,
                 error_message: String::new(),
                 last_result: Some(summary),
@@ -122,7 +122,7 @@ async fn apply(
             let error_message = msg.strip_prefix("conflict: ").unwrap_or(&msg).to_string();
 
             let html = SamplesTemplate {
-                user_display_name: layout::user_display_name(&auth),
+                layout: layout::AdminLayoutCtx::new(&auth),
                 message: String::new(),
                 error_message,
                 last_result: None,
@@ -135,7 +135,7 @@ async fn apply(
         Err(e) => {
             let label = if is_append { "追加" } else { "リセット" };
             let html = SamplesTemplate {
-                user_display_name: layout::user_display_name(&auth),
+                layout: layout::AdminLayoutCtx::new(&auth),
                 message: String::new(),
                 error_message: format!("{}中にエラーが発生しました: {}", label, e),
                 last_result: None,

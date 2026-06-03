@@ -5,7 +5,7 @@
 
 ## 現状
 
-Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェット）まで実装済みです。`cargo run` で設定読み込み → SQLite プール生成 → マイグレーション適用（`0001`〜`0005`） → 既定 `options` 投入 → `work/` ディレクトリ初期化（`presets/index.html` の seed + `pages/` ディレクトリ作成） → `pages` テーブルのトップページ行確保 → axum サーバー起動までが一連で動作します。初回起動時に `data/cms.db` が自動生成されます。
+Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェット）まで実装済みです。`cargo run` で設定読み込み → SQLite プール生成 → マイグレーション適用（`0001`〜`0005`） → 既定 `options` 投入 → `work/` ディレクトリ初期化（`presets/index.html` の seed + `pages/` ディレクトリ作成） → `pages` テーブルのトップページ行確保 → axum サーバー起動までが一連で動作します。初回起動時に `data/cms.db` が自動生成されます。開発用の `cargo run -- --test` では `admin` のパスワードを常に `testpass` に固定します。
 
 **利用可能な主な機能**:
 
@@ -425,14 +425,14 @@ flowchart TB
 ## 開発フロー
 
 1. （任意）`work/config.toml` を直接編集（初回起動で `config.example.toml` から自動生成）
-2. `cargo run` でサーバー起動
+2. `cargo run` でサーバー起動（ローカル開発では `cargo run -- --test` も可。`admin` / `testpass` でログイン）
 3. ブラウザで `http://127.0.0.1:3000/admin` にアクセス
 
 ## セキュリティ上の考慮（設計 / 実装状況）
 
 - **XSS**: テンプレートエンジンの自動 HTML エスケープを利用（管理画面: Askama、公開サイト: MiniJinja の `.html` 既定エスケープ）。生 HTML（静的ページ）は明示的なサニタイズ方針を文書化予定。
 - **CSRF**: 管理画面の POST フォームにはまだ CSRF トークン未付与（今後導入予定）。
-- **認証**: 管理画面（`/admin/*`）は `tower-sessions` + argon2 によるセッションログインを実装済み。REST API（`/api/v1`）は未保護。本番では `CMS_SESSION_SECRET` の設定を推奨。
+- **認証**: 管理画面（`/admin/*`）は `tower-sessions` + argon2 によるセッションログインを実装済み。開発用 `--test` 起動時は `admin` のパスワードを `testpass` に固定。REST API（`/api/v1`）は未保護。本番では `CMS_SESSION_SECRET` の設定を推奨。
 - **アップロード**: 設計段階。MIME 検証、サイズ上限、実行可能拡張子の拒否を予定。
 - **その他**: REST API は認証なし。本番では API 保護の導入を推奨。
 

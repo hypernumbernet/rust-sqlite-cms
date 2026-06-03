@@ -150,25 +150,26 @@ async fn logout(session: Session) -> AppResult<impl IntoResponse> {
     Ok(Redirect::to("/admin/login"))
 }
 
-/// テスト用: 固定パスワードで admin ユーザーを投入する。
+/// `cargo run -- --test` 時の admin パスワード。
+pub const TEST_MODE_ADMIN_PASSWORD: &str = "testpass";
+
+/// テスト用: 固定パスワードで admin ユーザーを作成またはパスワードを上書きする。
 pub async fn ensure_test_admin(pool: &SqlitePool, password: &str) -> AppResult<()> {
     use crate::models::user::{UserInput, PROTECTED_LOGIN, ROLE_ADMINISTRATOR};
     use crate::repos::users as users_repo;
 
-    if users_repo::find_by_login(pool, PROTECTED_LOGIN)
-        .await?
-        .is_some()
-    {
-        return Ok(());
-    }
-
     let password_hash = users_service::hash_password(password).map_err(AppError::from)?;
-    let input = UserInput {
-        login: PROTECTED_LOGIN.to_string(),
-        display_name: "管理者".to_string(),
-        password_hash,
-        role: ROLE_ADMINISTRATOR.to_string(),
-    };
-    users_repo::insert(pool, &input).await?;
+
+    if let Some(user) = users_repo::find_by_login(pool, PROTECTED_LOGIN).await? {
+        users_repo::update(pool, user.id, &user.display_name, Some(&password_hash)).await?;
+    } else {
+        let input = UserInput {
+            login: PROTECTED_LOGIN.to_string(),
+            display_name: "管理者".to_string(),
+            password_hash,
+            role: ROLE_ADMINISTRATOR.to_string(),
+        };
+        users_repo::insert(pool, &input).await?;
+    }
     Ok(())
 }

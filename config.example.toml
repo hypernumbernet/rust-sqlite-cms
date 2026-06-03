@@ -2,6 +2,7 @@
 # 初回起動時に work/config.toml として自動コピーされます（手動コピーは不要）。
 # サイト名・説明は管理画面 /admin/settings からも編集できます。
 # 値は環境変数（CMS_ プレフィックス）で上書きできます。
+# ローカル開発では cargo run -- --test で admin パスワードを testpass に固定できます。
 
 [server]
 # リッスンアドレス（例: "127.0.0.1:3000"）。環境変数: CMS_BIND_ADDR

@@ -71,7 +71,7 @@
     <strong>注意：</strong> この操作を実行すると、<strong>現在のデータベースと work/ ディレクトリの中身が完全に削除</strong>されます。
     公開ページや管理画面で作成したすべてのデータが失われます。
     <br><br>
-    実行後は <strong>サーバーの再起動（Ctrl+C → cargo run）</strong> を強く推奨します。
+    実行後は <strong>サーバーの再起動（Ctrl+C → <code>cargo run -- --test</code> など）</strong> を強く推奨します。
   </div>
 
   <form method="post" action="/admin/samples" onsubmit="return confirm('本当にすべてのデータを削除して基本テストデータを適用しますか？この操作は元に戻せません。');">

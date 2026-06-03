@@ -5,9 +5,28 @@ use tracing_subscriber::{EnvFilter, fmt};
 use rust_sqlite_cms::{
     config::AppConfig, db, error::AppResult, media,
     repos::{options, pages, users},
-    routes, session, state::AppState,
+    routes, routes::admin::auth, session, state::AppState,
     theme::{self, Templates},
 };
+
+struct CliArgs {
+    test_mode: bool,
+}
+
+fn parse_args() -> CliArgs {
+    let mut test_mode = false;
+    for arg in std::env::args().skip(1) {
+        match arg.as_str() {
+            "--test" => test_mode = true,
+            other => {
+                eprintln!("不明なオプション: {other}");
+                eprintln!("使用法: cargo run [-- --test]");
+                std::process::exit(1);
+            }
+        }
+    }
+    CliArgs { test_mode }
+}
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -18,9 +37,14 @@ async fn main() -> AppResult<()> {
         )
         .init();
 
+    let args = parse_args();
+
     AppConfig::ensure_default_file()?;
     let config = AppConfig::load()?;
     tracing::info!(bind_addr = %config.server.bind_addr, db = %config.database.path, "起動設定を読み込みました");
+    if args.test_mode {
+        tracing::warn!("テストモードで起動します（admin パスワードは常に testpass）");
+    }
 
     let pool = db::connect(&config.database.path).await?;
     db::migrate(&pool).await?;
@@ -29,8 +53,17 @@ async fn main() -> AppResult<()> {
     options::ensure_defaults(&pool, &config).await?;
     tracing::info!("既定の options を確認しました");
 
-    users::ensure_default_admin(&pool).await?;
-    tracing::info!("既定の管理ユーザーを確認しました");
+    if args.test_mode {
+        auth::ensure_test_admin(&pool, auth::TEST_MODE_ADMIN_PASSWORD).await?;
+        tracing::info!(
+            login = "admin",
+            password = auth::TEST_MODE_ADMIN_PASSWORD,
+            "テストモード: 管理ユーザー admin のパスワードを設定しました"
+        );
+    } else {
+        users::ensure_default_admin(&pool).await?;
+        tracing::info!("既定の管理ユーザーを確認しました");
+    }
 
     theme::ensure_seeded(&config.paths.work_dir)?;
     theme::ensure_pages_dir(&config.paths.work_dir)?;

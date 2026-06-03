@@ -43,7 +43,15 @@ cd rust-sqlite-cms
 cargo run
 ```
 
-`cargo run` で次の起動シーケンスが実行されます: `work/config.toml` の確認（無ければ `config.example.toml` から生成）→ 設定読み込み → `data/cms.db`（無ければ自動生成）への接続 → マイグレーション適用 → 既定 `options` の確認 → 既定ユーザー `admin` の確認（初回のみランダムパスワードを起動ログに一度出力）→ `work/` ディレクトリの初期化（テンプレート seed + pages ディレクトリ作成 + トップページ行の確保） → `127.0.0.1:3000` で待受。
+開発・動作確認用に、管理ユーザー `admin` のパスワードを常に固定値 **`testpass`** にするテストモードもあります:
+
+```bash
+cargo run -- --test
+```
+
+`--test` 指定時は起動のたびに `admin` のパスワードが `testpass` に設定されます（既存 DB に `admin` がいても上書き）。本番環境では使用しないでください。
+
+`cargo run` で次の起動シーケンスが実行されます: `work/config.toml` の確認（無ければ `config.example.toml` から生成）→ 設定読み込み → `data/cms.db`（無ければ自動生成）への接続 → マイグレーション適用 → 既定 `options` の確認 → 既定ユーザー `admin` の確認（通常起動: 初回のみランダムパスワードを起動ログに一度出力 / `--test`: パスワードを `testpass` に設定）→ `work/` ディレクトリの初期化（テンプレート seed + pages ディレクトリ作成 + トップページ行の確保） → `127.0.0.1:3000` で待受。
 
 `work/config.toml` が無くてもデフォルト値で起動します（初回起動時に自動生成されます）。設定は環境変数でも上書きできます（例: `CMS_BIND_ADDR=0.0.0.0:3000 cargo run`）。
 
@@ -69,7 +77,8 @@ cargo run
 ### ログイン
 
 - 管理画面（`/admin/*`）はログイン必須です（`/admin/login`・`/admin/logout` を除く）
-- 初回起動時、DB に `admin` が無い場合はランダムな初期パスワードが **起動ログに一度だけ** 出力されます（`tracing` の `warn` レベル）。`/admin/login` で `admin` とそのパスワードを入力してログインしてください
+- **テストモード**（`cargo run -- --test`）: ログイン名 `admin`、パスワード **`testpass`**（起動のたびにこの値へ設定されます）
+- **通常起動**（`cargo run`）: 初回起動時、DB に `admin` が無い場合はランダムな初期パスワードが **起動ログに一度だけ** 出力されます（`tracing` の `warn` レベル）。`/admin/login` で `admin` とそのパスワードを入力してログインしてください
 - 本番環境では `CMS_SESSION_SECRET` 環境変数（または `work/config.toml` の `[security].session_secret`）を必ず設定してください。未設定時は起動ごとにランダムなセッション鍵が使われ、再起動で全セッションが無効になります
 - REST API（`/api/v1`）は現時点では認証なしでアクセス可能です
 - 画像カルーセル（Phase 2前倒し予定）などは Phase 2 以降予定

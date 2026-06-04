@@ -194,6 +194,7 @@ pub async fn build_render_context(
     pool: &SqlitePool,
     blogname: String,
     blogdescription: String,
+    favicon_url: String,
     options: RenderOptions,
 ) -> AppResult<minijinja::Value> {
     let placeholder_rows = placeholders::list_all(pool).await?;
@@ -209,6 +210,10 @@ pub async fn build_render_context(
     ctx.insert(
         "blogdescription".into(),
         serde_json::Value::String(blogdescription),
+    );
+    ctx.insert(
+        "favicon_url".into(),
+        serde_json::Value::String(favicon_url),
     );
 
     for placeholder in &placeholder_rows {

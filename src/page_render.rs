@@ -4,6 +4,7 @@ use minijinja::Value;
 use crate::error::AppResult;
 use crate::models::page::Page;
 use crate::repos::options;
+use crate::services;
 use crate::state::AppState;
 use crate::widgets;
 
@@ -29,18 +30,32 @@ async fn render_page_with_options(
     page: &Page,
     options: widgets::RenderOptions,
 ) -> AppResult<Html<String>> {
-    let ctx = build_site_context(state, options).await?;
+    let ctx = build_site_context(state, page.layout_id, options).await?;
     let html = state.templates.render(&page.template_name(), ctx)?;
     Ok(Html(html))
 }
 
-async fn build_site_context(state: &AppState, options: widgets::RenderOptions) -> AppResult<Value> {
+async fn build_site_context(
+    state: &AppState,
+    layout_id: i64,
+    options: widgets::RenderOptions,
+) -> AppResult<Value> {
     let blogname = options::get(&state.pool, "blogname")
         .await?
         .unwrap_or_else(|| state.config.site.title.clone());
     let blogdescription = options::get(&state.pool, "blogdescription")
         .await?
         .unwrap_or_else(|| state.config.site.tagline.clone());
+    let favicon_url = services::layouts::favicon_url_for_layout(&state.pool, layout_id)
+        .await
+        .unwrap_or_default();
 
-    widgets::build_render_context(&state.pool, blogname, blogdescription, options).await
+    widgets::build_render_context(
+        &state.pool,
+        blogname,
+        blogdescription,
+        favicon_url,
+        options,
+    )
+    .await
 }

@@ -5,7 +5,7 @@ use sqlx::SqlitePool;
 use crate::config::AppConfig;
 use crate::error::{AppError, DomainResult};
 use crate::models::layout::{Layout, LayoutInput};
-use crate::repos::layouts as layouts_repo;
+use crate::repos::{layouts as layouts_repo, media as media_repo};
 use crate::theme;
 
 /// 全レイアウト一覧。
@@ -31,6 +31,7 @@ pub async fn create_layout(
     shell_content: &str,
 ) -> DomainResult<i64> {
     validate_layout_key(&input.key)?;
+    validate_favicon_media(pool, input.favicon_media_id).await?;
 
     if layouts_repo::find_by_key(pool, &input.key).await?.is_some() {
         return Err(AppError::Conflict(format!(
@@ -56,6 +57,7 @@ pub async fn update_layout(
     shell_content: &str,
 ) -> DomainResult<()> {
     validate_layout_key(&input.key)?;
+    validate_favicon_media(pool, input.favicon_media_id).await?;
 
     let current = layouts_repo::find(pool, id).await?;
     if current.key != input.key {
@@ -95,6 +97,33 @@ pub async fn delete_layout(pool: &SqlitePool, config: &AppConfig, id: i64) -> Do
     theme::remove_layout_dir(&config.paths.work_dir, &layout.key)?;
 
     Ok(())
+}
+
+/// レイアウトに設定された favicon の公開 URL。未設定・無効参照は `None`。
+pub async fn favicon_url_for_layout(pool: &SqlitePool, layout_id: i64) -> Option<String> {
+    let layout = layouts_repo::find(pool, layout_id).await.ok()?;
+    let media_id = layout.favicon_media_id?;
+    let media = media_repo::find(pool, media_id).await.ok()?;
+    if media.is_favicon_suitable() {
+        Some(media.public_url())
+    } else {
+        None
+    }
+}
+
+async fn validate_favicon_media(pool: &SqlitePool, media_id: Option<i64>) -> DomainResult<()> {
+    let Some(id) = media_id else {
+        return Ok(());
+    };
+    let media = media_repo::find(pool, id).await?;
+    if media.is_favicon_suitable() {
+        Ok(())
+    } else {
+        Err(AppError::Conflict(
+            "favicon には画像または .ico 形式のメディアを選択してください".into(),
+        )
+        .into())
+    }
 }
 
 fn validate_layout_key(key: &str) -> DomainResult<()> {

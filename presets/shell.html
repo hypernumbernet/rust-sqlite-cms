@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ blogname }}{% endblock %}</title>
+  {% if favicon_url %}<link rel="icon" href="{{ favicon_url }}">{% endif %}
   <link rel="stylesheet" href="/static/default/site.css">
 </head>
 <body>

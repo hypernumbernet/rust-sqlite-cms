@@ -5,12 +5,128 @@
 {% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
+<style>
+  .favicon-picker-preview {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: #f6f7f7;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    min-height: 56px;
+    margin-bottom: 10px;
+  }
+  .favicon-picker-preview img {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .favicon-picker-preview .meta {
+    min-width: 0;
+    flex: 1;
+  }
+  .favicon-picker-preview .meta strong {
+    display: block;
+    font-size: 14px;
+    word-break: break-all;
+  }
+  .favicon-picker-preview .meta span {
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .favicon-picker-empty {
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .favicon-picker-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .media-picker-dialog {
+    border: none;
+    border-radius: 8px;
+    padding: 0;
+    width: min(640px, calc(100vw - 32px));
+    max-height: min(80vh, 640px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  }
+  .media-picker-dialog::backdrop {
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .media-picker-dialog-inner {
+    display: flex;
+    flex-direction: column;
+    max-height: min(80vh, 640px);
+  }
+  .media-picker-dialog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .media-picker-dialog-header h2 {
+    margin: 0;
+    font-size: 16px;
+  }
+  .media-picker-dialog-body {
+    padding: 16px 18px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .media-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 10px;
+  }
+  .media-picker-item {
+    border: 2px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    cursor: pointer;
+    text-align: center;
+    background: #fff;
+    font: inherit;
+    color: inherit;
+  }
+  .media-picker-item:hover,
+  .media-picker-item.is-selected {
+    border-color: var(--accent);
+  }
+  .media-picker-item img {
+    width: 100%;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 4px;
+    display: block;
+    margin-bottom: 6px;
+  }
+  .media-picker-item .filename {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    word-break: break-all;
+    line-height: 1.3;
+  }
+  .media-picker-item span.label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    word-break: break-all;
+    margin-top: 4px;
+  }
+</style>
+
 <form method="post" action="{{ action }}" class="form-layout">
   <section class="panel">
     <div class="field">
       <label for="shell_content">shell.html（MiniJinja）</label>
       <textarea id="shell_content" name="shell_content" class="code-editor code-editor--page" spellcheck="false">{{ shell_content }}</textarea>
-      <p class="help">共通の head / nav / footer。ページ本文は <code>block content</code> に差し込まれます。静的 CSS は <code>/static/レイアウトkey/</code> を参照できます。</p>
+      <p class="help">共通の head / nav / footer。ページ本文は <code>block content</code> に差し込まれます。静的 CSS は <code>/static/レイアウトkey/</code> を参照できます。favicon は右の設定とテンプレート変数 <code>favicon_url</code>（shell の <code>&lt;head&gt;</code> に link タグ）で反映されます。</p>
     </div>
   </section>
 
@@ -30,12 +146,71 @@
         <label for="is_default">既定レイアウトにする</label>
       </div>
     </div>
+    <div class="field">
+      <label>Favicon</label>
+      <input type="hidden" name="favicon_media_id" id="favicon_media_id" value="{{ favicon_media_id_value }}">
+      <div class="favicon-picker-preview" id="favicon-preview" aria-live="polite">
+        {% match favicon_selected %}
+        {% when Some with (sel) %}
+        {% if sel.show_preview %}
+        <img src="{{ sel.public_url }}" alt="">
+        {% endif %}
+        <div class="meta">
+          <strong>{{ sel.title }}</strong>
+          <span>ID {{ sel.id }}</span>
+        </div>
+        {% when None %}
+        <span class="favicon-picker-empty">未設定</span>
+        {% endmatch %}
+      </div>
+      <div class="favicon-picker-actions">
+        <button type="button" class="button secondary" id="favicon-open-btn"{% if !has_media %} disabled{% endif %}>メディアを選択…</button>
+        <button type="button" class="button secondary" id="favicon-clear-btn"{% if favicon_selected.is_none() %} disabled{% endif %}>クリア</button>
+      </div>
+      {% if !has_media %}
+      <p class="help" style="margin-top:8px">画像がありません。<a href="/admin/media">メディア</a> 画面から先にアップロードしてください。</p>
+      {% else %}
+      <p class="help" style="margin-top:8px">PNG / WebP / ICO など。既定レイアウトの favicon は <code>/favicon.ico</code> でも配信されます。</p>
+      {% endif %}
+    </div>
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
       <a class="button secondary" href="/admin/layouts">戻る</a>
     </div>
   </aside>
 </form>
+
+{% if has_media %}
+<dialog id="favicon-dialog" class="media-picker-dialog">
+  <div class="media-picker-dialog-inner">
+    <div class="media-picker-dialog-header">
+      <h2>Favicon を選択</h2>
+      <button type="button" class="button secondary" id="favicon-dialog-close">閉じる</button>
+    </div>
+    <div class="media-picker-dialog-body">
+      <div class="media-picker-grid" id="favicon-picker-grid">
+        {% for item in media_picker_items %}
+        <button
+          type="button"
+          class="media-picker-item"
+          data-media-id="{{ item.id }}"
+          data-title="{{ item.title }}"
+          data-public-url="{{ item.public_url }}"
+          data-show-preview="{% if item.show_preview %}1{% else %}0{% endif %}"
+        >
+          {% if item.show_preview %}
+          <img src="{{ item.public_url }}" alt="">
+          {% else %}
+          <span class="filename">{{ item.title }}</span>
+          {% endif %}
+          <span class="label">{{ item.title }}</span>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</dialog>
+{% endif %}
 
 {% if is_edit && !delete_action.is_empty() %}
 <form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('このレイアウトを削除しますか？');">
@@ -45,5 +220,80 @@
 
 {% if !error_message.is_empty() %}
 <script>alert("{{ error_message }}");</script>
+{% endif %}
+
+{% if has_media %}
+<script>
+(function () {
+  const hidden = document.getElementById('favicon_media_id');
+  const preview = document.getElementById('favicon-preview');
+  const openBtn = document.getElementById('favicon-open-btn');
+  const clearBtn = document.getElementById('favicon-clear-btn');
+  const dialog = document.getElementById('favicon-dialog');
+  const closeBtn = document.getElementById('favicon-dialog-close');
+  const grid = document.getElementById('favicon-picker-grid');
+
+  function escapeHtml(text) {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function updateClearButton() {
+    clearBtn.disabled = !hidden.value;
+  }
+
+  function highlightSelected() {
+    const current = hidden.value;
+    grid.querySelectorAll('.media-picker-item').forEach((btn) => {
+      btn.classList.toggle('is-selected', btn.dataset.mediaId === current);
+    });
+  }
+
+  function setPreview(id, title, url, showPreview) {
+    hidden.value = id;
+    if (!id) {
+      preview.innerHTML = '<span class="favicon-picker-empty">未設定</span>';
+    } else {
+      const img = showPreview
+        ? '<img src="' + escapeHtml(url) + '" alt="">'
+        : '';
+      preview.innerHTML =
+        img +
+        '<div class="meta"><strong>' + escapeHtml(title) + '</strong>' +
+        '<span>ID ' + escapeHtml(id) + '</span></div>';
+    }
+    updateClearButton();
+    highlightSelected();
+  }
+
+  openBtn.addEventListener('click', () => {
+    highlightSelected();
+    dialog.showModal();
+  });
+
+  closeBtn.addEventListener('click', () => dialog.close());
+
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
+
+  grid.addEventListener('click', (e) => {
+    const btn = e.target.closest('.media-picker-item');
+    if (!btn) return;
+    setPreview(
+      btn.dataset.mediaId,
+      btn.dataset.title,
+      btn.dataset.publicUrl,
+      btn.dataset.showPreview === '1'
+    );
+    dialog.close();
+  });
+
+  clearBtn.addEventListener('click', () => setPreview('', '', '', false));
+})();
+</script>
 {% endif %}
 {% endblock %}

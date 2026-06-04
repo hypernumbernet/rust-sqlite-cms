@@ -8,16 +8,53 @@ use axum::{
 };
 use tokio::fs;
 
+use std::path::Path;
+
 use crate::error::{AppError, AppResult};
 use crate::page_render;
-use crate::repos::pages;
+use crate::repos::{layouts, media as media_repo, pages};
 use crate::state::AppState;
 use crate::theme;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(home))
+        .route("/favicon.ico", get(serve_favicon))
         .route("/static/{*path}", get(serve_layout_static))
+}
+
+/// 既定レイアウトの favicon を `/favicon.ico` で配信する。
+async fn serve_favicon(State(state): State<AppState>) -> Result<Response, AppError> {
+    let layout = layouts::find_default(&state.pool)
+        .await
+        .map_err(|_| AppError::NotFound)?;
+    let media_id = layout
+        .favicon_media_id
+        .ok_or(AppError::NotFound)?;
+    let attachment = media_repo::find(&state.pool, media_id)
+        .await
+        .map_err(|_| AppError::NotFound)?;
+    if !attachment.is_favicon_suitable() {
+        return Err(AppError::NotFound);
+    }
+    let relative = attachment
+        .file_path
+        .as_deref()
+        .ok_or(AppError::NotFound)?;
+    let full = Path::new(&state.config.paths.uploads_dir).join(relative);
+    let bytes = fs::read(&full).await.map_err(|_| AppError::NotFound)?;
+    let content_type = attachment
+        .mime_type
+        .as_deref()
+        .filter(|m| !m.is_empty())
+        .unwrap_or("application/octet-stream");
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "public, max-age=3600")
+        .body(Body::from(bytes))
+        .unwrap())
 }
 
 async fn home(State(state): State<AppState>) -> AppResult<impl IntoResponse> {
@@ -71,7 +108,8 @@ pub async fn serve_fallback(
 }
 
 fn is_reserved_public_path(path: &str) -> bool {
-    path == "/admin"
+    path == "/favicon.ico"
+        || path == "/admin"
         || path.starts_with("/admin/")
         || path == "/static"
         || path.starts_with("/static/")

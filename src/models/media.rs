@@ -34,6 +34,14 @@ impl Media {
             .unwrap_or(false)
     }
 
+    /// favicon として選択可能か（画像または `.ico`）。
+    pub fn is_favicon_suitable(&self) -> bool {
+        self.mime_type
+            .as_deref()
+            .map(|m| m.starts_with("image/"))
+            .unwrap_or(false)
+    }
+
     pub fn file_size_bytes(&self) -> i64 {
         self.file_size
             .as_deref()

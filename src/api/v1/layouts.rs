@@ -19,6 +19,8 @@ struct CreateLayoutRequest {
     #[serde(default)]
     is_default: bool,
     #[serde(default)]
+    favicon_media_id: Option<i64>,
+    #[serde(default)]
     shell_content: Option<String>,
 }
 
@@ -30,6 +32,8 @@ struct UpdateLayoutRequest {
     name: Option<String>,
     #[serde(default)]
     is_default: Option<bool>,
+    #[serde(default)]
+    favicon_media_id: Option<Option<i64>>,
     #[serde(default)]
     shell_content: Option<String>,
 }
@@ -69,6 +73,7 @@ async fn create(
         key: payload.key.trim().to_string(),
         name: payload.name.trim().to_string(),
         is_default: payload.is_default,
+        favicon_media_id: payload.favicon_media_id,
     };
     if input.key.is_empty() || input.name.is_empty() {
         return Err(ApiError::Validation("key と name は必須です".into()));
@@ -89,10 +94,15 @@ async fn update(
         Some(content) => content,
         None => theme::read_shell(&state.config.paths.work_dir, &current.key).unwrap_or_default(),
     };
+    let favicon_media_id = match payload.favicon_media_id {
+        Some(v) => v,
+        None => current.favicon_media_id,
+    };
     let input = LayoutInput {
         key: payload.key.unwrap_or(current.key),
         name: payload.name.unwrap_or(current.name),
         is_default: payload.is_default.unwrap_or(current.is_default),
+        favicon_media_id,
     };
 
     services::layouts::update_layout(&state.pool, &state.config, id, &input, &shell).await?;

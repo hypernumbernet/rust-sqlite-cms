@@ -51,6 +51,7 @@ async fn announcements_html_renders_with_type_fixed_template_vars() {
         pool,
         "Test Site".to_string(),
         "Description".to_string(),
+        String::new(),
         widgets::RenderOptions::default(),
     )
     .await
@@ -109,6 +110,7 @@ async fn annotate_widgets_wraps_html_with_preview_markers() {
         pool,
         "Test Site".to_string(),
         "Description".to_string(),
+        String::new(),
         widgets::RenderOptions {
             annotate_widgets: true,
         },

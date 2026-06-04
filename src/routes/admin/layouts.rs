@@ -6,11 +6,12 @@ use axum::{
     routing::{get, post},
 };
 use serde::Deserialize;
+use sqlx::SqlitePool;
 
 use crate::error::AppResult;
 use crate::models::layout::LayoutInput;
 use crate::presets;
-use crate::repos::layouts as layouts_repo;
+use crate::repos::{layouts as layouts_repo, media as media_repo};
 use crate::services;
 use crate::state::AppState;
 use crate::theme;
@@ -23,6 +24,8 @@ struct LayoutForm {
     name: String,
     #[serde(default)]
     is_default: Option<String>,
+    #[serde(default)]
+    favicon_media_id: String,
     shell_content: String,
 }
 
@@ -35,6 +38,23 @@ struct LayoutListItem {
     page_count: i64,
     updated_at: String,
     can_delete: bool,
+}
+
+#[derive(Debug, Clone)]
+struct FaviconPreview {
+    id: i64,
+    title: String,
+    public_url: String,
+    show_preview: bool,
+}
+
+/// ダイアログ内のメディア一覧用。
+#[derive(Debug, Clone)]
+struct MediaPickerItem {
+    id: i64,
+    title: String,
+    public_url: String,
+    show_preview: bool,
 }
 
 #[derive(Template)]
@@ -55,6 +75,10 @@ struct LayoutFormTemplate {
     name: String,
     is_default: bool,
     shell_content: String,
+    favicon_media_id_value: String,
+    favicon_selected: Option<FaviconPreview>,
+    media_picker_items: Vec<MediaPickerItem>,
+    has_media: bool,
     is_edit: bool,
     key_readonly: bool,
     delete_action: String,
@@ -94,8 +118,9 @@ async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl 
     Ok(Html(html))
 }
 
-async fn new_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
-    let html = layout_form_template(
+async fn new_form(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+    let html = build_layout_form(
+        &state.pool,
         admin_layout::AdminLayoutCtx::new(&auth),
         "レイアウトを追加",
         "/admin/layouts",
@@ -104,11 +129,13 @@ async fn new_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
         String::new(),
         false,
         presets::DEFAULT_SHELL.to_string(),
+        None,
         false,
         false,
         "",
         "",
     )
+    .await?
     .render()?;
 
     Ok(Html(html))
@@ -125,11 +152,14 @@ async fn create(
                 services::layouts::create_layout(&state.pool, &state.config, &input, &form.shell_content)
                     .await
             {
-                return layout_error_response(&auth, &form, false, None, err.to_string());
+                return layout_error_response(&state.pool, &auth, &form, false, None, err.to_string())
+                    .await;
             }
             Ok(Redirect::to("/admin/layouts").into_response())
         }
-        Err(message) => layout_error_response(&auth, &form, false, None, message),
+        Err(message) => {
+            layout_error_response(&state.pool, &auth, &form, false, None, message).await
+        }
     }
 }
 
@@ -142,7 +172,8 @@ async fn edit(
     let shell_content =
         theme::read_shell(&state.config.paths.work_dir, &row.key).unwrap_or_default();
 
-    let html = layout_form_template(
+    let html = build_layout_form(
+        &state.pool,
         admin_layout::AdminLayoutCtx::new(&auth),
         "レイアウトを編集",
         &format!("/admin/layouts/{id}/edit"),
@@ -151,11 +182,13 @@ async fn edit(
         row.name,
         row.is_default,
         shell_content,
+        row.favicon_media_id,
         true,
         true,
         "",
         &format!("/admin/layouts/{id}/delete"),
     )
+    .await?
     .render()?;
 
     Ok(Html(html))
@@ -173,11 +206,12 @@ async fn update(
                 services::layouts::update_layout(&state.pool, &state.config, id, &input, &form.shell_content)
                     .await
             {
-                return layout_error_response(&auth, &form, true, Some(id), err.to_string());
+                return layout_error_response(&state.pool, &auth, &form, true, Some(id), err.to_string())
+                    .await;
             }
             Ok(Redirect::to("/admin/layouts").into_response())
         }
-        Err(message) => layout_error_response(&auth, &form, true, Some(id), message),
+        Err(message) => layout_error_response(&state.pool, &auth, &form, true, Some(id), message).await,
     }
 }
 
@@ -186,7 +220,8 @@ async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResul
     Ok(Redirect::to("/admin/layouts"))
 }
 
-fn layout_form_template(
+async fn build_layout_form(
+    pool: &SqlitePool,
     layout: admin_layout::AdminLayoutCtx,
     heading: &str,
     action: &str,
@@ -195,12 +230,18 @@ fn layout_form_template(
     name: String,
     is_default: bool,
     shell_content: String,
+    favicon_media_id: Option<i64>,
     is_edit: bool,
     key_readonly: bool,
     error_message: &str,
     delete_action: &str,
-) -> LayoutFormTemplate {
-    LayoutFormTemplate {
+) -> AppResult<LayoutFormTemplate> {
+    let favicon_media_id_value = favicon_media_id.map(|id| id.to_string()).unwrap_or_default();
+    let (media_picker_items, has_media) = load_favicon_media_picker_items(pool).await?;
+    let favicon_selected =
+        resolve_favicon_preview(pool, favicon_media_id, &media_picker_items).await?;
+
+    Ok(LayoutFormTemplate {
         layout,
         heading: heading.to_string(),
         action: action.to_string(),
@@ -209,14 +250,70 @@ fn layout_form_template(
         name,
         is_default,
         shell_content,
+        favicon_media_id_value,
+        favicon_selected,
+        media_picker_items,
+        has_media,
         is_edit,
         key_readonly,
         delete_action: delete_action.to_string(),
         error_message: error_message.to_string(),
-    }
+    })
 }
 
-fn layout_error_response(
+async fn load_favicon_media_picker_items(
+    pool: &SqlitePool,
+) -> AppResult<(Vec<MediaPickerItem>, bool)> {
+    let items = media_repo::list_all(pool)
+        .await?
+        .into_iter()
+        .filter(|item| item.is_favicon_suitable())
+        .map(|item| {
+            let title = item.title.clone();
+            MediaPickerItem {
+                id: item.id,
+                title,
+                public_url: item.public_url(),
+                show_preview: item.is_image(),
+            }
+        })
+        .collect::<Vec<_>>();
+    let has_media = !items.is_empty();
+    Ok((items, has_media))
+}
+
+async fn resolve_favicon_preview(
+    pool: &SqlitePool,
+    favicon_media_id: Option<i64>,
+    picker_items: &[MediaPickerItem],
+) -> AppResult<Option<FaviconPreview>> {
+    let Some(id) = favicon_media_id else {
+        return Ok(None);
+    };
+    if let Some(item) = picker_items.iter().find(|i| i.id == id) {
+        return Ok(Some(FaviconPreview {
+            id: item.id,
+            title: item.title.clone(),
+            public_url: item.public_url.clone(),
+            show_preview: item.show_preview,
+        }));
+    }
+    if let Ok(media) = media_repo::find(pool, id).await {
+        if media.is_favicon_suitable() {
+            let title = media.title.clone();
+            return Ok(Some(FaviconPreview {
+                id: media.id,
+                title,
+                public_url: media.public_url(),
+                show_preview: media.is_image(),
+            }));
+        }
+    }
+    Ok(None)
+}
+
+async fn layout_error_response(
+    pool: &SqlitePool,
     auth: &AuthUser,
     form: &LayoutForm,
     is_edit: bool,
@@ -240,7 +337,10 @@ fn layout_error_response(
         )
     };
 
-    let html = layout_form_template(
+    let favicon_media_id = parse_favicon_media_id(&form.favicon_media_id).ok().flatten();
+
+    let html = build_layout_form(
+        pool,
         admin_layout::AdminLayoutCtx::new(auth),
         heading,
         &action,
@@ -249,11 +349,13 @@ fn layout_error_response(
         form.name.clone(),
         form.is_default.is_some(),
         form.shell_content.clone(),
+        favicon_media_id,
         is_edit,
         is_edit,
         &message,
         &delete_action,
     )
+    .await?
     .render()?;
 
     Ok(Html(html).into_response())
@@ -266,10 +368,23 @@ impl LayoutForm {
         if key.is_empty() || name.is_empty() {
             return Err("key と名前は必須です".to_string());
         }
+        let favicon_media_id = parse_favicon_media_id(&self.favicon_media_id)?;
         Ok(LayoutInput {
             key,
             name,
             is_default: self.is_default.is_some(),
+            favicon_media_id,
         })
     }
+}
+
+fn parse_favicon_media_id(raw: &str) -> Result<Option<i64>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    trimmed
+        .parse::<i64>()
+        .map(Some)
+        .map_err(|_| "favicon のメディア ID が不正です".to_string())
 }

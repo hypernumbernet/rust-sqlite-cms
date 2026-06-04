@@ -115,6 +115,7 @@ CREATE TABLE IF NOT EXISTS layouts (
     key          TEXT    NOT NULL UNIQUE,  -- 英数字とハイフン。パス・URL に使用
     name         TEXT    NOT NULL DEFAULT '',
     is_default   INTEGER NOT NULL DEFAULT 0, -- 1 がちょうど1件（アプリで担保）
+    favicon_media_id INTEGER,              -- メディア（attachment）ID。未設定は NULL
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
@@ -188,7 +189,8 @@ work/layouts/
 
 ### `shell.html`
 
-- MiniJinja テンプレート。サイト共通変数（`blogname`, `blogdescription`）およびウィジェット由来変数（`news_html` など）を参照できる。
+- MiniJinja テンプレート。サイト共通変数（`blogname`, `blogdescription`, `favicon_url`）およびウィジェット由来変数（`news_html` など）を参照できる。
+- `favicon_url` は管理画面でレイアウトに紐づけたメディアの公開 URL（`/uploads/...`）。shell の `<head>` に `{% if favicon_url %}<link rel="icon" href="{{ favicon_url }}">{% endif %}` を書く。既定レイアウトの favicon は `GET /favicon.ico` でも配信される。
 - ページ本文の差し込み用ブロックを定義する（例: `{% block content %}{% endblock %}`）。
 - 共通 CSS は `<link href="/static/{layout_key}/site.css">` のように **外部 static** を参照する（インライン `<style>` の重複は seed 移行時に削減）。
 

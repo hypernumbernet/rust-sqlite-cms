@@ -138,6 +138,7 @@ fn mime_from_extension(ext: &str) -> Option<&'static str> {
         "gif" => Some("image/gif"),
         "webp" => Some("image/webp"),
         "svg" => Some("image/svg+xml"),
+        "ico" => Some("image/x-icon"),
         "pdf" => Some("application/pdf"),
         _ => None,
     }

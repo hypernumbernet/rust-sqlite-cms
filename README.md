@@ -198,32 +198,24 @@ openssl rand -hex 32
 
 セッション Cookie の名前と有効期限は `[session]` セクションで変更できます（`cookie_name`・`max_age_secs`）。署名鍵とは独立した項目です。
 
-## ページ
+## ページとレイアウト
 
-公開サイトの HTML は **本文をファイル、メタ情報を DB**（`pages` テーブル）で管理します。`is_static` フラグで種別を区別します。
-
-| `is_static` | 保存先 | 公開時の扱い |
-|-------------|--------|--------------|
-| `0` | `work/templates/` | [MiniJinja](https://github.com/mitsuhiko/minijinja) で評価（`blogname` / `blogdescription` のほか、`news` などのプレースホルダー変数も自動で渡されます） |
-| `1` | `work/pages/` | 生 HTML をそのまま返す |
-
-お知らせなどの動的コンテンツは、管理画面の **投稿** で定義したプレースホルダー（例: `news`）経由でテンプレートに注入されます。テンプレート側では `{% if has_news %}` / `{% for item in news %}` のように使えます。
+公開サイトは **レイアウト**（共通 shell・CSS）と **ページ**（URL・本文テンプレート）の 2 層で構成します。メタ情報は DB、本文と shell は `work/layouts/{key}/` に保持します。公開時は常に [MiniJinja](https://github.com/mitsuhiko/minijinja) で評価します（`blogname` / `blogdescription` およびプレースホルダー変数を自動注入）。
 
 ```
-work/templates/
-├── index.html      # 公開トップ（/）。DB にトップ行を seed、無ければ presets から生成
-├── page-3.html     # MiniJinja ページ（page-{id}.html）
-└── static/         # CSS / JS。/static で配信
-
-work/pages/
-└── page-4.html     # 静的 HTML ページ
+work/layouts/default/
+├── shell.html           # 共通枠（head / nav / footer）
+├── static/site.css      # /static/default/site.css で配信
+└── pages/
+    ├── index.html       # トップ（url_path = /）
+    └── page-3.html      # その他ページ
 ```
 
-- **管理画面**: `/admin/pages` で一覧・編集。初回起動後は「トップページ」行から `index.html` を編集できます。`/admin/posts` でお知らせ（プレースホルダー配下の投稿）を管理し、テンプレートから参照できます。
-- **任意 URL**: デザイン（`presets/`）を選んで作成し URL を割り当てると、フォールバックで公開されます。
-- **静的アセット**: `work/templates/static/` を `/static` で配信します。
+- **管理画面**: `/admin/layouts` で shell を編集、`/admin/pages` でページ CRUD。`/admin/posts` でプレースホルダー配下の投稿を管理します。
+- **任意 URL**: プリセットからページを作成し URL を割り当てるとフォールバックで公開されます。
+- **詳細設計**: [doc/LAYOUT_SPEC.md](doc/LAYOUT_SPEC.md)
 
-MiniJinja ページはランタイム差し替え可能（再起動不要）。管理画面 UI は `src/templates/admin/` の Askama に固定し、公開ページの影響を受けません。
+テンプレートはランタイム差し替え可能（再起動不要）。管理画面 UI は `src/templates/admin/` の Askama に固定し、公開ページの影響を受けません。
 
 ## 開発者向け
 

@@ -1,17 +1,18 @@
-/// `pages` テーブルの行に対応する。本文は `file_name` が指す
-/// `work/templates/` または `work/pages/` 配下のファイルに保持し、DB にはメタ情報のみを持つ。
+/// `pages` テーブルの行に対応する。本文は `layout_id` が指すレイアウト配下の
+/// `work/layouts/{key}/pages/` に保持し、DB にはメタ情報のみを持つ。
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
 pub struct Page {
     pub id: i64,
+    pub layout_id: i64,
     pub name: String,
     pub url_path: Option<String>,
-    /// 本文 HTML を保持するファイル名（例: `index.html`, `page-3.html`）。
-    pub file_name: Option<String>,
-    /// `true` のとき静的 HTML（`work/pages/`）、`false` のとき MiniJinja テンプレート。
-    pub is_static: bool,
+    /// レイアウトディレクトリからの相対パス（例: `pages/index.html`）。
+    pub file_name: String,
     pub is_published: bool,
     pub created_at: String,
     pub updated_at: String,
+    /// 所属レイアウトの key（`work/layouts/{key}/`）。取得クエリは layouts と JOIN する。
+    pub layout_key: String,
 }
 
 /// ページ作成・更新時にリポジトリへ渡す入力値。
@@ -22,13 +23,18 @@ pub struct PageInput {
     /// URL（例: `/about`）。未設定の下書きは `None`。
     pub url_path: Option<String>,
     pub content: String,
-    pub is_static: bool,
+    pub layout_id: i64,
     pub is_published: bool,
 }
 
 impl Page {
-    /// 公開トップ用のシステム行（`index.html`）かどうか。
+    /// 公開トップ（`url_path = /`）かどうか。
     pub fn is_home(&self) -> bool {
-        self.file_name.as_deref() == Some("index.html")
+        self.url_path.as_deref() == Some("/")
+    }
+
+    /// MiniJinja テンプレート名（`{layout_key}/{file_name}`）。
+    pub fn template_name(&self) -> String {
+        format!("{}/{}", self.layout_key, self.file_name)
     }
 }

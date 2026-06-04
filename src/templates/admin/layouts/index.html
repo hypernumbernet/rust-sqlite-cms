@@ -1,0 +1,44 @@
+{% extends "admin/base.html" %}
+
+{% block title %}レイアウト{% endblock %}
+{% block nav_layouts %}active{% endblock %}
+{% block heading %}レイアウト{% endblock %}
+
+{% block content %}
+<div class="actions" style="margin-bottom:16px">
+  <a class="button" href="/admin/layouts/new">レイアウトを追加</a>
+  <a class="button secondary" href="/admin/pages">ページ一覧</a>
+</div>
+
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>名前</th>
+      <th>key</th>
+      <th>ページ数</th>
+      <th>既定</th>
+      <th>更新日</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in layouts %}
+    <tr>
+      <td>{{ row.name }}</td>
+      <td><code>{{ row.key }}</code></td>
+      <td>{{ row.page_count }}</td>
+      <td>{% if row.is_default %}はい{% else %}—{% endif %}</td>
+      <td>{{ row.updated_at }}</td>
+      <td>
+        <a href="/admin/layouts/{{ row.id }}/edit">編集</a>
+        {% if row.can_delete %}
+        <form method="post" action="/admin/layouts/{{ row.id }}/delete" style="display:inline" onsubmit="return confirm('削除しますか？');">
+          <button type="submit" class="button danger" style="margin-left:8px">削除</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

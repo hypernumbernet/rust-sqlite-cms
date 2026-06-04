@@ -1,0 +1,49 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_layouts %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ action }}" class="form-layout">
+  <section class="panel">
+    <div class="field">
+      <label for="shell_content">shell.html（MiniJinja）</label>
+      <textarea id="shell_content" name="shell_content" class="code-editor code-editor--page" spellcheck="false">{{ shell_content }}</textarea>
+      <p class="help">共通の head / nav / footer。ページ本文は <code>block content</code> に差し込まれます。静的 CSS は <code>/static/レイアウトkey/</code> を参照できます。</p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="field">
+      <label for="key">key</label>
+      <input id="key" name="key" type="text" value="{{ key }}" required{% if key_readonly %} readonly{% endif %}>
+      <p class="help">ディレクトリ名（例: <code>default</code>）。英数字・ハイフン・アンダースコア。</p>
+    </div>
+    <div class="field">
+      <label for="name">名前</label>
+      <input id="name" name="name" type="text" value="{{ name }}" required>
+    </div>
+    <div class="field">
+      <div class="checkbox">
+        <input id="is_default" name="is_default" type="checkbox" value="1"{% if is_default %} checked{% endif %}>
+        <label for="is_default">既定レイアウトにする</label>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="button" type="submit">{{ submit_label }}</button>
+      <a class="button secondary" href="/admin/layouts">戻る</a>
+    </div>
+  </aside>
+</form>
+
+{% if is_edit && !delete_action.is_empty() %}
+<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('このレイアウトを削除しますか？');">
+  <button class="button danger" type="submit">削除する</button>
+</form>
+{% endif %}
+
+{% if !error_message.is_empty() %}
+<script>alert("{{ error_message }}");</script>
+{% endif %}
+{% endblock %}

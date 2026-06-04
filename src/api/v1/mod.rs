@@ -5,6 +5,7 @@ use axum::{middleware, Router};
 use crate::auth::require_api_auth;
 use crate::state::AppState;
 
+pub mod layouts;
 pub mod placeholders;
 pub mod posts;
 pub mod pages;
@@ -17,6 +18,7 @@ pub fn router() -> Router<AppState> {
     let public = session::router();
 
     let protected = Router::new()
+        .merge(layouts::router())
         .merge(placeholders::router())
         .merge(posts::router())
         .merge(pages::router())

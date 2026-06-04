@@ -12,7 +12,7 @@ use crate::error::{AppError, AppResult};
 use crate::models::page::{Page as PageRow, PageInput};
 use crate::page_render;
 use crate::presets;
-use crate::repos::pages; // まだ一部で直接使っている（list/findなど）
+use crate::repos::pages;
 use crate::routes::url::{is_reserved_path, normalize_url_path};
 use crate::services;
 use crate::state::AppState;
@@ -27,7 +27,7 @@ struct PageForm {
     url_path: String,
     content: String,
     #[serde(default)]
-    is_static: Option<String>,
+    layout_id: String,
     #[serde(default)]
     is_published: Option<String>,
 }
@@ -37,7 +37,7 @@ struct PageListItem {
     id: i64,
     name: String,
     url_path: String,
-    kind_label: String,
+    layout_label: String,
     has_url: bool,
     is_published: bool,
     status_label: String,
@@ -89,14 +89,21 @@ struct PageFormTemplate {
     name: String,
     url_path: String,
     content: String,
-    is_static: bool,
     is_published: bool,
     is_edit: bool,
     is_home: bool,
-    show_is_static: bool,
-    static_help: String,
+    layout_options: Vec<LayoutOption>,
+    selected_layout_id: i64,
+    template_help: String,
     delete_action: String,
     error_message: String,
+}
+
+#[derive(Debug, Clone)]
+struct LayoutOption {
+    id: i64,
+    label: String,
+    selected: bool,
 }
 
 pub fn router() -> Router<AppState> {
@@ -113,7 +120,7 @@ async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl 
     let pages = pages::list_all(&state.pool)
         .await?
         .into_iter()
-        .map(PageListItem::from)
+        .map(|page| PageListItem::from_page(&page))
         .collect::<Vec<_>>();
     let html = PageIndexTemplate {
         layout: layout::AdminLayoutCtx::new(&auth),
@@ -142,14 +149,28 @@ async fn new_gallery(auth: AuthUser) -> AppResult<impl IntoResponse> {
     Ok(Html(html))
 }
 
-async fn new_form(auth: AuthUser, Path(design): Path<String>) -> AppResult<impl IntoResponse> {
-    let (name, content, is_static) = if design == "blank" {
-        (String::new(), String::new(), false)
+async fn new_form(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(design): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    let default = services::layouts::find_default(&state.pool).await?;
+    let (name, content) = if design == "blank" {
+        let blank = format!(
+            r#"{{% extends "{}/shell.html" %}}
+{{% block content %}}
+
+{{% endblock %}}
+"#,
+            default.key
+        );
+        (String::new(), blank)
     } else {
         let preset = presets::get(&design).ok_or(AppError::NotFound)?;
-        let is_static = design == "simple-page";
-        (preset.label.to_string(), preset.html.to_string(), is_static)
+        (preset.label.to_string(), preset.html.to_string())
     };
+
+    let layout_options = layout_options_for_form(&state, default.id).await?;
 
     let html = page_form_template(
         layout::AdminLayoutCtx::new(&auth),
@@ -159,11 +180,10 @@ async fn new_form(auth: AuthUser, Path(design): Path<String>) -> AppResult<impl 
         name,
         String::new(),
         content,
-        is_static,
         false,
         false,
         false,
-        true,
+        layout_options,
         "",
         "",
     )
@@ -180,7 +200,9 @@ async fn create(
     let input = match form.into_input(false) {
         Ok(input) => input,
         Err(AppError::Conflict(message)) => {
-            let html = conflict_form_response(&auth, &form, false, None, false, message)?.render()?;
+            let html = conflict_form_response(&state, &auth, &form, false, None, false, message)
+                .await?
+                .render()?;
             return Ok(Html(html).into_response());
         }
         Err(err) => return Err(err),
@@ -189,8 +211,17 @@ async fn create(
     if let Err(err) = services::pages::create_page(&state.pool, &state.config, &input).await {
         let app_err: AppError = err.into();
         if matches!(app_err, AppError::Conflict(_)) {
-            let html =
-                conflict_form_response(&auth, &form, false, None, false, app_err.to_string())?.render()?;
+            let html = conflict_form_response(
+                &state,
+                &auth,
+                &form,
+                false,
+                None,
+                false,
+                app_err.to_string(),
+            )
+            .await?
+            .render()?;
             return Ok(Html(html).into_response());
         }
         return Err(app_err);
@@ -205,17 +236,16 @@ async fn edit(
     Path(id): Path<i64>,
 ) -> AppResult<impl IntoResponse> {
     let page = pages::find(&state.pool, id).await?;
-    let content = match &page.file_name {
-        Some(file_name) => theme::read_page_content(
-            &state.config.paths.work_dir,
-            file_name,
-            page.is_static,
-        )
-        .unwrap_or_default(),
-        None => String::new(),
-    };
+    let content = theme::read_page_body(
+        &state.config.paths.work_dir,
+        &page.layout_key,
+        &page.file_name,
+    )
+    .unwrap_or_default();
 
     let is_home = page.is_home();
+    let layout_options = layout_options_for_form(&state, page.layout_id).await?;
+
     let html = page_form_template(
         layout::AdminLayoutCtx::new(&auth),
         if is_home {
@@ -228,11 +258,10 @@ async fn edit(
         page.name,
         page.url_path.unwrap_or_default(),
         content,
-        page.is_static,
         page.is_published,
         true,
         is_home,
-        true,
+        layout_options,
         "",
         &format!("/admin/pages/{id}/delete"),
     )
@@ -253,8 +282,11 @@ async fn update(
     let input = match form.into_input(is_home) {
         Ok(input) => input,
         Err(AppError::Conflict(message)) => {
-            let html =
-                conflict_form_response(&auth, &form, true, Some(id), is_home, message)?.render()?;
+            let html = conflict_form_response(
+                &state, &auth, &form, true, Some(id), is_home, message,
+            )
+            .await?
+            .render()?;
             return Ok(Html(html).into_response());
         }
         Err(err) => return Err(err),
@@ -264,13 +296,15 @@ async fn update(
         let app_err: AppError = err.into();
         if matches!(app_err, AppError::Conflict(_)) {
             let html = conflict_form_response(
+                &state,
                 &auth,
                 &form,
                 true,
                 Some(id),
                 is_home,
                 app_err.to_string(),
-            )?
+            )
+            .await?
             .render()?;
             return Ok(Html(html).into_response());
         }
@@ -302,11 +336,6 @@ fn wrap_preview_html(mut html: String, page: &PageRow) -> Html<String> {
         ""
     } else {
         "（未公開 — 公開サイトには表示されません）"
-    };
-    let static_note = if page.is_static {
-        r#"<span class="cms-preview-static-note"> — 静的HTMLのためウィジェット編集は利用できません</span>"#
-    } else {
-        ""
     };
 
     let head_banner = format!(
@@ -439,13 +468,12 @@ body.cms-preview-edit-mode .cms-widget-target:hover::after {{
 .cms-preview-toast.is-visible {{ display: block; }}
 </style>
 <div class="cms-preview-banner" role="status">
-  <span><strong>プレビュー</strong> — {name}{unpublished_note}{static_note}</span>
+  <span><strong>プレビュー</strong> — {name}{unpublished_note}</span>
   <span class="cms-preview-banner-actions">
-    <button type="button" class="cms-preview-edit-toggle" id="cms-preview-edit-toggle"{edit_toggle_disabled}>編集モード</button>
+    <button type="button" class="cms-preview-edit-toggle" id="cms-preview-edit-toggle">編集モード</button>
     <span class="note"><a href="/admin/pages">ページ一覧に戻る</a></span>
   </span>
 </div>"#,
-        edit_toggle_disabled = if page.is_static { " disabled" } else { "" },
     );
 
     let footer = format!(
@@ -592,7 +620,7 @@ fn preview_error_response(err: AppError, page: Option<&PageRow>) -> Response {
             } else {
                 page.name.clone()
             },
-            page.file_name.clone().unwrap_or_else(|| "—".to_string()),
+            page.file_name.clone(),
         )
     } else {
         (false, String::new(), String::new(), String::new())
@@ -635,14 +663,18 @@ fn page_form_template(
     name: String,
     url_path: String,
     content: String,
-    is_static: bool,
     is_published: bool,
     is_edit: bool,
     is_home: bool,
-    show_is_static: bool,
+    layout_options: Vec<LayoutOption>,
     error_message: &str,
     delete_action: &str,
 ) -> PageFormTemplate {
+    let selected_layout_id = layout_options
+        .iter()
+        .find(|o| o.selected)
+        .map(|o| o.id)
+        .unwrap_or(0);
     PageFormTemplate {
         layout,
         heading: heading.to_string(),
@@ -651,19 +683,20 @@ fn page_form_template(
         name,
         url_path,
         content,
-        is_static,
         is_published,
         is_edit,
         is_home,
-        show_is_static,
-        static_help: static_help_text(is_static),
+        layout_options,
+        selected_layout_id,
+        template_help: template_help_text(),
         delete_action: delete_action.to_string(),
         error_message: error_message.to_string(),
     }
 }
 
 /// バリデーション衝突時にフォームを再描画し、画面上で alert する。
-fn conflict_form_response(
+async fn conflict_form_response(
+    state: &AppState,
     auth: &AuthUser,
     form: &PageForm,
     is_edit: bool,
@@ -671,7 +704,8 @@ fn conflict_form_response(
     is_home: bool,
     message: String,
 ) -> AppResult<PageFormTemplate> {
-    let is_static = form.is_static.is_some();
+    let selected = parse_layout_id(&form.layout_id).unwrap_or(0);
+    let layout_options = layout_options_for_form(state, selected).await?;
     let (heading, action, submit_label, delete_action) = if is_edit {
         let id = id.expect("edit conflict requires page id");
         let heading = if is_home {
@@ -702,24 +736,39 @@ fn conflict_form_response(
         form.name.clone(),
         form.url_path.clone(),
         form.content.clone(),
-        is_static,
         form.is_published.is_some(),
         is_edit,
         is_home,
-        true,
+        layout_options,
         &message,
         &delete_action,
     ))
 }
 
-fn static_help_text(is_static: bool) -> String {
-    if is_static {
-        "完成した HTML をそのまま保存します。MiniJinja の構文は展開されません。".to_string()
-    } else {
-        "MiniJinja の構文（{{ blogname }} など）が使えます。サイト変数: blogname / blogdescription。\
-         プレースホルダーは /admin/posts で定義し、推奨は {{ プレースホルダー名_html | safe }} でウィジェット HTML を差し込む方式です。\
-         上級者向けに {{ news }} / has_news など構造化変数の直接参照も可能です（MiniJinja テンプレートページのみ）。".to_string()
+fn template_help_text() -> String {
+    "MiniJinja テンプレートです。通常は {% extends \"レイアウトkey/shell.html\" %} で shell を継承し、\
+     {% block content %} に本文を書きます。サイト変数: blogname / blogdescription。\
+     ウィジェットは {{ 名前_html | safe }} で差し込みます。".to_string()
+}
+
+async fn layout_options_for_form(state: &AppState, selected_id: i64) -> AppResult<Vec<LayoutOption>> {
+    let layouts = services::layouts::list_all(&state.pool).await?;
+    Ok(layouts
+        .into_iter()
+        .map(|l| LayoutOption {
+            id: l.id,
+            label: format!("{} ({})", l.name, l.key),
+            selected: l.id == selected_id,
+        })
+        .collect())
+}
+
+fn parse_layout_id(raw: &str) -> Option<i64> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
     }
+    trimmed.parse().ok()
 }
 
 impl PageForm {
@@ -738,7 +787,9 @@ impl PageForm {
             )));
         }
 
-        let is_static = self.is_static.is_some();
+        let layout_id = parse_layout_id(&self.layout_id).ok_or_else(|| {
+            AppError::Conflict("レイアウトを選択してください".to_string())
+        })?;
         let is_published = self.is_published.is_some();
 
         if is_published && url_path.is_none() && !is_home {
@@ -751,31 +802,24 @@ impl PageForm {
             name: self.name.trim().to_string(),
             url_path,
             content: self.content.clone(),
-            is_static,
+            layout_id,
             is_published,
         })
     }
 }
 
-impl From<PageRow> for PageListItem {
-    fn from(page: PageRow) -> Self {
+impl PageListItem {
+    fn from_page(page: &PageRow) -> Self {
         let is_home = page.is_home();
         let has_url = (is_home && page.is_published) || page.url_path.is_some();
         let url_path = if is_home {
             "/".to_string()
         } else {
-            page.url_path.unwrap_or_else(|| "（未設定）".to_string())
+            page.url_path
+                .clone()
+                .unwrap_or_else(|| "（未設定）".to_string())
         };
-        let kind_label = if is_home && page.is_static {
-            "トップ・固定"
-        } else if is_home {
-            "トップ"
-        } else if page.is_static {
-            "固定"
-        } else {
-            "テンプレート"
-        }
-        .to_string();
+        let layout_label = page.layout_key.clone();
         let status_label = if page.is_published {
             "公開"
         } else {
@@ -788,10 +832,10 @@ impl From<PageRow> for PageListItem {
             name: if page.name.trim().is_empty() {
                 "（無題）".to_string()
             } else {
-                page.name
+                page.name.clone()
             },
             url_path,
-            kind_label,
+            layout_label,
             has_url,
             is_published: page.is_published,
             status_label,

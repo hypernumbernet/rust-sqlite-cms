@@ -1,0 +1,29 @@
+{% extends "default/shell.html" %}
+{% block content %}
+  <section class="hero" style="padding:96px 0 80px;background:linear-gradient(135deg,#eef4ff 0%,#fff 100%);text-align:center;border-bottom:1px solid var(--border,#e4e7ec)">
+    <div class="container">
+      <h1>{{ blogname }}</h1>
+      <p class="lead">{{ blogdescription }}</p>
+      <a class="button" href="#features">詳しく見る</a>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="container">
+      <div class="cards">
+        <article class="card">
+          <h3>スピード</h3>
+          <p>単一バイナリで軽快に動作します。</p>
+        </article>
+        <article class="card">
+          <h3>シンプル</h3>
+          <p>SQLite とファイルで運用が簡単です。</p>
+        </article>
+        <article class="card">
+          <h3>拡張性</h3>
+          <p>ウィジェットでコンテンツを差し込めます。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+{% endblock %}

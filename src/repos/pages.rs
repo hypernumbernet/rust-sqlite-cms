@@ -2,18 +2,20 @@ use sqlx::SqlitePool;
 
 use crate::error::{AppError, AppResult};
 use crate::models::page::{Page, PageInput};
-use crate::repos::url_paths;
+use crate::repos::{layouts, url_paths};
 
-const INDEX_FILE_NAME: &str = "index.html";
+const HOME_FILE_NAME: &str = "pages/index.html";
 
 /// 管理画面向けに、全ページを取得する（トップを先頭、以降は更新日時の新しい順）。
 pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Page>> {
     Ok(sqlx::query_as::<_, Page>(
-        "SELECT id, name, url_path, file_name, is_static, is_published, created_at, updated_at
-         FROM pages
-         ORDER BY CASE WHEN file_name = 'index.html' THEN 0 ELSE 1 END,
-                  datetime(updated_at) DESC,
-                  id DESC",
+        "SELECT p.id, p.layout_id, p.name, p.url_path, p.file_name, p.is_published,
+         p.created_at, p.updated_at, l.key AS layout_key
+         FROM pages p
+         INNER JOIN layouts l ON l.id = p.layout_id
+         ORDER BY CASE WHEN p.url_path = '/' THEN 0 ELSE 1 END,
+                  datetime(p.updated_at) DESC,
+                  p.id DESC",
     )
     .fetch_all(pool)
     .await?)
@@ -22,9 +24,11 @@ pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Page>> {
 /// ID でページを取得する。存在しなければ `NotFound`。
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Page> {
     sqlx::query_as::<_, Page>(
-        "SELECT id, name, url_path, file_name, is_static, is_published, created_at, updated_at
-         FROM pages
-         WHERE id = ?",
+        "SELECT p.id, p.layout_id, p.name, p.url_path, p.file_name, p.is_published,
+         p.created_at, p.updated_at, l.key AS layout_key
+         FROM pages p
+         INNER JOIN layouts l ON l.id = p.layout_id
+         WHERE p.id = ?",
     )
     .bind(id)
     .fetch_optional(pool)
@@ -32,13 +36,33 @@ pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Page> {
     .ok_or(AppError::NotFound)
 }
 
-/// ファイル名でページを取得する。
-pub async fn find_by_file_name(pool: &SqlitePool, file_name: &str) -> AppResult<Option<Page>> {
+/// 公開トップページを取得する。
+pub async fn find_home(pool: &SqlitePool) -> AppResult<Option<Page>> {
     Ok(sqlx::query_as::<_, Page>(
-        "SELECT id, name, url_path, file_name, is_static, is_published, created_at, updated_at
-         FROM pages
-         WHERE file_name = ?",
+        "SELECT p.id, p.layout_id, p.name, p.url_path, p.file_name, p.is_published,
+         p.created_at, p.updated_at, l.key AS layout_key
+         FROM pages p
+         INNER JOIN layouts l ON l.id = p.layout_id
+         WHERE p.url_path = '/'",
     )
+    .fetch_optional(pool)
+    .await?)
+}
+
+/// レイアウト内のファイル名でページを取得する。
+pub async fn find_by_layout_file(
+    pool: &SqlitePool,
+    layout_id: i64,
+    file_name: &str,
+) -> AppResult<Option<Page>> {
+    Ok(sqlx::query_as::<_, Page>(
+        "SELECT p.id, p.layout_id, p.name, p.url_path, p.file_name, p.is_published,
+         p.created_at, p.updated_at, l.key AS layout_key
+         FROM pages p
+         INNER JOIN layouts l ON l.id = p.layout_id
+         WHERE p.layout_id = ? AND p.file_name = ?",
+    )
+    .bind(layout_id)
     .bind(file_name)
     .fetch_optional(pool)
     .await?)
@@ -47,57 +71,74 @@ pub async fn find_by_file_name(pool: &SqlitePool, file_name: &str) -> AppResult<
 /// 公開サイト向けに、公開済みかつ URL が一致するページを取得する。
 pub async fn find_published_by_path(pool: &SqlitePool, path: &str) -> AppResult<Option<Page>> {
     Ok(sqlx::query_as::<_, Page>(
-        "SELECT id, name, url_path, file_name, is_static, is_published, created_at, updated_at
-         FROM pages
-         WHERE is_published = 1 AND url_path = ?",
+        "SELECT p.id, p.layout_id, p.name, p.url_path, p.file_name, p.is_published,
+         p.created_at, p.updated_at, l.key AS layout_key
+         FROM pages p
+         INNER JOIN layouts l ON l.id = p.layout_id
+         WHERE p.is_published = 1 AND p.url_path = ?",
     )
     .bind(path)
     .fetch_optional(pool)
     .await?)
 }
 
-/// トップページ（`index.html`）の DB 行が無ければ作成する。
+/// トップページの DB 行が無ければ作成する。
 pub async fn ensure_index_page(pool: &SqlitePool) -> AppResult<()> {
-    if find_by_file_name(pool, INDEX_FILE_NAME).await?.is_some() {
+    if find_home(pool).await?.is_some() {
         return Ok(());
     }
 
+    let default = layouts::find_default(pool).await?;
+
     sqlx::query(
-        "INSERT INTO pages (name, file_name, is_static, is_published)
-         VALUES ('トップページ', ?, 0, 1)",
+        "INSERT INTO pages (name, url_path, file_name, layout_id, is_published)
+         VALUES ('トップページ', '/', ?, ?, 1)",
     )
-    .bind(INDEX_FILE_NAME)
+    .bind(HOME_FILE_NAME)
+    .bind(default.id)
     .execute(pool)
     .await?;
 
     Ok(())
 }
 
-/// メタ情報を作成し、`id` から確定したファイル名（`page-{id}.html`）を
+/// メタ情報を作成し、`id` から確定したファイル名（`pages/page-{id}.html`）を
 /// 行へ反映して `(id, file_name)` を返す。本文ファイルの書き込みは呼び出し側で行う。
 pub async fn insert(pool: &SqlitePool, input: &PageInput) -> AppResult<(i64, String)> {
     url_paths::ensure_url_available(pool, input.url_path.as_deref(), None).await?;
 
+    let mut tx = pool.begin().await?;
+    let temp_file = format!(
+        "pages/.new-{}",
+        std::time::SystemTime::now()
+            .elapsed()
+            .unwrap_or_default()
+            .as_nanos()
+    );
+
     let row: (i64,) = sqlx::query_as(
-        "INSERT INTO pages (name, url_path, is_static, is_published)
-         VALUES (?, ?, ?, ?)
+        "INSERT INTO pages (name, url_path, file_name, layout_id, is_published)
+         VALUES (?, ?, ?, ?, ?)
          RETURNING id",
     )
     .bind(&input.name)
     .bind(&input.url_path)
-    .bind(input.is_static)
+    .bind(&temp_file)
+    .bind(input.layout_id)
     .bind(input.is_published)
-    .fetch_one(pool)
+    .fetch_one(&mut *tx)
     .await?;
 
     let id = row.0;
-    let file_name = format!("page-{id}.html");
+    let file_name = format!("pages/page-{id}.html");
 
     sqlx::query("UPDATE pages SET file_name = ? WHERE id = ?")
         .bind(&file_name)
         .bind(id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
+
+    tx.commit().await?;
 
     Ok((id, file_name))
 }
@@ -110,13 +151,13 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PageInput) -> AppResult<
         let result = sqlx::query(
             "UPDATE pages
              SET name = ?,
-                 is_static = ?,
+                 layout_id = ?,
                  is_published = ?,
                  updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
              WHERE id = ?",
         )
         .bind(&input.name)
-        .bind(input.is_static)
+        .bind(input.layout_id)
         .bind(input.is_published)
         .bind(id)
         .execute(pool)
@@ -134,14 +175,14 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PageInput) -> AppResult<
         "UPDATE pages
          SET name = ?,
              url_path = ?,
-             is_static = ?,
+             layout_id = ?,
              is_published = ?,
              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
          WHERE id = ?",
     )
     .bind(&input.name)
     .bind(&input.url_path)
-    .bind(input.is_static)
+    .bind(input.layout_id)
     .bind(input.is_published)
     .bind(id)
     .execute(pool)
@@ -160,7 +201,7 @@ pub async fn delete(pool: &SqlitePool, id: i64) -> AppResult<()> {
 
     if page.is_home() {
         return Err(AppError::Conflict(
-            "トップページ（index.html）は削除できません".to_string(),
+            "トップページは削除できません".to_string(),
         ));
     }
 

@@ -1,10 +1,15 @@
 //! 同梱のスターターデザイン。新規テンプレート作成時に複製元として選択する。
 
-/// 公開トップ `/` の初期テンプレート。`work/templates/index.html` が無い場合に
-/// このソースから生成する（seed）。
-pub const HOME_INDEX: &str = include_str!("../presets/index.html");
+/// 既定レイアウトの shell（`work/layouts/default/shell.html`）。
+pub const DEFAULT_SHELL: &str = include_str!("../presets/shell.html");
 
-/// 1 つのプリセットデザイン。
+/// 公開トップ `/` の初期ページ本文（`pages/index.html`）。
+pub const DEFAULT_HOME_PAGE: &str = include_str!("../presets/home_page.html");
+
+/// 既定レイアウトの site.css。
+pub const DEFAULT_SITE_CSS: &str = include_str!("../presets/default/site.css");
+
+/// 1 つのプリセットデザイン（ページ本文雛形）。
 pub struct Preset {
     /// URL や選択に使う一意キー。
     pub key: &'static str,
@@ -12,7 +17,7 @@ pub struct Preset {
     pub label: &'static str,
     /// 説明文。
     pub description: &'static str,
-    /// 複製元となる HTML（MiniJinja ソース）。
+    /// 複製元となる MiniJinja 本文（`extends default/shell.html` 付き）。
     pub html: &'static str,
 }
 
@@ -22,19 +27,19 @@ pub const PRESETS: &[Preset] = &[
         key: "landing",
         label: "ランディング",
         description: "ヒーローと特徴を並べた、トップページ向けの華やかなデザイン。",
-        html: include_str!("../presets/landing.html"),
+        html: include_str!("../presets/pages/landing.html"),
     },
     Preset {
         key: "simple-page",
         label: "シンプルページ",
         description: "見出しと本文だけの、固定ページ向けの落ち着いたデザイン。",
-        html: include_str!("../presets/simple-page.html"),
+        html: include_str!("../presets/pages/simple-page.html"),
     },
     Preset {
         key: "news",
         label: "お知らせ一覧",
         description: "公開済みのお知らせを一覧表示する動的デザイン。",
-        html: include_str!("../presets/news.html"),
+        html: include_str!("../presets/pages/news.html"),
     },
 ];
 

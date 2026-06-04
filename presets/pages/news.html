@@ -1,0 +1,11 @@
+{% extends "default/shell.html" %}
+{% block title %}お知らせ - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container" style="max-width:820px;padding:56px 0">
+      <h1>お知らせ</h1>
+      <p class="lead">{{ blogname }} からの最新情報</p>
+      {{ news_html | safe }}
+    </div>
+  </section>
+{% endblock %}

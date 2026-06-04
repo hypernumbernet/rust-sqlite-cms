@@ -16,10 +16,10 @@ async fn response_body_string(response: axum::http::Response<axum::body::Body>) 
 #[tokio::test]
 async fn preview_includes_edit_mode_ui_and_widget_markers() {
     let app = common::TestApp::new().await;
-    let page = pages::find_by_file_name(&app.state.pool, "index.html")
+    let page = pages::find_home(&app.state.pool)
         .await
-        .expect("lookup index page")
-        .expect("index page should exist");
+        .expect("lookup home page")
+        .expect("home page should exist");
 
     let response = app
         .admin_request("GET", &format!("/admin/pages/{}/preview", page.id), None, None)

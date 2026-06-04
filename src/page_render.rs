@@ -1,11 +1,10 @@
 use axum::response::Html;
 use minijinja::Value;
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 use crate::models::page::Page;
 use crate::repos::options;
 use crate::state::AppState;
-use crate::theme;
 use crate::widgets;
 
 /// ページ本文を公開サイトと同じパイプラインで描画する。
@@ -30,16 +29,8 @@ async fn render_page_with_options(
     page: &Page,
     options: widgets::RenderOptions,
 ) -> AppResult<Html<String>> {
-    let file_name = page.file_name.as_deref().ok_or(AppError::NotFound)?;
-
-    if page.is_static {
-        let html = theme::read_page_content(&state.config.paths.work_dir, file_name, true)?;
-        return Ok(Html(html));
-    }
-
     let ctx = build_site_context(state, options).await?;
-    let html = state.templates.render(file_name, ctx)?;
-
+    let html = state.templates.render(&page.template_name(), ctx)?;
     Ok(Html(html))
 }
 

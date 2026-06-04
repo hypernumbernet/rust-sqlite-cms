@@ -1,0 +1,14 @@
+{% extends "default/shell.html" %}
+{% block title %}{{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container" style="max-width:720px;padding:64px 0">
+      <h1>{{ blogname }}</h1>
+      <p class="lead">{{ blogdescription }}</p>
+      <article>
+        <p>ここに本文を記述します。このテンプレートは見出しと本文だけのシンプルな固定ページ向けデザインです。</p>
+        <p>テキストを書き換えて、会社概要やプライバシーポリシーなどのページとして利用できます。</p>
+      </article>
+    </div>
+  </section>
+{% endblock %}

@@ -15,7 +15,7 @@ Phase 1 のコンテンツ管理機能（ページ + お知らせウィジェッ
 - ページ管理: `/admin/pages` でサイトページ CRUD。プリセット（ランディング/シンプルページ/お知らせ一覧など）からの作成、MiniJinja テンプレート vs 静的 HTML の選択、URL パス割り当て、公開/非公開、トップページ特別扱い
 - ウィジェット: `/admin/widgets` で HTML 構成（`html_template`）とインスタンス設定スキーマ（`config_schema`）を編集・保存。JSON パッケージのエクスポート/インポートで他サイトとタイプ定義を共有可能。各ページへの配置はプレースホルダー（`/admin/posts`）でインスタンスを作り、テンプレートに `{{ 名前_html | safe }}` を書くだけ
 - サイト設定: `/admin/settings` でサイト名・説明・サイト URL（`options` + `work/config.toml` の `[site]`）
-- 作業ディレクトリ: `work/templates/`（MiniJinja・autoreload 対応）と `work/pages/`（静的 HTML）をファイルベースで管理
+- 作業ディレクトリ: `work/layouts/{key}/`（shell・pages・static）。詳細は [LAYOUT_SPEC.md](./LAYOUT_SPEC.md)
 
 **実装済みの技術的特徴**:
 

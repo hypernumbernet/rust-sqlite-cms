@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ blogname }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/default/site.css">
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="brand">{{ blogname }}</div>
+      <nav class="nav-links" aria-label="主要ナビゲーション">
+        <a href="#services">事業内容</a>
+        <a href="#news">お知らせ</a>
+        <a href="#company">会社概要</a>
+        <a href="/admin/posts">管理画面</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>{{ blogname }}</span>
+      <span>&copy; 2026 Sample Company. All rights reserved.</span>
+    </div>
+  </footer>
+</body>
+</html>

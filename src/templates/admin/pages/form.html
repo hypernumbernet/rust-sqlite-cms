@@ -12,9 +12,9 @@
 <form method="post" action="{{ action }}" class="form-layout"{% if !is_home %} onsubmit="return validatePageForm();"{% endif %}>
   <section class="panel">
     <div class="field">
-      <label for="content">HTML</label>
+      <label for="content">HTML（MiniJinja）</label>
       <textarea id="content" name="content" class="code-editor code-editor--page" spellcheck="false">{{ content }}</textarea>
-      <p class="help">{{ static_help }}</p>
+      <p class="help">{{ template_help }}</p>
     </div>
   </section>
 
@@ -25,28 +25,33 @@
       <p class="help">管理画面での表示名です。</p>
     </div>
 
+    <div class="field">
+      <label for="layout_id">レイアウト</label>
+      <select id="layout_id" name="layout_id" required{% if is_home %} disabled{% endif %}>
+        {% for opt in layout_options %}
+        <option value="{{ opt.id }}"{% if opt.selected %} selected{% endif %}>{{ opt.label }}</option>
+        {% endfor %}
+      </select>
+      {% if is_home %}
+      <input type="hidden" name="layout_id" value="{{ selected_layout_id }}">
+      <p class="help">トップページのレイアウト変更は shell 編集で行います。</p>
+      {% else %}
+      <p class="help"><a href="/admin/layouts">レイアウト管理</a>で shell や CSS を編集できます。</p>
+      {% endif %}
+    </div>
+
     {% if is_home %}
     <input type="hidden" name="url_path" value="/">
     <div class="field">
       <label for="url_path_display">URL</label>
       <input id="url_path_display" type="text" value="/" disabled>
-      <p class="help">トップページの URL は <code>/</code> 固定です。非公開にするとサイトトップは表示されません。</p>
+      <p class="help">トップページの URL は <code>/</code> 固定です。</p>
     </div>
     {% else %}
     <div class="field">
       <label for="url_path">URL</label>
       <input id="url_path" name="url_path" type="text" value="{{ url_path }}" placeholder="/about">
       <p class="help">公開する URL（例: <code>/about</code>）。空のままだと下書きとして保存します。</p>
-    </div>
-    {% endif %}
-
-    {% if show_is_static %}
-    <div class="field">
-      <div class="checkbox">
-        <input id="is_static" name="is_static" type="checkbox" value="1"{% if is_static %} checked{% endif %}>
-        <label for="is_static">静的 HTML（MiniJinja なし）</label>
-      </div>
-      <p class="help">オンにすると完成した HTML をそのまま配信します。</p>
     </div>
     {% endif %}
 

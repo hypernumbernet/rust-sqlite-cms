@@ -249,8 +249,7 @@ fn clear_and_recreate_work_dirs(work_dir: &str, uploads_dir: &str) -> AppResult<
     }
 
     // 必要なディレクトリを確実に作成
-    std::fs::create_dir_all(work.join("templates/static"))?;
-    std::fs::create_dir_all(work.join("pages"))?;
+    crate::theme::ensure_seeded(work_dir)?;
     std::fs::create_dir_all(uploads_dir)?;
 
     // 最低限の config.toml を生成（任意）
@@ -265,10 +264,6 @@ tagline = "開発用テスト環境（サンプルからリセット）"
 "#;
         std::fs::write(config_path, content)?;
     }
-
-    // トップページテンプレートを presets からコピー
-    let preset = crate::presets::HOME_INDEX;
-    std::fs::write(work.join("templates/index.html"), preset)?;
 
     Ok(())
 }

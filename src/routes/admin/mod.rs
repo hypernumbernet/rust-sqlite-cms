@@ -15,6 +15,7 @@ use chrono::DateTime;
 
 pub mod auth;
 pub mod layout;
+pub mod layouts;
 pub mod media;
 pub mod pages;
 pub mod posts;
@@ -46,6 +47,7 @@ pub fn router() -> Router<AppState> {
         .route("/admin", get(dashboard))
         .merge(posts::router())
         .merge(pages::router())
+        .merge(layouts::router())
         .merge(widgets::router())
         .merge(media::router())
         .merge(settings::router())

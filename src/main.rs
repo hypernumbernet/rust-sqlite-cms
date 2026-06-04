@@ -4,7 +4,7 @@ use tracing_subscriber::{EnvFilter, fmt};
 
 use rust_sqlite_cms::{
     config::AppConfig, db, error::AppResult, media,
-    repos::{options, pages, users},
+    repos::{layouts, options, pages, users},
     routes, routes::admin::auth, session, state::AppState,
     theme::{self, Templates},
 };
@@ -66,14 +66,13 @@ async fn main() -> AppResult<()> {
     }
 
     theme::ensure_seeded(&config.paths.work_dir)?;
-    theme::ensure_pages_dir(&config.paths.work_dir)?;
+    layouts::find_default(&pool).await?;
     media::ensure_uploads_dir(&config.paths.uploads_dir)?;
     pages::ensure_index_page(&pool).await?;
     tracing::info!("作業ディレクトリを初期化しました");
 
     let bind_addr = config.server.bind_addr.clone();
-    let templates = Arc::new(Templates::new(theme::templates_dir(&config.paths.work_dir)));
-    let static_dir = theme::static_dir(&config.paths.work_dir);
+    let templates = Arc::new(Templates::new(theme::layouts_dir(&config.paths.work_dir)));
     let uploads_dir = media::uploads_dir(&config.paths.uploads_dir);
     let session_layer = session::session_layer(&config);
     let state = AppState {
@@ -82,7 +81,7 @@ async fn main() -> AppResult<()> {
         templates,
     };
 
-    let app = routes::router(static_dir, uploads_dir)
+    let app = routes::router(uploads_dir)
         .layer(session_layer)
         .with_state(state);
 

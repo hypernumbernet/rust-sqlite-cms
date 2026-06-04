@@ -7,6 +7,7 @@ use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
 use crate::models::page::{Page, PageInput};
+use crate::repos::layouts;
 use crate::routes::url::normalize_url_path;
 use crate::services;
 use crate::state::AppState;
@@ -19,7 +20,7 @@ struct CreatePageRequest {
     url_path: Option<String>,
     content: String,
     #[serde(default)]
-    is_static: bool,
+    layout_id: Option<i64>,
     #[serde(default)]
     is_published: bool,
 }
@@ -33,7 +34,7 @@ struct UpdatePageRequest {
     #[serde(default)]
     content: Option<String>,
     #[serde(default)]
-    is_static: Option<bool>,
+    layout_id: Option<i64>,
     #[serde(default)]
     is_published: Option<bool>,
 }
@@ -66,24 +67,28 @@ async fn create(
     State(state): State<AppState>,
     Json(payload): Json<CreatePageRequest>,
 ) -> ApiResult<Json<Page>> {
-    // 簡単な入力正規化（API 側でも最低限のチェック）
     let url_path = payload.url_path.as_deref().and_then(normalize_url_path);
 
     if payload.is_published && url_path.is_none() {
-        return Err(ApiError::Validation("公開するには url_path を指定してください".into()));
+        return Err(ApiError::Validation(
+            "公開するには url_path を指定してください".into(),
+        ));
     }
+
+    let layout_id = match payload.layout_id {
+        Some(id) => id,
+        None => layouts::find_default(&state.pool).await?.id,
+    };
 
     let input = PageInput {
         name: payload.name.trim().to_string(),
         url_path,
         content: payload.content,
-        is_static: payload.is_static,
+        layout_id,
         is_published: payload.is_published,
     };
 
-    let (id, _) = services::pages::create_page(&state.pool, &state.config, &input)
-        .await
-        ?;
+    let (id, _) = services::pages::create_page(&state.pool, &state.config, &input).await?;
 
     let created = services::pages::find(&state.pool, id).await?;
     Ok(Json(created))
@@ -104,34 +109,28 @@ async fn update(
             .map(|s| normalize_url_path(s))
             .unwrap_or(current.url_path),
         content: payload.content.unwrap_or_else(|| {
-            // content が指定されなかった場合は現在のファイルを読み直す
-            current
-                .file_name
-                .as_ref()
-                .and_then(|f| {
-                    theme::read_page_content(&state.config.paths.work_dir, f, current.is_static).ok()
-                })
-                .unwrap_or_default()
+            theme::read_page_body(
+                &state.config.paths.work_dir,
+                &current.layout_key,
+                &current.file_name,
+            )
+            .unwrap_or_default()
         }),
-        is_static: payload.is_static.unwrap_or(current.is_static),
+        layout_id: payload.layout_id.unwrap_or(current.layout_id),
         is_published: payload.is_published.unwrap_or(current.is_published),
     };
 
-    services::pages::update_page(&state.pool, &state.config, id, &input)
-        .await
-        ?;
+    services::pages::update_page(&state.pool, &state.config, id, &input).await?;
 
     let updated = services::pages::find(&state.pool, id).await?;
     Ok(Json(updated))
 }
 
-async fn delete_page(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<serde_json::Value>> {
-    services::pages::delete_page(&state.pool, &state.config, id)
-        .await
-        ?;
+async fn delete_page(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<serde_json::Value>> {
+    services::pages::delete_page(&state.pool, &state.config, id).await?;
 
     Ok(Json(serde_json::json!({ "deleted": true, "id": id })))
 }
-
-// プレビューなどは既存の /admin/pages/{id}/preview を再利用（APIからは不要な場合が多い）
-

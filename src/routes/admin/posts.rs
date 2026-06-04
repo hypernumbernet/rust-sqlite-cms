@@ -32,6 +32,14 @@ struct PlaceholderForm {
 struct ManageQuery {
     #[serde(default)]
     tab: String,
+    #[serde(default)]
+    embed: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct EmbedQuery {
+    #[serde(default)]
+    embed: String,
 }
 
 #[derive(Debug, Clone)]
@@ -459,8 +467,10 @@ async fn placeholder_update(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Query(query): Query<EmbedQuery>,
     Form(form): Form<PlaceholderForm>,
 ) -> AppResult<Response> {
+    let embed = is_embed_flag(&query.embed);
     let placeholder = placeholders::find(&state.pool, id).await?;
     let input = match (&form).into_input() {
         Ok(input) => input,
@@ -477,6 +487,7 @@ async fn placeholder_update(
                     widget_type_id,
                     config: form.config,
                 }),
+                embed,
             )
             .await?
             .render()?;
@@ -493,6 +504,7 @@ async fn placeholder_update(
                 "settings",
                 &message,
                 None,
+                embed,
             )
             .await?
             .render()?;
@@ -501,7 +513,10 @@ async fn placeholder_update(
         return Err(err);
     }
 
-    Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}?tab=settings")).into_response())
+    Ok(redirect_or_embed_saved(
+        embed,
+        &manage_settings_tab_url(id, embed),
+    ))
 }
 
 async fn placeholder_destroy(
@@ -520,6 +535,7 @@ async fn placeholder_destroy(
                 "settings",
                 &message,
                 None,
+                false,
             )
             .await?
             .render()?;
@@ -535,13 +551,14 @@ async fn placeholder_manage(
     Path(id): Path<i64>,
     Query(query): Query<ManageQuery>,
 ) -> AppResult<impl IntoResponse> {
+    let embed = is_embed_flag(&query.embed);
     let placeholder = placeholders::find(&state.pool, id).await?;
     let active_tab = if query.tab == "settings" {
         "settings"
     } else {
         "entries"
     };
-    let html = build_manage_template(&auth, &state, &placeholder, active_tab, "", None)
+    let html = build_manage_template(&auth, &state, &placeholder, active_tab, "", None, embed)
         .await?
         .render()?;
     Ok(Html(html))
@@ -551,21 +568,26 @@ async fn entry_new(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Query(query): Query<EmbedQuery>,
 ) -> AppResult<impl IntoResponse> {
+    let embed = is_embed_flag(&query.embed);
     let placeholder = placeholders::find(&state.pool, id).await?;
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
-        let html = image_entry_form_template(&auth, &state, &placeholder, None, "", "").await?;
+        let html =
+            image_entry_form_template(&auth, &state, &placeholder, None, "", "", embed).await?;
         return Ok(Html(html));
     }
 
     if type_key == "carousel" {
-        let html = carousel_entry_form_template(&auth, &state, &placeholder, None, "", "").await?;
+        let html =
+            carousel_entry_form_template(&auth, &state, &placeholder, None, "", "", embed).await?;
         return Ok(Html(html));
     }
 
-    let html = EntryFormTemplate::new(layout::AdminLayoutCtx::new(&auth), &placeholder).render()?;
+    let html = EntryFormTemplate::new(layout::AdminLayoutCtx::with_embed(&auth, embed), &placeholder, embed)
+        .render()?;
     Ok(Html(html))
 }
 
@@ -573,44 +595,75 @@ async fn entry_create(
     auth: AuthUser,
     State(state): State<AppState>,
     Path(id): Path<i64>,
+    Query(query): Query<EmbedQuery>,
     Form(form): Form<EntryForm>,
 ) -> AppResult<Response> {
+    let embed = is_embed_flag(&query.embed);
     let placeholder = placeholders::find(&state.pool, id).await?;
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
-        return image_entry_save(&auth, &state, &placeholder, None, form).await;
+        return image_entry_save(&auth, &state, &placeholder, None, form, embed).await;
     }
 
     if type_key == "carousel" {
-        return carousel_entry_save(&auth, &state, &placeholder, None, form).await;
+        return carousel_entry_save(&auth, &state, &placeholder, None, form, embed).await;
     }
 
     let input = form.into_input(id);
     posts::insert(&state.pool, &input).await?;
-    Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
+    Ok(redirect_or_embed_saved(
+        embed,
+        &url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
+    ))
 }
 
 async fn entry_edit(
     auth: AuthUser,
     State(state): State<AppState>,
     Path((id, entry_id)): Path<(i64, i64)>,
+    Query(query): Query<EmbedQuery>,
 ) -> AppResult<impl IntoResponse> {
+    let embed = is_embed_flag(&query.embed);
     let placeholder = placeholders::find(&state.pool, id).await?;
     let type_key = placeholder_type_key(&state, &placeholder).await?;
     let entry = posts::find_in_placeholder(&state.pool, id, entry_id).await?;
 
     if type_key == "image" {
-        let html = image_entry_form_template(&auth, &state, &placeholder, Some(&entry), "", "").await?;
+        let html = image_entry_form_template(
+            &auth,
+            &state,
+            &placeholder,
+            Some(&entry),
+            "",
+            "",
+            embed,
+        )
+        .await?;
         return Ok(Html(html));
     }
 
     if type_key == "carousel" {
-        let html = carousel_entry_form_template(&auth, &state, &placeholder, Some(&entry), "", "").await?;
+        let html = carousel_entry_form_template(
+            &auth,
+            &state,
+            &placeholder,
+            Some(&entry),
+            "",
+            "",
+            embed,
+        )
+        .await?;
         return Ok(Html(html));
     }
 
-    let html = EntryFormTemplate::edit(layout::AdminLayoutCtx::new(&auth), &placeholder, entry).render()?;
+    let html = EntryFormTemplate::edit(
+        layout::AdminLayoutCtx::with_embed(&auth, embed),
+        &placeholder,
+        entry,
+        embed,
+    )
+    .render()?;
     Ok(Html(html))
 }
 
@@ -618,36 +671,41 @@ async fn entry_update(
     auth: AuthUser,
     State(state): State<AppState>,
     Path((id, entry_id)): Path<(i64, i64)>,
+    Query(query): Query<EmbedQuery>,
     Form(form): Form<EntryForm>,
 ) -> AppResult<Response> {
+    let embed = is_embed_flag(&query.embed);
     let placeholder = placeholders::find(&state.pool, id).await?;
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
-        return image_entry_save(&auth, &state, &placeholder, Some(entry_id), form).await;
+        return image_entry_save(&auth, &state, &placeholder, Some(entry_id), form, embed).await;
     }
 
     if type_key == "carousel" {
-        return carousel_entry_save(&auth, &state, &placeholder, Some(entry_id), form).await;
+        return carousel_entry_save(&auth, &state, &placeholder, Some(entry_id), form, embed).await;
     }
 
     let input = form.into_input(id);
     posts::update(&state.pool, entry_id, &input).await?;
-    Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
+    Ok(redirect_or_embed_saved(
+        embed,
+        &url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
+    ))
 }
 
 async fn entry_destroy(
     auth: AuthUser,
     State(state): State<AppState>,
     Path((id, entry_id)): Path<(i64, i64)>,
+    Query(query): Query<EmbedQuery>,
 ) -> AppResult<Response> {
+    let embed = is_embed_flag(&query.embed);
     let placeholder = placeholders::find(&state.pool, id).await?;
+    let manage_url = url_embed(&format!("/admin/posts/placeholders/{id}"), embed);
     match posts::delete_in_placeholder(&state.pool, id, entry_id).await {
-        Ok(()) => Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response()),
-        Err(AppError::NotFound) => {
-            // 既に削除済み等の場合は一覧に戻す（冪等）
-            Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
-        }
+        Ok(()) => Ok(Redirect::to(&manage_url).into_response()),
+        Err(AppError::NotFound) => Ok(Redirect::to(&manage_url).into_response()),
         Err(AppError::Conflict(message)) => {
             let html = build_manage_template(
         &auth,
@@ -656,6 +714,7 @@ async fn entry_destroy(
                 "entries",
                 &message,
                 None,
+                embed,
             )
             .await?
             .render()?;
@@ -777,8 +836,12 @@ async fn image_entry_form_template(
     entry: Option<&Post>,
     error_message: &str,
     media_id_override: &str,
+    embed: bool,
 ) -> AppResult<String> {
-    let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
+    let back_url = url_embed(
+        &format!("/admin/posts/placeholders/{}", placeholder.id),
+        embed,
+    );
     let selected_media_id = if !media_id_override.is_empty() {
         media_id_override.to_string()
     } else if let Some(entry) = entry {
@@ -823,9 +886,12 @@ async fn image_entry_form_template(
             let is_publish = post_status == "publish";
             (
                 "画像を編集".to_string(),
-                format!(
-                    "/admin/posts/placeholders/{}/entries/{}/edit",
-                    placeholder.id, entry.id
+                url_embed(
+                    &format!(
+                        "/admin/posts/placeholders/{}/entries/{}/edit",
+                        placeholder.id, entry.id
+                    ),
+                    embed,
                 ),
                 "更新する".to_string(),
                 entry.title.clone(),
@@ -837,7 +903,10 @@ async fn image_entry_form_template(
         } else {
             (
                 "画像を追加".to_string(),
-                format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
+                url_embed(
+                    &format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
+                    embed,
+                ),
                 "追加する".to_string(),
                 String::new(),
                 String::new(),
@@ -848,7 +917,7 @@ async fn image_entry_form_template(
         };
 
     Ok(ImageEntryFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: layout::AdminLayoutCtx::with_embed(auth, embed),
         heading,
         action,
         submit_label,
@@ -875,6 +944,7 @@ async fn image_entry_save(
     placeholder: &Placeholder,
     entry_id: Option<i64>,
     form: EntryForm,
+    embed: bool,
 ) -> AppResult<Response> {
     let id = placeholder.id;
     let media_id_on_error = form.media_id.clone();
@@ -894,6 +964,7 @@ async fn image_entry_save(
                 entry.as_ref(),
                 &message,
                 &media_id_on_error,
+                embed,
             )
             .await?;
             return Ok(Html(html).into_response());
@@ -908,7 +979,10 @@ async fn image_entry_save(
     };
 
     postmeta::set_many(&state.pool, post_id, &parsed.meta).await?;
-    Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
+    Ok(redirect_or_embed_saved(
+        embed,
+        &url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
+    ))
 }
 
 async fn carousel_entry_form_template(
@@ -918,8 +992,12 @@ async fn carousel_entry_form_template(
     entry: Option<&Post>,
     error_message: &str,
     media_id_override: &str,
+    embed: bool,
 ) -> AppResult<String> {
-    let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
+    let back_url = url_embed(
+        &format!("/admin/posts/placeholders/{}", placeholder.id),
+        embed,
+    );
     let selected_media_id = if !media_id_override.is_empty() {
         media_id_override.to_string()
     } else if let Some(entry) = entry {
@@ -949,9 +1027,12 @@ async fn carousel_entry_form_template(
             let is_publish = post_status == "publish";
             (
                 "スライドを編集".to_string(),
-                format!(
-                    "/admin/posts/placeholders/{}/entries/{}/edit",
-                    placeholder.id, entry.id
+                url_embed(
+                    &format!(
+                        "/admin/posts/placeholders/{}/entries/{}/edit",
+                        placeholder.id, entry.id
+                    ),
+                    embed,
                 ),
                 "更新する".to_string(),
                 entry.title.clone(),
@@ -963,7 +1044,10 @@ async fn carousel_entry_form_template(
         } else {
             (
                 "スライドを追加".to_string(),
-                format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
+                url_embed(
+                    &format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
+                    embed,
+                ),
                 "追加する".to_string(),
                 String::new(),
                 String::new(),
@@ -974,7 +1058,7 @@ async fn carousel_entry_form_template(
         };
 
     Ok(CarouselEntryFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: layout::AdminLayoutCtx::with_embed(auth, embed),
         heading,
         action,
         submit_label,
@@ -997,6 +1081,7 @@ async fn carousel_entry_save(
     placeholder: &Placeholder,
     entry_id: Option<i64>,
     form: EntryForm,
+    embed: bool,
 ) -> AppResult<Response> {
     let id = placeholder.id;
     let media_id_on_error = form.media_id.clone();
@@ -1016,6 +1101,7 @@ async fn carousel_entry_save(
                 entry.as_ref(),
                 &message,
                 &media_id_on_error,
+                embed,
             )
             .await?;
             return Ok(Html(html).into_response());
@@ -1030,7 +1116,10 @@ async fn carousel_entry_save(
     };
 
     postmeta::set_many(&state.pool, post_id, &parsed.meta).await?;
-    Ok(Redirect::to(&format!("/admin/posts/placeholders/{id}")).into_response())
+    Ok(redirect_or_embed_saved(
+        embed,
+        &url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
+    ))
 }
 
 struct ImageEntryParsed {
@@ -1050,6 +1139,7 @@ async fn build_manage_template(
     active_tab: &str,
     error_message: &str,
     form_override: Option<ManageFormOverride>,
+    embed: bool,
 ) -> AppResult<PlaceholderManageTemplate> {
     let id = placeholder.id;
     let type_key = placeholder_type_key(state, placeholder).await?;
@@ -1118,7 +1208,7 @@ async fn build_manage_template(
     let (template_example, template_help) = widgets::template_usage(&type_key, &name);
 
     Ok(PlaceholderManageTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: layout::AdminLayoutCtx::with_embed(auth, embed),
         placeholder_id: id,
         placeholder_name: placeholder.name.clone(),
         type_key,
@@ -1126,16 +1216,22 @@ async fn build_manage_template(
         type_hint,
         is_entries_tab: !is_settings_tab,
         is_settings_tab,
-        entries_tab_url: format!("/admin/posts/placeholders/{id}"),
-        settings_tab_url: format!("/admin/posts/placeholders/{id}?tab=settings"),
+        entries_tab_url: url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
+        settings_tab_url: manage_settings_tab_url(id, embed),
         entries_description,
-        new_entry_url: format!("/admin/posts/placeholders/{id}/entries/new"),
+        new_entry_url: url_embed(
+            &format!("/admin/posts/placeholders/{id}/entries/new"),
+            embed,
+        ),
         new_entry_label,
         has_entries,
         entries,
         image_entries,
         carousel_entries,
-        settings_action: format!("/admin/posts/placeholders/{id}/edit"),
+        settings_action: url_embed(
+            &format!("/admin/posts/placeholders/{id}/edit"),
+            embed,
+        ),
         delete_action: format!("/admin/posts/placeholders/{id}/delete"),
         name,
         widget_types,
@@ -1435,12 +1531,18 @@ impl EntryForm {
 }
 
 impl EntryFormTemplate {
-    fn new(layout: layout::AdminLayoutCtx, placeholder: &Placeholder) -> Self {
-        let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
+    fn new(layout: layout::AdminLayoutCtx, placeholder: &Placeholder, embed: bool) -> Self {
+        let back_url = url_embed(
+            &format!("/admin/posts/placeholders/{}", placeholder.id),
+            embed,
+        );
         Self {
             layout,
             heading: "投稿を追加".to_string(),
-            action: format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
+            action: url_embed(
+                &format!("/admin/posts/placeholders/{}/entries/new", placeholder.id),
+                embed,
+            ),
             submit_label: "追加する".to_string(),
             placeholder_name: placeholder.name.clone(),
             back_url,
@@ -1454,17 +1556,28 @@ impl EntryFormTemplate {
         }
     }
 
-    fn edit(layout: layout::AdminLayoutCtx, placeholder: &Placeholder, entry: Post) -> Self {
-        let back_url = format!("/admin/posts/placeholders/{}", placeholder.id);
+    fn edit(
+        layout: layout::AdminLayoutCtx,
+        placeholder: &Placeholder,
+        entry: Post,
+        embed: bool,
+    ) -> Self {
+        let back_url = url_embed(
+            &format!("/admin/posts/placeholders/{}", placeholder.id),
+            embed,
+        );
         let post_status = normalize_status(&entry.post_status);
         let is_publish = post_status == "publish";
 
         Self {
             layout,
             heading: "投稿を編集".to_string(),
-            action: format!(
-                "/admin/posts/placeholders/{}/entries/{}/edit",
-                placeholder.id, entry.id
+            action: url_embed(
+                &format!(
+                    "/admin/posts/placeholders/{}/entries/{}/edit",
+                    placeholder.id, entry.id
+                ),
+                embed,
             ),
             submit_label: "更新する".to_string(),
             placeholder_name: placeholder.name.clone(),
@@ -1477,6 +1590,42 @@ impl EntryFormTemplate {
             is_draft: !is_publish,
             is_publish,
         }
+    }
+}
+
+fn is_embed_flag(value: &str) -> bool {
+    value == "1"
+}
+
+fn url_embed(path: &str, embed: bool) -> String {
+    if embed {
+        format!("{path}?embed=1")
+    } else {
+        path.to_string()
+    }
+}
+
+fn manage_settings_tab_url(id: i64, embed: bool) -> String {
+    if embed {
+        format!("/admin/posts/placeholders/{id}?tab=settings&embed=1")
+    } else {
+        format!("/admin/posts/placeholders/{id}?tab=settings")
+    }
+}
+
+fn embed_saved_response() -> Response {
+    Html(
+        r#"<!DOCTYPE html><html><body><script>window.parent.postMessage({ type: 'cms-embed-saved' }, '*');</script></body></html>"#
+            .to_string(),
+    )
+    .into_response()
+}
+
+fn redirect_or_embed_saved(embed: bool, url: &str) -> Response {
+    if embed {
+        embed_saved_response()
+    } else {
+        Redirect::to(url).into_response()
     }
 }
 

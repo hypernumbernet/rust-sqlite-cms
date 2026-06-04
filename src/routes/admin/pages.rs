@@ -286,7 +286,7 @@ async fn preview(State(state): State<AppState>, Path(id): Path<i64>) -> Response
         Err(err) => return preview_error_response(err, None),
     };
 
-    match page_render::render_page(&state, &page).await {
+    match page_render::render_page_preview(&state, &page).await {
         Ok(html) => wrap_preview_html(html.0, &page).into_response(),
         Err(err) => preview_error_response(err, Some(&page)),
     }
@@ -303,8 +303,13 @@ fn wrap_preview_html(mut html: String, page: &PageRow) -> Html<String> {
     } else {
         "（未公開 — 公開サイトには表示されません）"
     };
+    let static_note = if page.is_static {
+        r#"<span class="cms-preview-static-note"> — 静的HTMLのためウィジェット編集は利用できません</span>"#
+    } else {
+        ""
+    };
 
-    let banner = format!(
+    let head_banner = format!(
         r#"<style id="cms-preview-banner-style">
 .cms-preview-banner {{
   position: sticky;
@@ -324,22 +329,247 @@ fn wrap_preview_html(mut html: String, page: &PageRow) -> Html<String> {
 .cms-preview-banner strong {{ color: #fff; }}
 .cms-preview-banner a {{ color: #9ec2e6; }}
 .cms-preview-banner .note {{ color: #c3c4c7; }}
+.cms-preview-banner .cms-preview-static-note {{ color: #c3c4c7; font-size: 12px; }}
+.cms-preview-banner-actions {{
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}}
+.cms-preview-edit-toggle {{
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid #2271b1;
+  border-radius: 4px;
+  background: #2271b1;
+  color: #fff;
+  cursor: pointer;
+}}
+.cms-preview-edit-toggle:hover {{ background: #135e96; }}
+.cms-preview-edit-toggle.is-active {{
+  background: #d63638;
+  border-color: #d63638;
+}}
+.cms-preview-edit-toggle.is-active:hover {{ background: #b32d2e; }}
+.cms-preview-edit-toggle:disabled {{
+  opacity: 0.55;
+  cursor: not-allowed;
+}}
+body.cms-preview-edit-mode .cms-widget-target {{
+  cursor: pointer;
+  position: relative;
+}}
+body.cms-preview-edit-mode .cms-widget-target:hover {{
+  outline: 3px solid #d63638;
+  outline-offset: 2px;
+}}
+body.cms-preview-edit-mode .cms-widget-target:hover::after {{
+  content: attr(data-cms-placeholder-name);
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10000;
+  padding: 2px 8px;
+  background: #d63638;
+  color: #fff;
+  font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  pointer-events: none;
+}}
+.cms-preview-modal {{
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.55);
+}}
+.cms-preview-modal.is-open {{ display: flex; }}
+.cms-preview-modal-panel {{
+  position: relative;
+  width: min(960px, 96vw);
+  height: min(88vh, 900px);
+  background: #fff;
+  border-radius: 6px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}}
+.cms-preview-modal-header {{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #dcdcde;
+  background: #f6f7f7;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+}}
+.cms-preview-modal-title {{ font-weight: 600; color: #1d2327; }}
+.cms-preview-modal-close {{
+  padding: 4px 10px;
+  font-size: 12px;
+  border: 1px solid #dcdcde;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}}
+.cms-preview-modal-close:hover {{ background: #f0f0f1; }}
+.cms-preview-modal iframe {{
+  flex: 1;
+  width: 100%;
+  border: 0;
+}}
+.cms-preview-toast {{
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100001;
+  padding: 8px 14px;
+  background: #1d2327;
+  color: #f0f0f1;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  border-radius: 4px;
+  display: none;
+}}
+.cms-preview-toast.is-visible {{ display: block; }}
 </style>
 <div class="cms-preview-banner" role="status">
-  <span><strong>プレビュー</strong> — {name}{unpublished_note}</span>
-  <span class="note"><a href="/admin/pages">ページ一覧に戻る</a></span>
-</div>"#
+  <span><strong>プレビュー</strong> — {name}{unpublished_note}{static_note}</span>
+  <span class="cms-preview-banner-actions">
+    <button type="button" class="cms-preview-edit-toggle" id="cms-preview-edit-toggle"{edit_toggle_disabled}>編集モード</button>
+    <span class="note"><a href="/admin/pages">ページ一覧に戻る</a></span>
+  </span>
+</div>"#,
+        edit_toggle_disabled = if page.is_static { " disabled" } else { "" },
     );
 
-    if let Some(pos) = html.to_lowercase().find("<body") {
-        if let Some(gt) = html[pos..].find('>') {
-            let insert_at = pos + gt + 1;
-            html.insert_str(insert_at, banner.as_str());
-            return Html(html);
+    let footer = format!(
+        r#"<div class="cms-preview-modal" id="cms-preview-modal" aria-hidden="true">
+  <div class="cms-preview-modal-panel" role="dialog" aria-modal="true" aria-labelledby="cms-preview-modal-title">
+    <div class="cms-preview-modal-header">
+      <span class="cms-preview-modal-title" id="cms-preview-modal-title">投稿を編集</span>
+      <button type="button" class="cms-preview-modal-close" id="cms-preview-modal-close">閉じる</button>
+    </div>
+    <iframe id="cms-preview-modal-iframe" title="投稿編集"></iframe>
+  </div>
+</div>
+<div class="cms-preview-toast" id="cms-preview-toast" role="status"></div>
+<script id="cms-preview-edit-script">
+(function() {{
+  var STORAGE_KEY = "cms-preview-edit-mode";
+  var toggle = document.getElementById("cms-preview-edit-toggle");
+  var modal = document.getElementById("cms-preview-modal");
+  var iframe = document.getElementById("cms-preview-modal-iframe");
+  var modalTitle = document.getElementById("cms-preview-modal-title");
+  var modalClose = document.getElementById("cms-preview-modal-close");
+  var toast = document.getElementById("cms-preview-toast");
+
+  function countWidgetTargets() {{
+    return document.querySelectorAll(".cms-widget-target").length;
+  }}
+
+  function setEditMode(on) {{
+    document.body.classList.toggle("cms-preview-edit-mode", on);
+    if (toggle) {{
+      toggle.classList.toggle("is-active", on);
+      toggle.textContent = on ? "編集モードを終了" : "編集モード";
+    }}
+    try {{
+      if (on) sessionStorage.setItem(STORAGE_KEY, "1");
+      else sessionStorage.removeItem(STORAGE_KEY);
+    }} catch (e) {{}}
+  }}
+
+  function showToast(message) {{
+    if (!toast) return;
+    toast.textContent = message;
+    toast.classList.add("is-visible");
+    setTimeout(function() {{ toast.classList.remove("is-visible"); }}, 3000);
+  }}
+
+  function openModal(placeholderId, placeholderName) {{
+    if (!modal || !iframe) return;
+    modalTitle.textContent = "投稿を編集 — " + placeholderName;
+    iframe.src = "/admin/posts/placeholders/" + placeholderId + "?embed=1";
+    modal.classList.add("is-open");
+    modal.setAttribute("aria-hidden", "false");
+  }}
+
+  function closeModal() {{
+    if (!modal || !iframe) return;
+    modal.classList.remove("is-open");
+    modal.setAttribute("aria-hidden", "true");
+    iframe.src = "about:blank";
+  }}
+
+  if (toggle && !toggle.disabled) {{
+    var saved = false;
+    try {{ saved = sessionStorage.getItem(STORAGE_KEY) === "1"; }} catch (e) {{}}
+    if (saved) setEditMode(true);
+
+    toggle.addEventListener("click", function() {{
+      var on = !document.body.classList.contains("cms-preview-edit-mode");
+      if (on && countWidgetTargets() === 0) {{
+        showToast("編集可能なウィジェットがありません");
+        return;
+      }}
+      setEditMode(on);
+    }});
+  }}
+
+  document.body.addEventListener("click", function(e) {{
+    if (!document.body.classList.contains("cms-preview-edit-mode")) return;
+    var el = e.target.closest(".cms-widget-target");
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var id = el.getAttribute("data-cms-placeholder-id");
+    var name = el.getAttribute("data-cms-placeholder-name") || id;
+    if (id) openModal(id, name);
+  }}, true);
+
+  if (modalClose) modalClose.addEventListener("click", closeModal);
+  if (modal) {{
+    modal.addEventListener("click", function(e) {{
+      if (e.target === modal) closeModal();
+    }});
+  }}
+  document.addEventListener("keydown", function(e) {{
+    if (e.key === "Escape") closeModal();
+  }});
+
+  window.addEventListener("message", function(e) {{
+    if (e.origin !== window.location.origin) return;
+    var data = e.data;
+    if (!data || data.type !== "cms-embed-saved") return;
+    closeModal();
+    window.location.reload();
+  }});
+}})();
+</script>"#
+    );
+
+    let html_lower = html.to_lowercase();
+    if let Some(body_pos) = html_lower.find("<body") {
+        if let Some(body_gt) = html[body_pos..].find('>') {
+            let body_insert_at = body_pos + body_gt + 1;
+            html.insert_str(body_insert_at, head_banner.as_str());
         }
+    } else {
+        html.insert_str(0, head_banner.as_str());
     }
 
-    html.insert_str(0, banner.as_str());
+    if let Some(close_pos) = html.to_lowercase().rfind("</body>") {
+        html.insert_str(close_pos, footer.as_str());
+    } else {
+        html.push_str(footer.as_str());
+    }
+
     Html(html)
 }
 

@@ -5,7 +5,11 @@
 
     <div class="actions">
       <button class="button" type="submit">設定を更新</button>
+      {% if layout.embed %}
+      <a class="button secondary" href="{{ entries_tab_url }}">戻る</a>
+      {% else %}
       <a class="button secondary" href="/admin/posts">戻る</a>
+      {% endif %}
     </div>
   </section>
 

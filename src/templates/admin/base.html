@@ -280,10 +280,16 @@
       color: var(--muted);
     }
     .status.published { border-color: #1b8a4b; color: #1b8a4b; }
+    {% if layout.embed %}
+    body.embed-mode .layout { display: block; min-height: auto; }
+    body.embed-mode .content { padding: 16px; }
+    body.embed-mode .breadcrumb a[href="/admin/posts"]:first-child { display: none; }
+    {% endif %}
   </style>
 </head>
-<body>
+<body{% if layout.embed %} class="embed-mode"{% endif %}>
   <div class="layout">
+    {% if !layout.embed %}
     <aside class="sidebar">
       <div class="brand">
         <span class="brand-title">rust-sqlite-cms</span>
@@ -300,7 +306,9 @@
         <a href="/admin/settings" class="{% block nav_settings %}{% endblock %}">設定</a>
       </nav>
     </aside>
+    {% endif %}
     <div class="main">
+      {% if !layout.embed %}
       <header class="topbar">
         <h1>{% block heading %}管理画面{% endblock %}</h1>
         <form method="post" action="/admin/logout" class="user-form">
@@ -308,6 +316,7 @@
           <button type="submit" class="logout-btn">ログアウト</button>
         </form>
       </header>
+      {% endif %}
       <main class="content">
         {% block content %}{% endblock %}
       </main>

@@ -182,11 +182,19 @@ pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String
     (fragment_example, help)
 }
 
+/// ウィジェット HTML 生成時のオプション。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RenderOptions {
+    /// プレビュー編集モード向けに `cms-widget-target` ラッパーを付与する。
+    pub annotate_widgets: bool,
+}
+
 /// サイト変数と全プレースホルダーを解決し、MiniJinja 用コンテキストを返す。
 pub async fn build_render_context(
     pool: &SqlitePool,
     blogname: String,
     blogdescription: String,
+    options: RenderOptions,
 ) -> AppResult<minijinja::Value> {
     let placeholder_rows = placeholders::list_all(pool).await?;
     let widget_type_rows = widget_types::list_all(pool).await?;
@@ -212,10 +220,31 @@ pub async fn build_render_context(
             );
             continue;
         };
-        resolve_placeholder(pool, placeholder, widget_type, &mut ctx).await?;
+        resolve_placeholder(pool, placeholder, widget_type, &mut ctx, options).await?;
     }
 
     Ok(minijinja::Value::from_serialize(ctx))
+}
+
+fn annotate_widget_html(
+    html: &str,
+    placeholder_id: i64,
+    placeholder_name: &str,
+    type_key: &str,
+) -> String {
+    let name_escaped = html_escape_attr(placeholder_name);
+    let type_escaped = html_escape_attr(type_key);
+    format!(
+        r#"<div class="cms-widget-target" data-cms-placeholder-id="{placeholder_id}" data-cms-placeholder-name="{name_escaped}" data-cms-widget-type="{type_escaped}">{html}</div>"#
+    )
+}
+
+fn html_escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 async fn resolve_placeholder(
@@ -223,6 +252,7 @@ async fn resolve_placeholder(
     placeholder: &crate::models::placeholder::Placeholder,
     widget_type: &WidgetType,
     ctx: &mut serde_json::Map<String, serde_json::Value>,
+    options: RenderOptions,
 ) -> AppResult<()> {
     // インスタンス設定（placeholder.config）を優先、未設定時はタイプのconfigをフォールバック
     let instance_config: serde_json::Value =
@@ -265,7 +295,7 @@ async fn resolve_placeholder(
             frag_ctx.insert("items".to_string(), serde_json::to_value(&items).unwrap_or_default());
             frag_ctx.insert("has_items".to_string(), serde_json::Value::Bool(has_items));
             frag_ctx.insert("config".to_string(), instance_config.clone());
-            insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+            insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
         }
         "image" => {
             let mut img_cfg: ImageWidgetConfig =
@@ -303,7 +333,7 @@ async fn resolve_placeholder(
                 let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
                 frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(false));
                 frag_ctx.insert("config".to_string(), instance_config.clone());
-                insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+                insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
                 return Ok(());
             };
 
@@ -332,7 +362,7 @@ async fn resolve_placeholder(
                 let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
                 frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(false));
                 frag_ctx.insert("config".to_string(), instance_config.clone());
-                insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+                insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
                 return Ok(());
             };
 
@@ -351,7 +381,7 @@ async fn resolve_placeholder(
                     let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
                     frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(false));
                     frag_ctx.insert("config".to_string(), instance_config.clone());
-                    insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+                    insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
                     return Ok(());
                 }
             };
@@ -369,7 +399,7 @@ async fn resolve_placeholder(
                 let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
                 frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(false));
                 frag_ctx.insert("config".to_string(), instance_config.clone());
-                insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+                insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
                 return Ok(());
             }
 
@@ -410,7 +440,7 @@ async fn resolve_placeholder(
             frag_ctx.insert("item".to_string(), serde_json::to_value(&item).unwrap_or_default());
             frag_ctx.insert("has_item".to_string(), serde_json::Value::Bool(true));
             frag_ctx.insert("config".to_string(), instance_config.clone());
-            insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+            insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
         }
         "carousel" => {
             let mut cfg: CarouselWidgetConfig =
@@ -507,7 +537,7 @@ async fn resolve_placeholder(
             frag_ctx.insert("carousel".to_string(), serde_json::to_value(&data).unwrap_or_default());
             frag_ctx.insert("has_carousel".to_string(), serde_json::Value::Bool(has_slides));
             frag_ctx.insert("config".to_string(), instance_config.clone());
-            insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+            insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
         }
         other => {
             tracing::debug!(
@@ -518,7 +548,7 @@ async fn resolve_placeholder(
             let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
             frag_ctx.insert("config".to_string(), instance_config.clone());
             let rendered =
-                insert_placeholder_html(ctx, &placeholder.name, widget_type, frag_ctx).await;
+                insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
             ctx.insert(
                 format!("has_{}", placeholder.name),
                 serde_json::Value::Bool(rendered),
@@ -531,16 +561,39 @@ async fn resolve_placeholder(
 
 async fn insert_placeholder_html(
     ctx: &mut serde_json::Map<String, serde_json::Value>,
-    placeholder_name: &str,
+    placeholder: &crate::models::placeholder::Placeholder,
     widget_type: &WidgetType,
     frag_ctx: serde_json::Map<String, serde_json::Value>,
+    options: RenderOptions,
 ) -> bool {
     if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
+        let html = if options.annotate_widgets {
+            annotate_widget_html(
+                &html,
+                placeholder.id,
+                &placeholder.name,
+                &widget_type.type_key,
+            )
+        } else {
+            html
+        };
         ctx.insert(
-            format!("{}_html", placeholder_name),
+            format!("{}_html", placeholder.name),
             serde_json::Value::String(html),
         );
         true
+    } else if options.annotate_widgets {
+        let html = annotate_widget_html(
+            "",
+            placeholder.id,
+            &placeholder.name,
+            &widget_type.type_key,
+        );
+        ctx.insert(
+            format!("{}_html", placeholder.name),
+            serde_json::Value::String(html),
+        );
+        false
     } else {
         false
     }

@@ -51,6 +51,7 @@ async fn announcements_html_renders_with_type_fixed_template_vars() {
         pool,
         "Test Site".to_string(),
         "Description".to_string(),
+        widgets::RenderOptions::default(),
     )
     .await
     .expect("build context");
@@ -67,5 +68,69 @@ async fn announcements_html_renders_with_type_fixed_template_vars() {
     assert!(
         html.contains("news-item"),
         "announcements_html should contain rendered widget markup"
+    );
+}
+
+#[tokio::test]
+async fn annotate_widgets_wraps_html_with_preview_markers() {
+    let app = common::TestApp::new().await;
+    let pool = &app.state.pool;
+
+    let news_type = widget_types::find_by_key(pool, "news")
+        .await
+        .expect("news widget type");
+
+    let placeholder_id = placeholders::insert(
+        pool,
+        &PlaceholderInput {
+            name: "marked_news".to_string(),
+            widget_type_id: news_type.id,
+            config: "{}".to_string(),
+        },
+    )
+    .await
+    .expect("insert placeholder");
+
+    posts::insert(
+        pool,
+        &PostInput {
+            placeholder_id,
+            title: "マーカー付き".to_string(),
+            content: "本文".to_string(),
+            excerpt: "抜粋".to_string(),
+            post_status: "publish".to_string(),
+            post_name: "marked".to_string(),
+        },
+    )
+    .await
+    .expect("insert post");
+
+    let ctx = widgets::build_render_context(
+        pool,
+        "Test Site".to_string(),
+        "Description".to_string(),
+        widgets::RenderOptions {
+            annotate_widgets: true,
+        },
+    )
+    .await
+    .expect("build context");
+
+    let json = serde_json::to_value(&ctx).expect("serialize context");
+    let html = json
+        .get("marked_news_html")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    assert!(
+        html.contains("cms-widget-target"),
+        "annotated html should contain wrapper class, got: {html}"
+    );
+    assert!(
+        html.contains(&format!("data-cms-placeholder-id=\"{placeholder_id}\"")),
+        "annotated html should contain placeholder id, got: {html}"
+    );
+    assert!(
+        html.contains("data-cms-placeholder-name=\"marked_news\""),
+        "annotated html should contain placeholder name, got: {html}"
     );
 }

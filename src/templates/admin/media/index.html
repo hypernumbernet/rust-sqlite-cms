@@ -7,10 +7,6 @@
 {% block content %}
 <style>
   /* media/index (upload + card browser) — only media-specific kept */
-  .toolbar {
-    align-items: flex-start;
-    flex-wrap: wrap;
-  }
   .toolbar p { max-width: 560px; }
   .panel {
     padding: 16px;
@@ -27,12 +23,7 @@
     padding: 32px;
     text-align: center;
   }
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 16px;
-  }
-  .card {
+  .media-card {
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -101,9 +92,9 @@
 </section>
 
 {% if has_media %}
-<div class="grid">
+<div class="card-grid">
   {% for item in media_items %}
-  <article class="card">
+  <article class="media-card">
     <div class="preview">
       {% if item.is_image %}
       <img src="{{ item.public_url }}" alt="{{ item.title }}">

@@ -5,19 +5,6 @@
 {% block heading %}設定{% endblock %}
 
 {% block content %}
-<style>
-  /* Settings-specific info notice (blue) — success/error now come from base */
-  .notice {
-    background: #f0f6fc;
-    border: 1px solid #c5d9ed;
-    border-radius: 4px;
-    padding: 12px 14px;
-    font-size: 13px;
-    color: var(--text);
-    margin-bottom: 18px;
-  }
-</style>
-
 {% if !success_message.is_empty() %}
 <div class="success">{{ success_message }}</div>
 {% endif %}
@@ -28,7 +15,7 @@
 
 <form method="post" action="/admin/settings" class="form-layout">
   <section class="panel">
-    <div class="notice">
+    <div class="notice info">
       サイト名と説明は公開ページ（<code>{{ blogname }}</code> など）に即時反映されます。
       設定ファイル <code>work/config.toml</code> の <code>[site]</code> も同期して保存します。再起動は不要です。
     </div>

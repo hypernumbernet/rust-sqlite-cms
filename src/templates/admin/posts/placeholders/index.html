@@ -6,13 +6,6 @@
 
 {% block content %}
 <style>
-  /* placeholders index (table list) */
-  .panel { padding: 0; overflow: hidden; }
-  .placeholder-name {
-    font-weight: 600;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-  }
   .placeholder-meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
 </style>
 
@@ -24,7 +17,7 @@
   </div>
 </div>
 
-<section class="panel">
+<section class="panel panel-table">
   {% if has_placeholders %}
   <table>
     <thead>

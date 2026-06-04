@@ -15,12 +15,7 @@
   }
   .welcome h2 { margin: 0 0 6px; font-size: 20px; }
   .welcome p { margin: 0; color: var(--muted); }
-  .cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: 16px;
-  }
-  .card {
+  .card-grid .card {
     background: #fff;
     border: 1px solid var(--border);
     border-radius: 4px;
@@ -50,7 +45,7 @@
   <p>{{ blogdescription }}</p>
 </section>
 
-<div class="cards">
+<div class="card-grid">
   <a class="card" href="/admin/posts">
     <h3>投稿</h3>
     <p>プレースホルダーごとに投稿（お知らせなど）を作成・編集・公開します。</p>

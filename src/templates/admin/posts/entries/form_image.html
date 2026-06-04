@@ -5,45 +5,6 @@
 {% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
-<style>
-  /* entries/form_image (image entry + media selector grid) */
-  .media-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 12px;
-  }
-  .media-option {
-    border: 2px solid var(--border);
-    border-radius: 4px;
-    padding: 8px;
-    cursor: pointer;
-    text-align: center;
-  }
-  .media-option:has(input:checked) { border-color: var(--accent); }
-  .media-option input { margin: 0 0 8px; }
-  .media-option img {
-    width: 100%;
-    height: 80px;
-    object-fit: cover;
-    border-radius: 4px;
-    display: block;
-    margin-bottom: 6px;
-  }
-  .media-option span {
-    display: block;
-    font-size: 11px;
-    color: var(--muted);
-    word-break: break-all;
-  }
-  .empty-media {
-    padding: 16px;
-    background: #f6f7f7;
-    border-radius: 4px;
-    color: var(--muted);
-    font-size: 14px;
-  }
-</style>
-
 <p class="breadcrumb"><a href="/admin/posts">投稿</a> / <a href="{{ back_url }}"><code>{{ placeholder_name }}</code></a></p>
 
 {% if !error_message.is_empty() %}
@@ -53,7 +14,7 @@
 <form method="post" action="{{ action }}" class="form-layout">
   <section class="panel">
     <div class="field">
-      <label>画像 <span style="font-weight:400;color:var(--muted)">（必須）</span></label>
+      <label>画像 <span class="field-label-muted">（必須）</span></label>
       {% if has_media %}
       <div class="media-grid">
         {% for item in media_items %}

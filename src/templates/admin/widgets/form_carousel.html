@@ -4,20 +4,6 @@
 {% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
-<style>
-  /* widgets/form_carousel */
-  .readonly {
-    margin: 0;
-    padding: 9px 10px;
-    background: #f6f7f7;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-weight: 600;
-  }
-  .size-row { display: flex; gap: 12px; }
-  .size-row .field { flex: 1; }
-</style>
-
 <form method="post" action="/admin/widgets/{{ type_key }}/edit" class="form-layout">
   <section class="panel">
     <div class="field">
@@ -40,7 +26,7 @@
       <p class="help">次のスライドに自動で切り替わるまでの秒数（1〜30）。</p>
     </div>
 
-    <div class="size-row">
+    <div class="field-row">
       <div class="field">
         <label for="width">領域の幅</label>
         <input id="width" name="width" type="text" value="{{ width }}" placeholder="100%">
@@ -61,6 +47,6 @@
 </form>
 
 {% if !error_message.is_empty() %}
-<div class="notice error" style="margin-top:16px">{{ error_message }}</div>
+<div class="notice error mt-16">{{ error_message }}</div>
 {% endif %}
 {% endblock %}

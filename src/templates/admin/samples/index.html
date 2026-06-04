@@ -77,10 +77,10 @@
   <form method="post" action="/admin/samples" onsubmit="return confirm('本当にすべてのデータを削除して基本テストデータを適用しますか？この操作は元に戻せません。');">
     <input type="hidden" name="sample" value="basic">
     <input type="hidden" name="action" value="reset">
-    <button type="submit" class="button danger" style="background:#b32d2e; color:white; border-color:#b32d2e;">
+    <button type="submit" class="button danger">
       基本テストデータを適用する（全体リセット）
     </button>
-    <a href="/admin" class="button secondary" style="margin-left: 12px;">キャンセル</a>
+    <a href="/admin" class="button secondary ml-12">キャンセル</a>
   </form>
 </div>
 
@@ -102,21 +102,21 @@
     <li>メディア数: {{ result.media_count }}</li>
   </ul>
   {% if show_restart_notice %}
-  <p style="color:#b32d2e; font-weight:600;">
+  <p class="text-emphasis-danger">
     このページを閉じて、サーバーを再起動してください。
   </p>
   {% endif %}
 </div>
 {% endif %}
 
-<div class="panel" style="margin-top: 32px;">
+<div class="panel mt-32">
   <h3>今後追加予定のサンプル</h3>
-  <ul style="color: var(--muted);">
+  <ul class="list-muted">
     <li>最小構成（空の状態）</li>
     <li>Eコマース風サンプル</li>
     <li>ブログ特化サンプル</li>
   </ul>
-  <p style="font-size: 13px; color: var(--muted);">
+  <p class="text-muted">
     現在は「基本テストデータ」のみ利用可能です。
   </p>
 </div>

@@ -5,14 +5,6 @@
 {% block heading %}ゴミ箱{% endblock %}
 
 {% block content %}
-<style>
-  .post-title { font-weight: 600; margin-bottom: 4px; }
-  .post-meta { color: var(--muted); font-size: 12px; }
-  .placeholder-name {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-  }
-</style>
 <div class="breadcrumb">
   <a href="/admin/posts">投稿</a> / ゴミ箱
 </div>
@@ -22,7 +14,7 @@
   <a class="button secondary" href="/admin/posts">投稿一覧へ</a>
 </div>
 
-<section class="panel">
+<section class="panel panel-table">
   {% if has_items %}
   <table>
     <thead>

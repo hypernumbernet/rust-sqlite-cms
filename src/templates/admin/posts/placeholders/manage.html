@@ -6,31 +6,6 @@
 
 {% block content %}
 <style>
-  .panel { padding: 0; overflow: hidden; }
-  table td { vertical-align: top; }
-  .post-title { font-weight: 600; margin-bottom: 4px; }
-  .post-meta { color: var(--muted); font-size: 12px; }
-  .meta-line { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
-  .tab-nav {
-    display: flex;
-    gap: 0;
-    margin: 0 0 20px;
-    border-bottom: 1px solid var(--border);
-  }
-  .tab-nav a {
-    display: inline-block;
-    padding: 10px 18px;
-    text-decoration: none;
-    color: var(--muted);
-    font-size: 14px;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-  }
-  .tab-nav a.active {
-    color: var(--text);
-    font-weight: 600;
-    border-bottom-color: var(--accent, #2271b1);
-  }
   .thumb {
     width: 72px;
     height: 54px;
@@ -51,12 +26,6 @@
     color: var(--muted);
     font-size: 11px;
   }
-  .settings-form .panel {
-    padding: 20px;
-  }
-  .tab-panel[hidden] { display: none; }
-  .op-actions { display: inline-flex; gap: 6px; align-items: center; }
-  .op-actions form { margin: 0; display: inline; }
 </style>
 
 <p class="breadcrumb"><a href="/admin/posts">投稿</a> / <code>{{ placeholder_name }}</code></p>

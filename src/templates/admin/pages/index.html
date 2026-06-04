@@ -6,12 +6,8 @@
 
 {% block content %}
 <style>
-  /* pages/index specific (table list variant) */
-  .panel { padding: 0; overflow: hidden; }
   .name { font-weight: 600; }
   .url { color: var(--muted); font-size: 13px; }
-  .ops { display: flex; gap: 8px; align-items: center; }
-  .ops form { margin: 0; }
 </style>
 
 <div class="toolbar">
@@ -19,7 +15,7 @@
   <a class="button" href="/admin/pages/new">新規追加</a>
 </div>
 
-<section class="panel">
+<section class="panel panel-table">
   <table>
     <thead>
       <tr>
@@ -46,7 +42,7 @@
         </td>
         <td>{{ page.updated_at }}</td>
         <td>
-          <div class="ops">
+          <div class="op-actions">
             <a class="button secondary" href="/admin/pages/{{ page.id }}/preview" target="_blank" rel="noopener">プレビュー</a>
             {% if page.is_published && page.has_url %}
             <a class="button secondary" href="{{ page.url_path }}" target="_blank" rel="noopener">表示</a>

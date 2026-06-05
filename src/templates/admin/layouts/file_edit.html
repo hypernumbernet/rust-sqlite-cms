@@ -5,7 +5,7 @@
 {% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
-<form method="post" action="{{ action }}" class="form-layout">
+<form method="post" action="{{ action }}" class="form-layout code-editor-form">
   <section class="panel">
     {% if is_new_file %}
     <div class="field">
@@ -13,7 +13,7 @@
       <input id="relative_path" name="relative_path" type="text" value="{{ relative_path }}" required placeholder="例: site.css, js/app.js">
     </div>
     {% endif %}
-    <div class="field">
+    <div class="field field--grow">
       <label for="content">{{ file_label }}</label>
       <textarea id="content" name="content" class="code-editor code-editor--page" spellcheck="false">{{ content }}</textarea>
       {% if !help_text.is_empty() %}

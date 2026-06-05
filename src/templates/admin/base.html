@@ -18,6 +18,18 @@
       --admin-sidebar-width: 220px;
       --admin-break-narrow: 860px;
       --admin-break-wide: 1080px;
+      --code-editor-min-height: 280px;
+      --code-editor-min-height-tall: 320px;
+      --code-editor-min-height-short: 180px;
+      --code-editor-min-width: 300px;
+      --code-editor-font-family:
+        ui-monospace,
+        "Cascadia Mono", "Cascadia Code",
+        SFMono-Regular, "SF Mono", Menlo, Monaco,
+        Consolas, "Liberation Mono", "DejaVu Sans Mono",
+        "Noto Sans Mono CJK JP",
+        "MS Gothic", "Osaka-Mono",
+        "Courier New", Courier, monospace;
     }
     * { box-sizing: border-box; }
     body {
@@ -332,9 +344,14 @@
     }
 
     .code-editor {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-family: var(--code-editor-font-family);
       font-size: 13px;
       line-height: 1.5;
+      font-variant-ligatures: none;
+      font-feature-settings: normal;
+      font-synthesis: none;
+      tab-size: 2;
+      -moz-tab-size: 2;
       white-space: pre;
       resize: vertical;
       box-sizing: border-box;
@@ -346,6 +363,162 @@
     .code-editor--page { min-height: 420px; }
     .code-editor--tall { min-height: 520px; }
     .code-editor--short { min-height: 220px; font-size: 12px; }
+    .code-editor--json {
+      min-height: 180px;
+      font-size: 13px;
+    }
+
+    .layout:has(.code-editor-form) {
+      height: 100dvh;
+      min-height: 100dvh;
+      overflow: hidden;
+    }
+    .layout:has(.code-editor-form) .main {
+      min-height: 0;
+      min-width: var(--code-editor-min-width);
+    }
+    .layout:has(.code-editor-form) .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+      overflow: auto;
+    }
+    .code-editor-form {
+      flex: 1;
+      min-height: 0;
+      min-width: min(100%, var(--code-editor-min-width));
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .form-layout.code-editor-form {
+      display: grid;
+      align-items: stretch;
+    }
+    .code-editor-form > .panel-spaced {
+      flex: 0 0 auto;
+    }
+    .code-editor-form > section.panel,
+    .code-editor-form__body {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      min-width: 0;
+    }
+    .code-editor-form__body > .field,
+    .code-editor-form__body > .vars-help,
+    .code-editor-form__body > .actions {
+      flex-shrink: 0;
+    }
+    .code-editor-form__editors {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: block;
+      overflow-y: auto;
+      margin-bottom: 18px;
+    }
+    .code-editor-form__editors > .field {
+      margin-bottom: 20px;
+    }
+    .code-editor-form__editors > .field:last-child {
+      margin-bottom: 0;
+    }
+    .code-editor-form__editors > .field--grow,
+    .code-editor-form__editors > .field--code-json {
+      flex: none;
+      display: block;
+      min-height: auto;
+    }
+    .code-editor-form__editors > .field--grow .code-editor {
+      flex: none;
+      display: block;
+      width: 100%;
+      min-height: max(14rem, var(--code-editor-min-height-tall));
+      resize: vertical;
+    }
+    .code-editor-form__editors > .field--code-json .code-editor {
+      flex: none;
+      display: block;
+      width: 100%;
+      min-height: max(10rem, var(--code-editor-min-height-short));
+      resize: vertical;
+    }
+    .field--grow {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      min-height: max(12rem, var(--code-editor-min-height));
+      min-width: 0;
+    }
+    .code-editor-form__editors > .field--grow {
+      min-height: auto;
+    }
+    .field--code-json {
+      display: block;
+      min-width: 0;
+    }
+    .field--grow .code-editor {
+      flex: 1 1 auto;
+      width: 100%;
+      min-width: 0;
+      min-height: max(12rem, var(--code-editor-min-height));
+      resize: none;
+    }
+    .field--grow .code-editor--page {
+      min-height: max(12rem, var(--code-editor-min-height));
+    }
+    .field--grow .code-editor--tall {
+      min-height: max(14rem, var(--code-editor-min-height-tall));
+    }
+    .field--grow .code-editor--short {
+      min-height: max(10rem, var(--code-editor-min-height-short));
+    }
+
+    @media (max-width: 1079px) {
+      .layout:has(.code-editor-form) {
+        height: auto;
+        min-height: 100dvh;
+        overflow-x: auto;
+        overflow-y: visible;
+      }
+      .layout:has(.code-editor-form) .content {
+        flex: none;
+        overflow: visible;
+      }
+      .code-editor-form {
+        flex: none;
+      }
+      .code-editor-form > section.panel,
+      .code-editor-form__body {
+        flex: none;
+      }
+      .field--grow,
+      .field--code-json {
+        flex: none;
+      }
+      .code-editor-form__editors {
+        flex: none;
+        overflow: visible;
+        margin-bottom: 18px;
+      }
+      .field--grow .code-editor,
+      .field--grow .code-editor--page {
+        flex: none;
+        min-height: max(var(--code-editor-min-height), 45dvh);
+      }
+      .field--grow .code-editor--tall {
+        flex: none;
+        min-height: max(var(--code-editor-min-height-tall), 50dvh);
+      }
+      .field--code-json .code-editor,
+      .field--code-json .code-editor--json {
+        flex: none;
+        min-height: max(var(--code-editor-min-height-short), 24dvh);
+      }
+    }
 
     .media-grid {
       display: grid;
@@ -437,7 +610,9 @@
     .label-option + .label-option { margin-top: 4px; }
     .field-label-muted { font-weight: 400; color: var(--muted); }
     .input-mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-family: var(--code-editor-font-family);
+      font-variant-ligatures: none;
+      font-synthesis: none;
       max-width: 320px;
     }
     .help-mt-8 { margin-top: 8px; }
@@ -484,7 +659,21 @@
     .status.published { border-color: #1b8a4b; color: #1b8a4b; }
     {% if layout.embed %}
     body.embed-mode .layout { display: block; min-height: auto; }
+    body.embed-mode .layout:has(.code-editor-form) {
+      height: auto;
+      overflow: visible;
+    }
     body.embed-mode .content { padding: 16px; }
+    body.embed-mode .layout:has(.code-editor-form) .content {
+      flex: none;
+      display: block;
+      overflow: visible;
+    }
+    body.embed-mode .field--grow .code-editor {
+      flex: none;
+      min-height: 420px;
+      resize: vertical;
+    }
     body.embed-mode .breadcrumb a[href="/admin/posts"]:first-child { display: none; }
     {% endif %}
   </style>

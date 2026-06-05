@@ -9,9 +9,9 @@
   input:disabled { background: #f6f7f7; color: var(--muted); }
 </style>
 
-<form method="post" action="{{ action }}" class="form-layout"{% if !is_home %} onsubmit="return validatePageForm();"{% endif %}>
+<form method="post" action="{{ action }}" class="form-layout code-editor-form"{% if !is_home %} onsubmit="return validatePageForm();"{% endif %}>
   <section class="panel">
-    <div class="field">
+    <div class="field field--grow">
       <label for="content">HTML（MiniJinja）</label>
       <textarea id="content" name="content" class="code-editor code-editor--page" spellcheck="false">{{ content }}</textarea>
       <p class="help">{{ template_help }}</p>

@@ -4,7 +4,7 @@
 {% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
-<form method="post" action="{{ action }}" class="code-editor-form">
+<form method="post" action="{{ action }}">
   <div class="panel panel-spaced">
     <div class="field mb-0">
       <label>このウィジェットタイプについて</label>
@@ -17,28 +17,26 @@
     </div>
   </div>
 
-  <div class="panel code-editor-form__body">
+  <div class="panel">
     <div class="field">
       <label for="type_key">タイプキー (type_key)</label>
       <input id="type_key" name="type_key" type="text" class="input-mono" value="{{ type_key }}" required pattern="[a-z0-9_]+">
       <p class="help">英小文字・数字・アンダースコア。変更するとこのウィジェットのURLも変わります。</p>
     </div>
 
-    <div class="code-editor-form__editors">
-      <div class="field field--grow">
-        <label for="html_template">ウィジェットを構成するHTML（MiniJinjaテンプレート）</label>
-        <textarea id="html_template" name="html_template" class="code-editor code-editor--tall" spellcheck="false">{{ html_template }}</textarea>
-        <p class="help help-mt-8">このテンプレートはサーバーサイドでレンダリングされ、<code>_html</code> 変数としてページに挿入されます。</p>
-      </div>
+    <div class="field">
+      <label for="html_template">ウィジェットを構成するHTML（MiniJinjaテンプレート）</label>
+      <textarea id="html_template" name="html_template" class="code-editor code-editor--tall" spellcheck="false">{{ html_template }}</textarea>
+      <p class="help help-mt-8">このテンプレートはサーバーサイドでレンダリングされ、<code>_html</code> 変数としてページに挿入されます。</p>
+    </div>
 
-      <div class="field field--code-json">
-        <label for="config_schema">インスタンス設定スキーマ定義（JSON）</label>
-        <textarea id="config_schema" name="config_schema" class="code-editor code-editor--json" spellcheck="false">{{ config_schema }}</textarea>
-        <p class="help help-mt-6">
-          このウィジェットを使うプレースホルダー（インスタンス）で持てる設定項目を定義します。<br>
-          ここで定義した内容に基づいて、プレースホルダー編集画面で入力欄が自動生成されます。
-        </p>
-      </div>
+    <div class="field">
+      <label for="config_schema">インスタンス設定スキーマ定義（JSON）</label>
+      <textarea id="config_schema" name="config_schema" class="code-editor code-editor--json" spellcheck="false">{{ config_schema }}</textarea>
+      <p class="help help-mt-6">
+        このウィジェットを使うプレースホルダー（インスタンス）で持てる設定項目を定義します。<br>
+        ここで定義した内容に基づいて、プレースホルダー編集画面で入力欄が自動生成されます。
+      </p>
     </div>
 
     <div class="vars-help">

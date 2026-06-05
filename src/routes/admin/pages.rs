@@ -747,7 +747,8 @@ async fn conflict_form_response(
 
 fn template_help_text() -> String {
     "MiniJinja テンプレートです。通常は {% extends \"レイアウトkey/shell.html\" %} で shell を継承し、\
-     {% block content %} に本文を書きます。サイト変数: blogname / blogdescription。\
+     {% block content %} に本文を書きます。     共通 CSS は <a href=\"/admin/layouts\">レイアウト管理</a> のファイル一覧から \
+     site.css を編集します。サイト変数: blogname / blogdescription。\
      ウィジェットは {{ 名前_html | safe }} で差し込みます。".to_string()
 }
 

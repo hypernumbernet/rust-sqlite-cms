@@ -24,28 +24,15 @@
     border-radius: 4px;
     flex-shrink: 0;
   }
-  .favicon-picker-preview .meta {
-    min-width: 0;
-    flex: 1;
-  }
+  .favicon-picker-preview .meta { min-width: 0; flex: 1; }
   .favicon-picker-preview .meta strong {
     display: block;
     font-size: 14px;
     word-break: break-all;
   }
-  .favicon-picker-preview .meta span {
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .favicon-picker-empty {
-    color: var(--muted);
-    font-size: 14px;
-  }
-  .favicon-picker-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
+  .favicon-picker-preview .meta span { font-size: 12px; color: var(--muted); }
+  .favicon-picker-empty { color: var(--muted); font-size: 14px; }
+  .favicon-picker-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .media-picker-dialog {
     border: none;
     border-radius: 8px;
@@ -54,9 +41,7 @@
     max-height: min(80vh, 640px);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
   }
-  .media-picker-dialog::backdrop {
-    background: rgba(0, 0, 0, 0.45);
-  }
+  .media-picker-dialog::backdrop { background: rgba(0, 0, 0, 0.45); }
   .media-picker-dialog-inner {
     display: flex;
     flex-direction: column;
@@ -69,15 +54,8 @@
     padding: 16px 18px;
     border-bottom: 1px solid var(--border);
   }
-  .media-picker-dialog-header h2 {
-    margin: 0;
-    font-size: 16px;
-  }
-  .media-picker-dialog-body {
-    padding: 16px 18px;
-    overflow-y: auto;
-    flex: 1;
-  }
+  .media-picker-dialog-header h2 { margin: 0; font-size: 16px; }
+  .media-picker-dialog-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
   .media-picker-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
@@ -94,9 +72,7 @@
     color: inherit;
   }
   .media-picker-item:hover,
-  .media-picker-item.is-selected {
-    border-color: var(--accent);
-  }
+  .media-picker-item.is-selected { border-color: var(--accent); }
   .media-picker-item img {
     width: 100%;
     height: 72px;
@@ -119,18 +95,126 @@
     word-break: break-all;
     margin-top: 4px;
   }
+
+  .layout-files-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .layout-files-header h3 { margin: 0; font-size: 15px; }
+  .layout-files-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .layout-files-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .layout-files-table th,
+  .layout-files-table td {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+  }
+  .layout-files-table th {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .layout-files-table code { font-size: 12px; word-break: break-all; }
+  .layout-files-table .actions-cell {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: flex-end;
+  }
+  .static-upload-form {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-end;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .static-upload-form .field { margin: 0; flex: 1; min-width: 180px; }
+  .static-upload-form label {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .layout-files-empty { color: var(--muted); font-size: 13px; }
 </style>
 
-<form method="post" action="{{ action }}" class="form-layout">
+<div class="form-layout">
   <section class="panel">
-    <div class="field">
-      <label for="shell_content">shell.html（MiniJinja）</label>
-      <textarea id="shell_content" name="shell_content" class="code-editor code-editor--page" spellcheck="false">{{ shell_content }}</textarea>
-      <p class="help">共通の head / nav / footer。ページ本文は <code>block content</code> に差し込まれます。静的 CSS は <code>/static/レイアウトkey/</code> を参照できます。favicon は右の設定とテンプレート変数 <code>favicon_url</code>（shell の <code>&lt;head&gt;</code> に link タグ）で反映されます。</p>
+    {% if is_edit %}
+    <div class="layout-files-header">
+      <h3>ファイル</h3>
+      <div class="layout-files-actions">
+        <a class="button secondary" href="{{ new_file_url }}">テキストファイルを追加</a>
+      </div>
     </div>
+
+    {% if layout_files.is_empty() %}
+    <p class="layout-files-empty">ファイルがありません。</p>
+    {% else %}
+    <table class="layout-files-table">
+      <thead>
+        <tr>
+          <th>パス</th>
+          <th>種別</th>
+          <th>サイズ</th>
+          <th>公開 URL</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for file in layout_files %}
+        <tr>
+          <td><code>{{ file.display_path }}</code></td>
+          <td>{{ file.kind_label }}</td>
+          <td>{{ file.size_label }}</td>
+          <td><code>{{ file.public_url }}</code></td>
+          <td>
+            <div class="actions-cell">
+              {% if file.is_editable %}
+              <a class="button secondary" href="{{ file.edit_url }}">編集</a>
+              {% endif %}
+              {% if file.is_deletable %}
+              <form method="post" action="/admin/layouts/{{ layout_id }}/static/delete" style="display:inline" onsubmit="return confirm('このファイルを削除しますか？');">
+                <input type="hidden" name="relative_path" value="{{ file.delete_path }}">
+                <button type="submit" class="button secondary">削除</button>
+              </form>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+
+    <form method="post" action="{{ upload_action }}" enctype="multipart/form-data" class="static-upload-form">
+      <div class="field">
+        <label for="static-upload-file">ファイルをアップロード</label>
+        <input id="static-upload-file" name="file" type="file" required>
+      </div>
+      <div class="field">
+        <label for="static-upload-path">保存パス（任意）</label>
+        <input id="static-upload-path" name="relative_path" type="text" placeholder="例: img/ または assets/logo.png">
+      </div>
+      <button type="submit" class="button secondary">アップロード</button>
+    </form>
+    <p class="help" style="margin-top:8px">テキストファイル（CSS / JS 等）は「編集」から変更できます。画像・フォントはアップロードで追加します。</p>
+    {% else %}
+    <p class="help">作成後、shell.html や site.css などのファイルを編集できます。既定の shell と site.css は自動で用意されます。</p>
+    {% endif %}
   </section>
 
-  <aside class="panel">
+  <form method="post" action="{{ action }}" class="panel">
     <div class="field">
       <label for="key">key</label>
       <input id="key" name="key" type="text" value="{{ key }}" required{% if key_readonly %} readonly{% endif %}>
@@ -177,8 +261,14 @@
       <button class="button" type="submit">{{ submit_label }}</button>
       <a class="button secondary" href="/admin/layouts">戻る</a>
     </div>
-  </aside>
+  </form>
+</div>
+
+{% if is_edit && !delete_action.is_empty() %}
+<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('このレイアウトを削除しますか？');">
+  <button class="button danger" type="submit">削除する</button>
 </form>
+{% endif %}
 
 {% if has_media %}
 <dialog id="favicon-dialog" class="media-picker-dialog">
@@ -212,14 +302,8 @@
 </dialog>
 {% endif %}
 
-{% if is_edit && !delete_action.is_empty() %}
-<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('このレイアウトを削除しますか？');">
-  <button class="button danger" type="submit">削除する</button>
-</form>
-{% endif %}
-
 {% if !error_message.is_empty() %}
-<script>alert("{{ error_message }}");</script>
+<div class="notice error" style="margin-top:16px">{{ error_message }}</div>
 {% endif %}
 
 {% if has_media %}

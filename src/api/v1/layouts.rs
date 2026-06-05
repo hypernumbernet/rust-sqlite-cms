@@ -7,10 +7,8 @@ use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
 use crate::models::layout::{Layout, LayoutInput};
-use crate::presets;
 use crate::services;
 use crate::state::AppState;
-use crate::theme;
 
 #[derive(Debug, Deserialize)]
 struct CreateLayoutRequest {
@@ -66,9 +64,6 @@ async fn create(
     State(state): State<AppState>,
     Json(payload): Json<CreateLayoutRequest>,
 ) -> ApiResult<Json<Layout>> {
-    let shell = payload
-        .shell_content
-        .unwrap_or_else(|| presets::DEFAULT_SHELL.to_string());
     let input = LayoutInput {
         key: payload.key.trim().to_string(),
         name: payload.name.trim().to_string(),
@@ -79,7 +74,13 @@ async fn create(
         return Err(ApiError::Validation("key と name は必須です".into()));
     }
 
-    let id = services::layouts::create_layout(&state.pool, &state.config, &input, &shell).await?;
+    let id = if let Some(shell) = payload.shell_content {
+        let static_files = services::layouts::default_static_text_files_for_create();
+        services::layouts::create_layout(&state.pool, &state.config, &input, &shell, &static_files)
+            .await?
+    } else {
+        services::layouts::create_layout_with_defaults(&state.pool, &state.config, &input).await?
+    };
     let created = services::layouts::find(&state.pool, id).await?;
     Ok(Json(created))
 }
@@ -90,10 +91,6 @@ async fn update(
     Json(payload): Json<UpdateLayoutRequest>,
 ) -> ApiResult<Json<Layout>> {
     let current = services::layouts::find(&state.pool, id).await?;
-    let shell = match payload.shell_content {
-        Some(content) => content,
-        None => theme::read_shell(&state.config.paths.work_dir, &current.key).unwrap_or_default(),
-    };
     let favicon_media_id = match payload.favicon_media_id {
         Some(v) => v,
         None => current.favicon_media_id,
@@ -105,7 +102,20 @@ async fn update(
         favicon_media_id,
     };
 
-    services::layouts::update_layout(&state.pool, &state.config, id, &input, &shell).await?;
+    if let Some(shell) = payload.shell_content {
+        services::layouts::update_layout(
+            &state.pool,
+            &state.config,
+            id,
+            &input,
+            &shell,
+            &std::collections::HashMap::new(),
+            &[],
+        )
+        .await?;
+    } else {
+        services::layouts::update_layout_meta(&state.pool, &state.config, id, &input).await?;
+    }
     let updated = services::layouts::find(&state.pool, id).await?;
     Ok(Json(updated))
 }

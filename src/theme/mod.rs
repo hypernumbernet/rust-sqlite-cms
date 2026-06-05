@@ -79,12 +79,226 @@ pub fn content_type_for_path(path: &Path) -> &'static str {
     }
 }
 
+/// static ファイル 1 件あたりのアップロード上限（10MB）。
+pub const MAX_STATIC_UPLOAD_SIZE: usize = 10 * 1024 * 1024;
+
+/// `static/` 配下ファイルの種別。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StaticFileKind {
+    Text,
+    Binary,
+}
+
+/// `static/` 配下のファイル一覧エントリ。
+#[derive(Debug, Clone)]
+pub struct StaticFileEntry {
+    pub relative_path: String,
+    pub kind: StaticFileKind,
+    pub size_bytes: u64,
+    pub public_url: String,
+}
+
+impl StaticFileEntry {
+    /// 管理画面向けの種別ラベル。
+    pub fn kind_label(&self) -> &'static str {
+        match self.kind {
+            StaticFileKind::Text => "テキスト",
+            StaticFileKind::Binary => binary_kind_label(&self.relative_path),
+        }
+    }
+}
+
+fn binary_kind_label(path: &str) -> &'static str {
+    match Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png" | "jpg" | "jpeg" | "gif" | "webp" | "ico" | "svg") => "画像",
+        Some("woff" | "woff2") => "フォント",
+        _ => "バイナリ",
+    }
+}
+
+/// shell.html のバイト数。存在しなければ 0。
+pub fn shell_file_size_bytes(work_dir: &str, layout_key: &str) -> u64 {
+    let path = layout_dir(work_dir, layout_key).join("shell.html");
+    std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
 fn is_safe_static_relative_path(path: &str) -> bool {
-    !path.starts_with('/')
+    !path.is_empty()
+        && !path.starts_with('/')
         && !path.contains('\\')
+        && !path.split('/').any(|part| part.starts_with('_'))
         && path
             .split('/')
             .all(|part| !part.is_empty() && part != "." && part != "..")
+}
+
+fn extension_matches(path: &str, allowed: &[&str]) -> bool {
+    let Some(ext) = Path::new(path).extension().and_then(|e| e.to_str()) else {
+        return false;
+    };
+    allowed.iter().any(|allowed_ext| ext.eq_ignore_ascii_case(allowed_ext))
+}
+
+/// タブエディタで編集可能なテキスト static か。
+pub fn is_editable_text_static(path: &str) -> bool {
+    extension_matches(path, &["css", "js", "svg", "json", "txt", "map"])
+}
+
+/// アップロード可能な static ファイルか（テキスト + バイナリ）。
+pub fn is_allowed_static_upload(path: &str) -> bool {
+    is_editable_text_static(path)
+        || extension_matches(
+            path,
+            &[
+                "png", "jpg", "jpeg", "gif", "webp", "ico", "woff", "woff2",
+            ],
+        )
+}
+
+fn classify_static_kind(path: &str) -> StaticFileKind {
+    if is_editable_text_static(path) {
+        StaticFileKind::Text
+    } else {
+        StaticFileKind::Binary
+    }
+}
+
+/// `static/` からの相対パスを検証する。
+pub fn validate_static_relative_path(path: &str) -> Result<(), String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("ファイルパスは必須です".to_string());
+    }
+    if !is_safe_static_relative_path(trimmed) {
+        return Err("ファイルパスが不正です".to_string());
+    }
+    if !is_allowed_static_upload(trimmed) {
+        return Err("この拡張子のファイルは許可されていません".to_string());
+    }
+    Ok(())
+}
+
+fn static_absolute_path(work_dir: &str, layout_key: &str, relative_path: &str) -> PathBuf {
+    layout_static_dir(work_dir, layout_key).join(relative_path)
+}
+
+/// `static/` 配下のファイルを再帰的に一覧する。
+pub fn list_static_files(work_dir: &str, layout_key: &str) -> std::io::Result<Vec<StaticFileEntry>> {
+    let root = layout_static_dir(work_dir, layout_key);
+    if !root.is_dir() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    collect_static_files(&root, &root, layout_key, &mut entries)?;
+    entries.sort_by(|a, b| a.relative_path.cmp(&b.relative_path));
+    Ok(entries)
+}
+
+fn collect_static_files(
+    root: &Path,
+    dir: &Path,
+    layout_key: &str,
+    out: &mut Vec<StaticFileEntry>,
+) -> std::io::Result<()> {
+    for entry in std::fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_static_files(root, &path, layout_key, out)?;
+        } else if path.is_file() {
+            let relative = path
+                .strip_prefix(root)
+                .expect("static file under root")
+                .to_string_lossy()
+                .replace('\\', "/");
+            if !is_safe_static_relative_path(&relative) {
+                continue;
+            }
+            let metadata = entry.metadata()?;
+            out.push(StaticFileEntry {
+                relative_path: relative.clone(),
+                kind: classify_static_kind(&relative),
+                size_bytes: metadata.len(),
+                public_url: format!("/static/{layout_key}/{relative}"),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// テキスト static を読み込む。
+pub fn read_static_text(
+    work_dir: &str,
+    layout_key: &str,
+    relative_path: &str,
+) -> std::io::Result<String> {
+    std::fs::read_to_string(static_absolute_path(
+        work_dir,
+        layout_key,
+        relative_path,
+    ))
+}
+
+/// テキスト static を書き込む。
+pub fn write_static_text(
+    work_dir: &str,
+    layout_key: &str,
+    relative_path: &str,
+    content: &str,
+) -> std::io::Result<()> {
+    let path = static_absolute_path(work_dir, layout_key, relative_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, content)
+}
+
+/// バイナリ static を書き込む。
+pub fn write_static_bytes(
+    work_dir: &str,
+    layout_key: &str,
+    relative_path: &str,
+    bytes: &[u8],
+) -> std::io::Result<()> {
+    let path = static_absolute_path(work_dir, layout_key, relative_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, bytes)
+}
+
+/// static ファイルを削除する。
+pub fn remove_static_file(
+    work_dir: &str,
+    layout_key: &str,
+    relative_path: &str,
+) -> std::io::Result<()> {
+    match std::fs::remove_file(static_absolute_path(
+        work_dir,
+        layout_key,
+        relative_path,
+    )) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+    }
+}
+
+/// 人間向けのファイルサイズ表示。
+pub fn format_static_file_size(size_bytes: u64) -> String {
+    if size_bytes < 1024 {
+        format!("{size_bytes} B")
+    } else if size_bytes < 1024 * 1024 {
+        format!("{:.1} KB", size_bytes as f64 / 1024.0)
+    } else {
+        format!("{:.1} MB", size_bytes as f64 / (1024.0 * 1024.0))
+    }
 }
 
 /// Phase 1 の `work/templates` / `work/pages` を `work/layouts/default/` へベストエフォートで移す。
@@ -256,5 +470,63 @@ mod tests {
 
         let resolved = resolve_static_path(work, "default/site.css").expect("resolved");
         assert!(resolved.ends_with("default/static/site.css"));
+    }
+
+    #[test]
+    fn validate_static_relative_path_rejects_unsafe_paths() {
+        assert!(validate_static_relative_path("").is_err());
+        assert!(validate_static_relative_path("../site.css").is_err());
+        assert!(validate_static_relative_path("_hidden.css").is_err());
+        assert!(validate_static_relative_path("img/../site.css").is_err());
+    }
+
+    #[test]
+    fn static_file_entry_kind_label() {
+        let text = StaticFileEntry {
+            relative_path: "site.css".to_string(),
+            kind: StaticFileKind::Text,
+            size_bytes: 10,
+            public_url: "/static/default/site.css".to_string(),
+        };
+        assert_eq!(text.kind_label(), "テキスト");
+
+        let image = StaticFileEntry {
+            relative_path: "logo.png".to_string(),
+            kind: StaticFileKind::Binary,
+            size_bytes: 10,
+            public_url: "/static/default/logo.png".to_string(),
+        };
+        assert_eq!(image.kind_label(), "画像");
+    }
+
+    #[test]
+    fn is_editable_text_static_and_upload_allowed() {
+        assert!(is_editable_text_static("site.css"));
+        assert!(is_editable_text_static("js/app.js"));
+        assert!(!is_editable_text_static("logo.png"));
+        assert!(is_allowed_static_upload("logo.png"));
+        assert!(!is_allowed_static_upload("evil.exe"));
+    }
+
+    #[test]
+    fn list_and_read_write_static_files() {
+        let tmp = tempfile::TempDir::new().expect("tempdir");
+        let work = tmp.path().to_str().expect("utf8 path");
+        ensure_layout_dirs(work, "corp").expect("dirs");
+
+        write_static_text(work, "corp", "site.css", "body {}").expect("write");
+        write_static_bytes(work, "corp", "img/logo.png", &[0x89, 0x50]).expect("bytes");
+
+        let files = list_static_files(work, "corp").expect("list");
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().any(|f| f.relative_path == "site.css" && f.kind == StaticFileKind::Text));
+        assert!(files.iter().any(|f| f.relative_path == "img/logo.png" && f.kind == StaticFileKind::Binary));
+
+        let css = read_static_text(work, "corp", "site.css").expect("read");
+        assert_eq!(css, "body {}");
+
+        remove_static_file(work, "corp", "site.css").expect("remove");
+        let after = list_static_files(work, "corp").expect("list after");
+        assert_eq!(after.len(), 1);
     }
 }

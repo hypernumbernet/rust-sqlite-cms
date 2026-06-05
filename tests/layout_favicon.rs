@@ -2,6 +2,8 @@
 
 mod common;
 
+use std::collections::HashMap;
+
 use rust_sqlite_cms::{
     media,
     models::{
@@ -66,9 +68,17 @@ async fn layout_rejects_non_favicon_media() {
         favicon_media_id: Some(pdf_id),
     };
 
-    let err = services::layouts::update_layout(pool, config, layout.id, &input, &shell)
-        .await
-        .expect_err("pdf favicon should fail");
+    let err = services::layouts::update_layout(
+        pool,
+        config,
+        layout.id,
+        &input,
+        &shell,
+        &HashMap::new(),
+        &[],
+    )
+    .await
+    .expect_err("pdf favicon should fail");
     assert!(
         err.to_string().contains("favicon"),
         "unexpected error: {err}"
@@ -105,9 +115,17 @@ async fn rendered_page_includes_favicon_link() {
         is_default: layout.is_default,
         favicon_media_id: Some(media_id),
     };
-    services::layouts::update_layout(pool, config, layout.id, &input, &shell)
-        .await
-        .expect("update layout favicon");
+    services::layouts::update_layout(
+        pool,
+        config,
+        layout.id,
+        &input,
+        &shell,
+        &HashMap::new(),
+        &[],
+    )
+    .await
+    .expect("update layout favicon");
 
     let page = pages::find_home(pool).await.expect("home").expect("home page");
     let html = page_render::render_page(&app.state, &page)

@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_layouts %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ action }}" class="form-layout">
+  <section class="panel">
+    {% if is_new_file %}
+    <div class="field">
+      <label for="relative_path">パス（static/ からの相対）</label>
+      <input id="relative_path" name="relative_path" type="text" value="{{ relative_path }}" required placeholder="例: site.css, js/app.js">
+    </div>
+    {% endif %}
+    <div class="field">
+      <label for="content">{{ file_label }}</label>
+      <textarea id="content" name="content" class="code-editor code-editor--page" spellcheck="false">{{ content }}</textarea>
+      {% if !help_text.is_empty() %}
+      <p class="help">{{ help_text }}</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="actions">
+      <button class="button" type="submit">保存する</button>
+      <a class="button secondary" href="{{ back_url }}">レイアウトに戻る</a>
+    </div>
+  </aside>
+</form>
+
+{% if !error_message.is_empty() %}
+<div class="notice error" style="margin-top:16px">{{ error_message }}</div>
+{% endif %}
+{% endblock %}

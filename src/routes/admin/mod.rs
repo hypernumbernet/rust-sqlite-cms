@@ -2,10 +2,14 @@ use askama::Template;
 use axum::{
     Router,
     extract::State,
+    http::{header, HeaderMap, HeaderValue},
     middleware,
     response::{Html, IntoResponse},
     routing::get,
 };
+
+const ADMIN_FAVICON: &[u8] =
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/admin-favicon.ico"));
 
 use crate::error::AppResult;
 use crate::repos::options;
@@ -41,7 +45,8 @@ struct DashboardTemplate {
 }
 
 pub fn router() -> Router<AppState> {
-    let public = auth::router();
+    let public = auth::router()
+        .route("/admin/favicon.ico", get(admin_favicon));
 
     let protected = Router::new()
         .route("/admin", get(dashboard))
@@ -76,4 +81,17 @@ async fn dashboard(
     }
     .render()?;
     Ok(Html(html))
+}
+
+async fn admin_favicon() -> impl IntoResponse {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("image/x-icon"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=86400"),
+    );
+    (headers, ADMIN_FAVICON)
 }

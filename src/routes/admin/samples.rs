@@ -30,6 +30,7 @@ pub struct ResetSummary {
     pub placeholders_count: i64,
     pub posts_count: i64,
     pub media_count: i64,
+    pub pages_count: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,6 +91,7 @@ async fn apply(
                 placeholders_count: result.placeholders_count,
                 posts_count: result.posts_count,
                 media_count: result.media_count,
+                pages_count: result.pages_count,
             };
 
             let (message, result_heading, show_restart_notice) = if is_append {

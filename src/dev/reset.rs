@@ -18,6 +18,7 @@ pub struct ResetResult {
     pub placeholders_count: i64,
     pub posts_count: i64,
     pub media_count: i64,
+    pub pages_count: i64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +85,80 @@ const BASIC_MEDIA_FILES: &[&str] = &[
     "carousel-3.png",
 ];
 
+const BASIC_PAGE_URL_PATHS: &[&str] = &["/news", "/about"];
+
+const BASIC_NEWS_PAGE_HTML: &str = include_str!("../../presets/pages/news.html");
+
+const BASIC_ABOUT_PAGE_HTML: &str = r#"{% extends "default/shell.html" %}
+{% block title %}会社概要 - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container" style="max-width:720px;padding:64px 0">
+      <h1>会社概要</h1>
+      <p class="lead">{{ blogdescription }}</p>
+      <article>
+        <p>サンプル株式会社は、中小企業の情報発信と業務改善を支援する架空の企業です。お知らせ欄以外の本文はサンプル固定コンテンツとして表示しています。</p>
+      </article>
+    </div>
+  </section>
+{% endblock %}
+"#;
+
+const BASIC_SAMPLE_SHELL: &str = r#"<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ blogname }}{% endblock %}</title>
+  {% if favicon_url %}<link rel="icon" href="{{ favicon_url }}">{% endif %}
+  <link rel="stylesheet" href="/static/default/site.css">
+</head>
+<body>
+  <header>
+    <div class="container nav">
+      <div class="brand">{{ blogname }}</div>
+      <nav class="nav-links" aria-label="主要ナビゲーション">
+        <a href="/">ホーム</a>
+        <a href="/about">会社概要</a>
+        <a href="/news">お知らせ</a>
+        <a href="/admin/posts">管理画面</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    <div class="container">
+      <span>{{ blogname }}</span>
+      <span>&copy; 2026 Sample Company. All rights reserved.</span>
+    </div>
+  </footer>
+</body>
+</html>
+"#;
+
+struct BasicPageSpec {
+    name: &'static str,
+    url_path: &'static str,
+    content: &'static str,
+}
+
+const BASIC_EXTRA_PAGES: &[BasicPageSpec] = &[
+    BasicPageSpec {
+        name: "お知らせ",
+        url_path: "/news",
+        content: BASIC_NEWS_PAGE_HTML,
+    },
+    BasicPageSpec {
+        name: "会社概要",
+        url_path: "/about",
+        content: BASIC_ABOUT_PAGE_HTML,
+    },
+];
+
 struct PlaceholderIds {
     news: i64,
     announcements: i64,
@@ -113,6 +188,7 @@ pub async fn perform_basic_reset(state: &AppState) -> AppResult<ResetResult> {
     let mut tx = fresh_pool.begin().await?;
     let ids = resolve_placeholder_ids(&mut tx, SeedStrategy::Reset).await?;
     seed_basic_sample_content(&mut tx, &ids).await?;
+    seed_basic_sample_pages(&mut tx, &config.paths.work_dir, SeedStrategy::Reset).await?;
     sqlx::query(
         "INSERT INTO options (option_name, option_value, autoload) 
          VALUES ('blogname', 'Rust SQLite CMS - テスト環境', 1)
@@ -122,17 +198,21 @@ pub async fn perform_basic_reset(state: &AppState) -> AppResult<ResetResult> {
     .await?;
     tx.commit().await?;
 
+    write_basic_sample_shell(&config.paths.work_dir)?;
+
     // 5. テスト用画像ファイルを生成
     generate_test_images(&config.paths.uploads_dir)?;
 
     // 6. 件数を集計して返す
-    let (placeholders_count, posts_count, media_count) = count_data(&fresh_pool).await?;
+    let (placeholders_count, posts_count, media_count, pages_count) =
+        count_data(&fresh_pool).await?;
 
     Ok(ResetResult {
         message: "基本テストデータの適用が完了しました。サーバーを再起動することを強くおすすめします。".to_string(),
         placeholders_count,
         posts_count,
         media_count,
+        pages_count,
     })
 }
 
@@ -152,17 +232,20 @@ pub async fn perform_basic_append(state: &AppState) -> AppResult<ResetResult> {
     let mut tx = state.pool.begin().await?;
     let ids = resolve_placeholder_ids(&mut tx, SeedStrategy::Append).await?;
     seed_basic_sample_content(&mut tx, &ids).await?;
+    seed_basic_sample_pages(&mut tx, &state.config.paths.work_dir, SeedStrategy::Append).await?;
     tx.commit().await?;
 
     generate_test_images(uploads_dir)?;
 
-    let (placeholders_count, posts_count, media_count) = count_data(&state.pool).await?;
+    let (placeholders_count, posts_count, media_count, pages_count) =
+        count_data(&state.pool).await?;
 
     Ok(ResetResult {
         message: "基本テストデータの追加が完了しました。サーバーの再起動は不要です。".to_string(),
         placeholders_count,
         posts_count,
         media_count,
+        pages_count,
     })
 }
 
@@ -221,6 +304,18 @@ async fn check_basic_sample_conflicts(
     for file in BASIC_MEDIA_FILES {
         if uploads.join(file).exists() {
             conflicts.push(format!(r#"アップロードファイル "{}""#, file));
+        }
+    }
+
+    for path in BASIC_PAGE_URL_PATHS {
+        let exists: Option<i32> =
+            sqlx::query_scalar("SELECT 1 FROM pages WHERE url_path = ? LIMIT 1")
+                .bind(path)
+                .fetch_optional(pool)
+                .await
+                .map_err(|e| vec![e.to_string()])?;
+        if exists.is_some() {
+            conflicts.push(format!(r#"ページ URL "{}""#, path));
         }
     }
 
@@ -482,6 +577,98 @@ async fn seed_basic_sample_content(
     Ok(())
 }
 
+async fn seed_basic_sample_pages(
+    tx: &mut Transaction<'_, Sqlite>,
+    work_dir: &str,
+    strategy: SeedStrategy,
+) -> AppResult<()> {
+    let layout_id: i64 = sqlx::query_scalar("SELECT id FROM layouts WHERE key = 'default'")
+        .fetch_one(&mut **tx)
+        .await?;
+
+    match strategy {
+        SeedStrategy::Reset => {
+            insert_sample_home_page(tx, layout_id).await?;
+        }
+        SeedStrategy::Append => {
+            if !home_page_exists(tx).await? {
+                insert_sample_home_page(tx, layout_id).await?;
+            }
+        }
+    }
+
+    for spec in BASIC_EXTRA_PAGES {
+        insert_sample_page(tx, work_dir, layout_id, spec).await?;
+    }
+
+    Ok(())
+}
+
+async fn home_page_exists(tx: &mut Transaction<'_, Sqlite>) -> AppResult<bool> {
+    let exists: Option<i32> = sqlx::query_scalar("SELECT 1 FROM pages WHERE url_path = '/' LIMIT 1")
+        .fetch_optional(&mut **tx)
+        .await?;
+    Ok(exists.is_some())
+}
+
+async fn insert_sample_home_page(
+    tx: &mut Transaction<'_, Sqlite>,
+    layout_id: i64,
+) -> AppResult<()> {
+    sqlx::query(
+        "INSERT INTO pages (name, url_path, file_name, layout_id, is_published)
+         VALUES ('トップページ', '/', 'pages/index.html', ?, 1)",
+    )
+    .bind(layout_id)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+async fn insert_sample_page(
+    tx: &mut Transaction<'_, Sqlite>,
+    work_dir: &str,
+    layout_id: i64,
+    spec: &BasicPageSpec,
+) -> AppResult<()> {
+    let temp_file = format!(
+        "pages/.new-{}",
+        std::time::SystemTime::now()
+            .elapsed()
+            .unwrap_or_default()
+            .as_nanos()
+    );
+
+    let id: i64 = sqlx::query_scalar(
+        r#"
+        INSERT INTO pages (name, url_path, file_name, layout_id, is_published)
+        VALUES (?, ?, ?, ?, 1)
+        RETURNING id
+        "#,
+    )
+    .bind(spec.name)
+    .bind(spec.url_path)
+    .bind(&temp_file)
+    .bind(layout_id)
+    .fetch_one(&mut **tx)
+    .await?;
+
+    let file_name = format!("pages/page-{id}.html");
+    sqlx::query("UPDATE pages SET file_name = ? WHERE id = ?")
+        .bind(&file_name)
+        .bind(id)
+        .execute(&mut **tx)
+        .await?;
+
+    crate::theme::write_page_body(work_dir, "default", &file_name, spec.content)?;
+    Ok(())
+}
+
+fn write_basic_sample_shell(work_dir: &str) -> AppResult<()> {
+    crate::theme::write_shell(work_dir, "default", BASIC_SAMPLE_SHELL)?;
+    Ok(())
+}
+
 /// 指定された名前のプレースホルダーが存在しなければ作成する（リセット用）
 async fn ensure_placeholder(
     tx: &mut Transaction<'_, Sqlite>,
@@ -540,7 +727,7 @@ fn generate_test_images(uploads_dir: &str) -> AppResult<()> {
     Ok(())
 }
 
-async fn count_data(pool: &SqlitePool) -> AppResult<(i64, i64, i64)> {
+async fn count_data(pool: &SqlitePool) -> AppResult<(i64, i64, i64, i64)> {
     let ph: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM placeholders")
         .fetch_one(pool)
         .await?;
@@ -552,7 +739,10 @@ async fn count_data(pool: &SqlitePool) -> AppResult<(i64, i64, i64)> {
     let media: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM posts WHERE post_type = 'attachment'")
         .fetch_one(pool)
         .await?;
-    Ok((ph, posts, media))
+    let pages: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM pages")
+        .fetch_one(pool)
+        .await?;
+    Ok((ph, posts, media, pages))
 }
 
 async fn insert_post(

@@ -54,7 +54,7 @@ async fn create(
         return Err(ApiError::BadRequest("既にログインしています".into()));
     }
 
-    match users_service::authenticate(&state.pool, &body.login, &body.password).await {
+    match users_service::authenticate(&state.pool(), &body.login, &body.password).await {
         Ok(user) => {
             let auth = AuthUser {
                 id: user.id,

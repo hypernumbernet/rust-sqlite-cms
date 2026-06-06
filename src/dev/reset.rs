@@ -196,7 +196,9 @@ struct PlaceholderIds {
 pub async fn perform_basic_reset(state: &AppState) -> AppResult<ResetResult> {
     let config = &state.config;
 
-    // 1. 既存の DB ファイルを削除（接続中のプールがあるため、再起動推奨を強く出す）
+    state.release_pool().await;
+
+    // 1. 既存の DB ファイルを削除
     let db_path = &config.database.path;
     if Path::new(db_path).exists() {
         std::fs::remove_file(db_path)?;
@@ -228,12 +230,15 @@ pub async fn perform_basic_reset(state: &AppState) -> AppResult<ResetResult> {
     // 5. テスト用画像ファイルを生成
     generate_test_images(&config.paths.uploads_dir)?;
 
-    // 6. 件数を集計して返す
+    // 6. ランタイム状態を差し替え
+    state.install_storage(fresh_pool).await?;
+
+    // 7. 件数を集計して返す
     let (placeholders_count, posts_count, media_count, pages_count) =
-        count_data(&fresh_pool).await?;
+        count_data(&state.pool()).await?;
 
     Ok(ResetResult {
-        message: "基本テストデータの適用が完了しました。サーバーを再起動することを強くおすすめします。".to_string(),
+        message: "基本テストデータの適用が完了しました。再起動は不要です。".to_string(),
         placeholders_count,
         posts_count,
         media_count,
@@ -245,7 +250,7 @@ pub async fn perform_basic_reset(state: &AppState) -> AppResult<ResetResult> {
 pub async fn perform_basic_append(state: &AppState) -> AppResult<ResetResult> {
     let uploads_dir = &state.config.paths.uploads_dir;
 
-    if let Err(conflicts) = check_basic_sample_conflicts(&state.pool, uploads_dir).await {
+    if let Err(conflicts) = check_basic_sample_conflicts(&state.pool(), uploads_dir).await {
         return Err(AppError::Conflict(format!(
             "以下の名前が既に存在するため、サンプルの追加を中止しました: {}",
             conflicts.join(", ")
@@ -254,7 +259,7 @@ pub async fn perform_basic_append(state: &AppState) -> AppResult<ResetResult> {
 
     std::fs::create_dir_all(uploads_dir)?;
 
-    let mut tx = state.pool.begin().await?;
+    let mut tx = state.pool().begin().await?;
     let ids = resolve_placeholder_ids(&mut tx, SeedStrategy::Append).await?;
     seed_basic_sample_content(&mut tx, &ids).await?;
     seed_basic_sample_pages(&mut tx, &state.config.paths.work_dir, SeedStrategy::Append).await?;
@@ -263,7 +268,7 @@ pub async fn perform_basic_append(state: &AppState) -> AppResult<ResetResult> {
     generate_test_images(uploads_dir)?;
 
     let (placeholders_count, posts_count, media_count, pages_count) =
-        count_data(&state.pool).await?;
+        count_data(&state.pool()).await?;
 
     Ok(ResetResult {
         message: "基本テストデータの追加が完了しました。サーバーの再起動は不要です。".to_string(),

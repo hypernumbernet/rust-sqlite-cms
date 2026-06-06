@@ -75,11 +75,7 @@ async fn main() -> AppResult<()> {
     let templates = Arc::new(Templates::new(theme::layouts_dir(&config.paths.work_dir)));
     let uploads_dir = media::uploads_dir(&config.paths.uploads_dir);
     let session_layer = session::session_layer(&config);
-    let state = AppState {
-        pool,
-        config: Arc::new(config),
-        templates,
-    };
+    let state = AppState::new(pool, Arc::new(config), templates);
 
     let app = routes::router(uploads_dir)
         .layer(session_layer)

@@ -301,7 +301,7 @@ pub fn router() -> Router<AppState> {
 
 async fn placeholder_index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let type_map = widget_type_map(&state).await?;
-    let placeholders = placeholders::list_all(&state.pool)
+    let placeholders = placeholders::list_all(&state.pool())
         .await?
         .into_iter()
         .map(|p| PlaceholderListItem::from_placeholder(p, &type_map))
@@ -334,7 +334,7 @@ async fn trash_restore(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Response> {
-    match posts::restore(&state.pool, id).await {
+    match posts::restore(&state.pool(), id).await {
         Ok(()) => Ok(Redirect::to("/admin/posts/trash").into_response()),
         Err(AppError::NotFound) => Ok(Redirect::to("/admin/posts/trash").into_response()),
         Err(err) => Err(err),
@@ -345,7 +345,7 @@ async fn trash_purge(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Response> {
-    match posts::purge(&state.pool, id).await {
+    match posts::purge(&state.pool(), id).await {
         Ok(()) => Ok(Redirect::to("/admin/posts/trash").into_response()),
         Err(AppError::NotFound) => Ok(Redirect::to("/admin/posts/trash").into_response()),
         Err(err) => Err(err),
@@ -354,13 +354,13 @@ async fn trash_purge(
 
 async fn build_trash_list(state: &AppState) -> AppResult<Vec<TrashListItem>> {
     let type_map = widget_type_map(state).await?;
-    let placeholder_by_id: HashMap<i64, Placeholder> = placeholders::list_all(&state.pool)
+    let placeholder_by_id: HashMap<i64, Placeholder> = placeholders::list_all(&state.pool())
         .await?
         .into_iter()
         .map(|p| (p.id, p))
         .collect();
 
-    let trashed = posts::list_trashed(&state.pool).await?;
+    let trashed = posts::list_trashed(&state.pool()).await?;
     Ok(trashed
         .into_iter()
         .filter_map(|post| {
@@ -433,7 +433,7 @@ async fn placeholder_create(
         }
     };
 
-    if let Err(err) = placeholders::insert(&state.pool, &input).await {
+    if let Err(err) = placeholders::insert(&state.pool(), &input).await {
         if let AppError::Conflict(message) = err {
             let html = build_placeholder_form(
         &auth,
@@ -471,7 +471,7 @@ async fn placeholder_update(
     Form(form): Form<PlaceholderForm>,
 ) -> AppResult<Response> {
     let embed = is_embed_flag(&query.embed);
-    let placeholder = placeholders::find(&state.pool, id).await?;
+    let placeholder = placeholders::find(&state.pool(), id).await?;
     let input = match (&form).into_input() {
         Ok(input) => input,
         Err(message) => {
@@ -495,7 +495,7 @@ async fn placeholder_update(
         }
     };
 
-    if let Err(err) = placeholders::update(&state.pool, id, &input).await {
+    if let Err(err) = placeholders::update(&state.pool(), id, &input).await {
         if let AppError::Conflict(message) = err {
             let html = build_manage_template(
         &auth,
@@ -524,10 +524,10 @@ async fn placeholder_destroy(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Response> {
-    match placeholders::delete(&state.pool, id).await {
+    match placeholders::delete(&state.pool(), id).await {
         Ok(()) => Ok(Redirect::to("/admin/posts").into_response()),
         Err(AppError::Conflict(message)) => {
-            let placeholder = placeholders::find(&state.pool, id).await?;
+            let placeholder = placeholders::find(&state.pool(), id).await?;
             let html = build_manage_template(
         &auth,
         &state,
@@ -552,7 +552,7 @@ async fn placeholder_manage(
     Query(query): Query<ManageQuery>,
 ) -> AppResult<impl IntoResponse> {
     let embed = is_embed_flag(&query.embed);
-    let placeholder = placeholders::find(&state.pool, id).await?;
+    let placeholder = placeholders::find(&state.pool(), id).await?;
     let active_tab = if query.tab == "settings" {
         "settings"
     } else {
@@ -571,7 +571,7 @@ async fn entry_new(
     Query(query): Query<EmbedQuery>,
 ) -> AppResult<impl IntoResponse> {
     let embed = is_embed_flag(&query.embed);
-    let placeholder = placeholders::find(&state.pool, id).await?;
+    let placeholder = placeholders::find(&state.pool(), id).await?;
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
@@ -599,7 +599,7 @@ async fn entry_create(
     Form(form): Form<EntryForm>,
 ) -> AppResult<Response> {
     let embed = is_embed_flag(&query.embed);
-    let placeholder = placeholders::find(&state.pool, id).await?;
+    let placeholder = placeholders::find(&state.pool(), id).await?;
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
@@ -611,7 +611,7 @@ async fn entry_create(
     }
 
     let input = form.into_input(id);
-    posts::insert(&state.pool, &input).await?;
+    posts::insert(&state.pool(), &input).await?;
     Ok(redirect_or_embed_saved(
         embed,
         &url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
@@ -625,9 +625,9 @@ async fn entry_edit(
     Query(query): Query<EmbedQuery>,
 ) -> AppResult<impl IntoResponse> {
     let embed = is_embed_flag(&query.embed);
-    let placeholder = placeholders::find(&state.pool, id).await?;
+    let placeholder = placeholders::find(&state.pool(), id).await?;
     let type_key = placeholder_type_key(&state, &placeholder).await?;
-    let entry = posts::find_in_placeholder(&state.pool, id, entry_id).await?;
+    let entry = posts::find_in_placeholder(&state.pool(), id, entry_id).await?;
 
     if type_key == "image" {
         let html = image_entry_form_template(
@@ -675,7 +675,7 @@ async fn entry_update(
     Form(form): Form<EntryForm>,
 ) -> AppResult<Response> {
     let embed = is_embed_flag(&query.embed);
-    let placeholder = placeholders::find(&state.pool, id).await?;
+    let placeholder = placeholders::find(&state.pool(), id).await?;
     let type_key = placeholder_type_key(&state, &placeholder).await?;
 
     if type_key == "image" {
@@ -687,7 +687,7 @@ async fn entry_update(
     }
 
     let input = form.into_input(id);
-    posts::update(&state.pool, entry_id, &input).await?;
+    posts::update(&state.pool(), entry_id, &input).await?;
     Ok(redirect_or_embed_saved(
         embed,
         &url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
@@ -701,9 +701,9 @@ async fn entry_destroy(
     Query(query): Query<EmbedQuery>,
 ) -> AppResult<Response> {
     let embed = is_embed_flag(&query.embed);
-    let placeholder = placeholders::find(&state.pool, id).await?;
+    let placeholder = placeholders::find(&state.pool(), id).await?;
     let manage_url = url_embed(&format!("/admin/posts/placeholders/{id}"), embed);
-    match posts::delete_in_placeholder(&state.pool, id, entry_id).await {
+    match posts::delete_in_placeholder(&state.pool(), id, entry_id).await {
         Ok(()) => Ok(Redirect::to(&manage_url).into_response()),
         Err(AppError::NotFound) => Ok(Redirect::to(&manage_url).into_response()),
         Err(AppError::Conflict(message)) => {
@@ -725,26 +725,26 @@ async fn entry_destroy(
 }
 
 async fn placeholder_type_key(state: &AppState, placeholder: &Placeholder) -> AppResult<String> {
-    let widget_type = widget_types::find(&state.pool, placeholder.widget_type_id).await?;
+    let widget_type = widget_types::find(&state.pool(), placeholder.widget_type_id).await?;
     Ok(widget_type.type_key)
 }
 
 async fn build_image_entry_list(state: &AppState, placeholder_id: i64) -> AppResult<Vec<ImageEntryListItem>> {
-    let posts = posts::list_all_for_placeholder(&state.pool, placeholder_id).await?;
+    let posts = posts::list_all_for_placeholder(&state.pool(), placeholder_id).await?;
     let mut items = Vec::with_capacity(posts.len());
 
     for post in posts {
-        let media_id = postmeta::get(&state.pool, post.id, "media_id").await?;
-        let float = postmeta::get(&state.pool, post.id, "float")
+        let media_id = postmeta::get(&state.pool(), post.id, "media_id").await?;
+        let float = postmeta::get(&state.pool(), post.id, "float")
             .await?
             .unwrap_or_else(|| "none".to_string());
-        let margin = postmeta::get(&state.pool, post.id, "margin")
+        let margin = postmeta::get(&state.pool(), post.id, "margin")
             .await?
             .unwrap_or_default();
 
         let (thumbnail_url, has_thumbnail) = if let Some(id_str) = media_id.as_deref() {
             if let Ok(media_id) = id_str.parse::<i64>() {
-                if let Ok(item) = media::find(&state.pool, media_id).await {
+                if let Ok(item) = media::find(&state.pool(), media_id).await {
                     (item.public_url(), item.is_image())
                 } else {
                     (String::new(), false)
@@ -789,15 +789,15 @@ async fn build_image_entry_list(state: &AppState, placeholder_id: i64) -> AppRes
 }
 
 async fn build_carousel_entry_list(state: &AppState, placeholder_id: i64) -> AppResult<Vec<CarouselEntryListItem>> {
-    let posts = posts::list_all_for_placeholder(&state.pool, placeholder_id).await?;
+    let posts = posts::list_all_for_placeholder(&state.pool(), placeholder_id).await?;
     let mut items = Vec::with_capacity(posts.len());
 
     for post in posts {
-        let media_id = postmeta::get(&state.pool, post.id, "media_id").await?;
+        let media_id = postmeta::get(&state.pool(), post.id, "media_id").await?;
 
         let (thumbnail_url, has_thumbnail) = if let Some(id_str) = media_id.as_deref() {
             if let Ok(media_id) = id_str.parse::<i64>() {
-                if let Ok(item) = media::find(&state.pool, media_id).await {
+                if let Ok(item) = media::find(&state.pool(), media_id).await {
                     (item.public_url(), item.is_image())
                 } else {
                     (String::new(), false)
@@ -845,7 +845,7 @@ async fn image_entry_form_template(
     let selected_media_id = if !media_id_override.is_empty() {
         media_id_override.to_string()
     } else if let Some(entry) = entry {
-        postmeta::get(&state.pool, entry.id, "media_id")
+        postmeta::get(&state.pool(), entry.id, "media_id")
             .await?
             .unwrap_or_default()
     } else {
@@ -853,21 +853,21 @@ async fn image_entry_form_template(
     };
 
     let float = if let Some(entry) = entry {
-        postmeta::get(&state.pool, entry.id, "float")
+        postmeta::get(&state.pool(), entry.id, "float")
             .await?
             .unwrap_or_else(|| "none".to_string())
     } else {
         "none".to_string()
     };
     let margin = if let Some(entry) = entry {
-        postmeta::get(&state.pool, entry.id, "margin")
+        postmeta::get(&state.pool(), entry.id, "margin")
             .await?
             .unwrap_or_default()
     } else {
         String::new()
     };
 
-    let media_items = media::list_all(&state.pool)
+    let media_items = media::list_all(&state.pool())
         .await?
         .into_iter()
         .filter(|item| item.is_image())
@@ -949,11 +949,11 @@ async fn image_entry_save(
     let id = placeholder.id;
     let media_id_on_error = form.media_id.clone();
 
-    let parsed = match form.into_image_input(&state.pool, id).await {
+    let parsed = match form.into_image_input(&state.pool(), id).await {
         Ok(input) => input,
         Err(message) => {
             let entry = if let Some(entry_id) = entry_id {
-                Some(posts::find_in_placeholder(&state.pool, id, entry_id).await?)
+                Some(posts::find_in_placeholder(&state.pool(), id, entry_id).await?)
             } else {
                 None
             };
@@ -972,13 +972,13 @@ async fn image_entry_save(
     };
 
     let post_id = if let Some(entry_id) = entry_id {
-        posts::update(&state.pool, entry_id, &parsed.post).await?;
+        posts::update(&state.pool(), entry_id, &parsed.post).await?;
         entry_id
     } else {
-        posts::insert(&state.pool, &parsed.post).await?
+        posts::insert(&state.pool(), &parsed.post).await?
     };
 
-    postmeta::set_many(&state.pool, post_id, &parsed.meta).await?;
+    postmeta::set_many(&state.pool(), post_id, &parsed.meta).await?;
     Ok(redirect_or_embed_saved(
         embed,
         &url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
@@ -1001,14 +1001,14 @@ async fn carousel_entry_form_template(
     let selected_media_id = if !media_id_override.is_empty() {
         media_id_override.to_string()
     } else if let Some(entry) = entry {
-        postmeta::get(&state.pool, entry.id, "media_id")
+        postmeta::get(&state.pool(), entry.id, "media_id")
             .await?
             .unwrap_or_default()
     } else {
         String::new()
     };
 
-    let media_items = media::list_all(&state.pool)
+    let media_items = media::list_all(&state.pool())
         .await?
         .into_iter()
         .filter(|item| item.is_image())
@@ -1086,11 +1086,11 @@ async fn carousel_entry_save(
     let id = placeholder.id;
     let media_id_on_error = form.media_id.clone();
 
-    let parsed = match form.into_carousel_input(&state.pool, id).await {
+    let parsed = match form.into_carousel_input(&state.pool(), id).await {
         Ok(input) => input,
         Err(message) => {
             let entry = if let Some(entry_id) = entry_id {
-                Some(posts::find_in_placeholder(&state.pool, id, entry_id).await?)
+                Some(posts::find_in_placeholder(&state.pool(), id, entry_id).await?)
             } else {
                 None
             };
@@ -1109,13 +1109,13 @@ async fn carousel_entry_save(
     };
 
     let post_id = if let Some(entry_id) = entry_id {
-        posts::update(&state.pool, entry_id, &parsed.post).await?;
+        posts::update(&state.pool(), entry_id, &parsed.post).await?;
         entry_id
     } else {
-        posts::insert(&state.pool, &parsed.post).await?
+        posts::insert(&state.pool(), &parsed.post).await?
     };
 
-    postmeta::set_many(&state.pool, post_id, &parsed.meta).await?;
+    postmeta::set_many(&state.pool(), post_id, &parsed.meta).await?;
     Ok(redirect_or_embed_saved(
         embed,
         &url_embed(&format!("/admin/posts/placeholders/{id}"), embed),
@@ -1181,7 +1181,7 @@ async fn build_manage_template(
             (Vec::new(), Vec::new(), list, has)
         }
         _ => {
-            let list = posts::list_all_for_placeholder(&state.pool, id)
+            let list = posts::list_all_for_placeholder(&state.pool(), id)
                 .await?
                 .into_iter()
                 .map(EntryListItem::from)
@@ -1207,7 +1207,7 @@ async fn build_manage_template(
 
     let widget_types = widget_type_options(state, widget_type_id).await?;
     let effective_type_id = effective_widget_type_id(&widget_types, widget_type_id);
-    let config_schema = widget_config_schema(&state.pool, effective_type_id).await?;
+    let config_schema = widget_config_schema(&state.pool(), effective_type_id).await?;
 
     let is_settings_tab = active_tab == "settings";
     let (template_example, template_help) = widgets::template_usage(&type_key, &name);
@@ -1264,9 +1264,9 @@ async fn build_placeholder_form(
 ) -> AppResult<PlaceholderFormTemplate> {
     let widget_types = widget_type_options(state, widget_type_id).await?;
     let effective_type_id = effective_widget_type_id(&widget_types, widget_type_id);
-    let type_key = widget_type_key(&state.pool, effective_type_id).await?;
+    let type_key = widget_type_key(&state.pool(), effective_type_id).await?;
     let (template_example, template_help) = widgets::template_usage(&type_key, name);
-    let config_schema = widget_config_schema(&state.pool, effective_type_id).await?;
+    let config_schema = widget_config_schema(&state.pool(), effective_type_id).await?;
 
     Ok(PlaceholderFormTemplate {
         layout: layout::AdminLayoutCtx::new(auth),
@@ -1288,7 +1288,7 @@ async fn build_placeholder_form(
 }
 
 async fn widget_type_map(state: &AppState) -> AppResult<std::collections::HashMap<i64, String>> {
-    Ok(widget_types::list_all(&state.pool)
+    Ok(widget_types::list_all(&state.pool())
         .await?
         .into_iter()
         .map(|t| (t.id, t.type_key))
@@ -1334,7 +1334,7 @@ async fn widget_type_options(
     state: &AppState,
     selected_id: Option<i64>,
 ) -> AppResult<Vec<WidgetTypeOption>> {
-    let rows = widget_types::list_all(&state.pool).await?;
+    let rows = widget_types::list_all(&state.pool()).await?;
     Ok(rows
         .into_iter()
         .map(|row| WidgetTypeOption {

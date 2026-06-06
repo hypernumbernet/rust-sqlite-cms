@@ -102,7 +102,7 @@ async fn index(
     State(state): State<AppState>,
     Query(query): Query<WidgetIndexQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let widget_types = widget_types_repo::list_all(&state.pool)
+    let widget_types = widget_types_repo::list_all(&state.pool())
         .await?
         .into_iter()
         .map(WidgetTypeListItem::from)
@@ -153,7 +153,7 @@ async fn create_widget(
         return Ok(render_new_form_error(&auth, &form, "type_key を入力してください")?);
     }
 
-    if widget_types_repo::exists_by_key(&state.pool, type_key).await? {
+    if widget_types_repo::exists_by_key(&state.pool(), type_key).await? {
         return Ok(render_new_form_error(
             &auth,
             &form,
@@ -165,7 +165,7 @@ async fn create_widget(
     let config_schema = form.config_schema.clone();
 
     if let Err(err) = widget_types_repo::upsert_package(
-        &state.pool,
+        &state.pool(),
         type_key,
         type_key,
         "",
@@ -206,7 +206,7 @@ async fn export_widget(
     State(state): State<AppState>,
     Path(type_key): Path<String>,
 ) -> AppResult<Response> {
-    let package = services::widgets::export_package(&state.pool, &type_key).await?;
+    let package = services::widgets::export_package(&state.pool(), &type_key).await?;
     let body = serde_json::to_string_pretty(&package).map_err(|e| AppError::Other(e.into()))?;
     let filename = format!("widget-{}.json", type_key);
     let disposition = format!("attachment; filename=\"{filename}\"");
@@ -282,7 +282,7 @@ async fn import_widget(
     };
 
     let target_key = (!target_key.trim().is_empty()).then(|| target_key.trim());
-    match services::widgets::import_package(&state.pool, &package, mode, target_key).await {
+    match services::widgets::import_package(&state.pool(), &package, mode, target_key).await {
         Ok((_, message)) => Ok(redirect_index_with_success(&message)),
         Err(err) => {
             let msg = err.to_string();
@@ -306,7 +306,7 @@ async fn edit(
     State(state): State<AppState>,
     Path(type_key): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    let widget_type = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
+    let widget_type = widget_types_repo::find_by_key(&state.pool(), &type_key).await?;
     let html = render_widget_edit_form(&auth, &widget_type, "")?;
 
     Ok(Html(html))
@@ -318,7 +318,7 @@ async fn update(
     Path(old_type_key): Path<String>,
     Form(form): Form<WidgetTypeForm>,
 ) -> AppResult<Response> {
-    let widget_type = widget_types_repo::find_by_key(&state.pool, &old_type_key).await?;
+    let widget_type = widget_types_repo::find_by_key(&state.pool(), &old_type_key).await?;
 
     let submitted_key = if form.type_key.trim().is_empty() {
         old_type_key.clone()
@@ -330,7 +330,7 @@ async fn update(
     let schema = form.config_schema.clone();
 
     if let Err(message) = services::widgets::update_with_schema(
-        &state.pool,
+        &state.pool(),
         &old_type_key,
         &submitted_key,
         &html,
@@ -350,9 +350,9 @@ async fn destroy(
     State(state): State<AppState>,
     Path(type_key): Path<String>,
 ) -> AppResult<Response> {
-    let widget_type = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
+    let widget_type = widget_types_repo::find_by_key(&state.pool(), &type_key).await?;
 
-    match services::widgets::delete(&state.pool, &type_key).await {
+    match services::widgets::delete(&state.pool(), &type_key).await {
         Ok(()) => Ok(redirect_index_with_success(&format!(
             "ウィジェット「{}」を削除しました",
             services::widgets::display_label(&widget_type)

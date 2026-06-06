@@ -114,7 +114,7 @@ async fn create(
     Form(form): Form<UserForm>,
 ) -> AppResult<Response> {
     match users::create(
-        &state.pool,
+        &state.pool(),
         CreateUserParams {
             login: &form.login,
             display_name: &form.display_name,
@@ -150,7 +150,7 @@ async fn edit_form(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<impl IntoResponse> {
-    let user = users_repo::find(&state.pool, id).await?;
+    let user = users_repo::find(&state.pool(), id).await?;
     let html = user_form_template(&auth, &user, "")?;
     Ok(Html(html))
 }
@@ -161,10 +161,10 @@ async fn update(
     Path(id): Path<i64>,
     Form(form): Form<UserForm>,
 ) -> AppResult<Response> {
-    let user = users_repo::find(&state.pool, id).await?;
+    let user = users_repo::find(&state.pool(), id).await?;
 
     match users::update(
-        &state.pool,
+        &state.pool(),
         &user,
         UpdateUserParams {
             login: &form.login,
@@ -190,9 +190,9 @@ async fn destroy(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<Response> {
-    let user = users_repo::find(&state.pool, id).await?;
+    let user = users_repo::find(&state.pool(), id).await?;
 
-    match users::delete(&state.pool, &user).await {
+    match users::delete(&state.pool(), &user).await {
         Ok(()) => Ok(Redirect::to("/admin/users").into_response()),
         Err(err) => {
             let html = render_index(&auth, &state, &domain_error_message(&err)).await?;
@@ -202,7 +202,7 @@ async fn destroy(
 }
 
 async fn render_index(auth: &AuthUser, state: &AppState, error_message: &str) -> AppResult<String> {
-    let users = users_repo::list_all(&state.pool)
+    let users = users_repo::list_all(&state.pool())
         .await?
         .into_iter()
         .map(|u| {

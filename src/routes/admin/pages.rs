@@ -117,7 +117,7 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
-    let pages = pages::list_all(&state.pool)
+    let pages = pages::list_all(&state.pool())
         .await?
         .into_iter()
         .map(|page| PageListItem::from_page(&page))
@@ -154,7 +154,7 @@ async fn new_form(
     State(state): State<AppState>,
     Path(design): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    let default = services::layouts::find_default(&state.pool).await?;
+    let default = services::layouts::find_default(&state.pool()).await?;
     let (name, content) = if design == "blank" {
         let blank = format!(
             r#"{{% extends "{}/shell.html" %}}
@@ -208,7 +208,7 @@ async fn create(
         Err(err) => return Err(err),
     };
 
-    if let Err(err) = services::pages::create_page(&state.pool, &state.config, &input).await {
+    if let Err(err) = services::pages::create_page(&state.pool(), &state.config, &input).await {
         let app_err: AppError = err.into();
         if matches!(app_err, AppError::Conflict(_)) {
             let html = conflict_form_response(
@@ -235,7 +235,7 @@ async fn edit(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> AppResult<impl IntoResponse> {
-    let page = pages::find(&state.pool, id).await?;
+    let page = pages::find(&state.pool(), id).await?;
     let content = theme::read_page_body(
         &state.config.paths.work_dir,
         &page.layout_key,
@@ -276,7 +276,7 @@ async fn update(
     Path(id): Path<i64>,
     Form(form): Form<PageForm>,
 ) -> AppResult<Response> {
-    let page = pages::find(&state.pool, id).await?;
+    let page = pages::find(&state.pool(), id).await?;
     let is_home = page.is_home();
 
     let input = match form.into_input(is_home) {
@@ -292,7 +292,7 @@ async fn update(
         Err(err) => return Err(err),
     };
 
-    if let Err(err) = services::pages::update_page(&state.pool, &state.config, id, &input).await {
+    if let Err(err) = services::pages::update_page(&state.pool(), &state.config, id, &input).await {
         let app_err: AppError = err.into();
         if matches!(app_err, AppError::Conflict(_)) {
             let html = conflict_form_response(
@@ -315,7 +315,7 @@ async fn update(
 }
 
 async fn preview(State(state): State<AppState>, Path(id): Path<i64>) -> Response {
-    let page = match pages::find(&state.pool, id).await {
+    let page = match pages::find(&state.pool(), id).await {
         Ok(page) => page,
         Err(err) => return preview_error_response(err, None),
     };
@@ -651,7 +651,7 @@ fn summary_from_app_error(err: &AppError) -> String {
 }
 
 async fn destroy(State(state): State<AppState>, Path(id): Path<i64>) -> AppResult<Redirect> {
-    services::pages::delete_page(&state.pool, &state.config, id).await?;
+    services::pages::delete_page(&state.pool(), &state.config, id).await?;
     Ok(Redirect::to("/admin/pages"))
 }
 
@@ -753,7 +753,7 @@ fn template_help_text() -> String {
 }
 
 async fn layout_options_for_form(state: &AppState, selected_id: i64) -> AppResult<Vec<LayoutOption>> {
-    let layouts = services::layouts::list_all(&state.pool).await?;
+    let layouts = services::layouts::list_all(&state.pool()).await?;
     Ok(layouts
         .into_iter()
         .map(|l| LayoutOption {

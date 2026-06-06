@@ -46,13 +46,13 @@ pub fn router() -> Router<AppState> {
 
 /// 既定レイアウトの favicon を `/favicon.ico` で配信する。
 async fn serve_favicon(State(state): State<AppState>) -> Result<Response, AppError> {
-    let layout = layouts::find_default(&state.pool)
+    let layout = layouts::find_default(&state.pool())
         .await
         .map_err(|_| AppError::NotFound)?;
     let media_id = layout
         .favicon_media_id
         .ok_or(AppError::NotFound)?;
-    let attachment = media_repo::find(&state.pool, media_id)
+    let attachment = media_repo::find(&state.pool(), media_id)
         .await
         .map_err(|_| AppError::NotFound)?;
     if !attachment.is_favicon_suitable() {
@@ -82,7 +82,7 @@ async fn home(
     State(state): State<AppState>,
     Query(query): Query<ContactQueryParams>,
 ) -> AppResult<impl IntoResponse> {
-    let page = pages::find_home(&state.pool)
+    let page = pages::find_home(&state.pool())
         .await?
         .ok_or(AppError::NotFound)?;
 
@@ -125,7 +125,7 @@ pub async fn serve_fallback(
         return Err(AppError::NotFound);
     }
 
-    let page = pages::find_published_by_path(&state.pool, &path)
+    let page = pages::find_published_by_path(&state.pool(), &path)
         .await?
         .ok_or(AppError::NotFound)?;
 
@@ -154,8 +154,8 @@ async fn submit_contact_form(
     headers: HeaderMap,
     Form(form): Form<ContactFormBody>,
 ) -> AppResult<impl IntoResponse> {
-    let placeholder = placeholders::find(&state.pool, placeholder_id).await?;
-    let widget_type = widget_types::find(&state.pool, placeholder.widget_type_id).await?;
+    let placeholder = placeholders::find(&state.pool(), placeholder_id).await?;
+    let widget_type = widget_types::find(&state.pool(), placeholder.widget_type_id).await?;
     if widget_type.type_key != "contact_form" {
         return Err(AppError::NotFound);
     }
@@ -170,7 +170,7 @@ async fn submit_contact_form(
         token: form.token,
     };
 
-    match contact_form::submit(&state.pool, placeholder_id, &secret, &submission).await {
+    match contact_form::submit(&state.pool(), placeholder_id, &secret, &submission).await {
         Ok(()) => {
             let redirect_to = redirect_target(headers.get(header::REFERER), &placeholder.name);
             Ok(Redirect::to(&format!(

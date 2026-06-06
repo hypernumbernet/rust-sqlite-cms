@@ -51,12 +51,12 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn list(State(state): State<AppState>) -> ApiResult<Json<LayoutListResponse>> {
-    let items = services::layouts::list_all(&state.pool).await?;
+    let items = services::layouts::list_all(&state.pool()).await?;
     Ok(Json(LayoutListResponse { items }))
 }
 
 async fn get_one(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Layout>> {
-    let layout = services::layouts::find(&state.pool, id).await?;
+    let layout = services::layouts::find(&state.pool(), id).await?;
     Ok(Json(layout))
 }
 
@@ -76,12 +76,12 @@ async fn create(
 
     let id = if let Some(shell) = payload.shell_content {
         let static_files = services::layouts::default_static_text_files_for_create();
-        services::layouts::create_layout(&state.pool, &state.config, &input, &shell, &static_files)
+        services::layouts::create_layout(&state.pool(), &state.config, &input, &shell, &static_files)
             .await?
     } else {
-        services::layouts::create_layout_with_defaults(&state.pool, &state.config, &input).await?
+        services::layouts::create_layout_with_defaults(&state.pool(), &state.config, &input).await?
     };
-    let created = services::layouts::find(&state.pool, id).await?;
+    let created = services::layouts::find(&state.pool(), id).await?;
     Ok(Json(created))
 }
 
@@ -90,7 +90,7 @@ async fn update(
     Path(id): Path<i64>,
     Json(payload): Json<UpdateLayoutRequest>,
 ) -> ApiResult<Json<Layout>> {
-    let current = services::layouts::find(&state.pool, id).await?;
+    let current = services::layouts::find(&state.pool(), id).await?;
     let favicon_media_id = match payload.favicon_media_id {
         Some(v) => v,
         None => current.favicon_media_id,
@@ -104,7 +104,7 @@ async fn update(
 
     if let Some(shell) = payload.shell_content {
         services::layouts::update_layout(
-            &state.pool,
+            &state.pool(),
             &state.config,
             id,
             &input,
@@ -114,9 +114,9 @@ async fn update(
         )
         .await?;
     } else {
-        services::layouts::update_layout_meta(&state.pool, &state.config, id, &input).await?;
+        services::layouts::update_layout_meta(&state.pool(), &state.config, id, &input).await?;
     }
-    let updated = services::layouts::find(&state.pool, id).await?;
+    let updated = services::layouts::find(&state.pool(), id).await?;
     Ok(Json(updated))
 }
 
@@ -124,6 +124,6 @@ async fn delete_one(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    services::layouts::delete_layout(&state.pool, &state.config, id).await?;
+    services::layouts::delete_layout(&state.pool(), &state.config, id).await?;
     Ok(Json(serde_json::json!({ "deleted": true, "id": id })))
 }

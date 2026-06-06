@@ -17,7 +17,7 @@ async fn users_index_lists_default_admin() {
     assert!(html.contains("admin"));
     assert!(html.contains("既定"));
 
-    let users = users_repo::list_all(&app.state.pool).await.unwrap();
+    let users = users_repo::list_all(&app.state.pool()).await.unwrap();
     assert_eq!(users.len(), 1);
     assert!(users[0].login.eq_ignore_ascii_case("admin"));
 }
@@ -36,14 +36,14 @@ async fn users_create_adds_second_user() {
         .await;
 
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    let users = users_repo::list_all(&app.state.pool).await.unwrap();
+    let users = users_repo::list_all(&app.state.pool()).await.unwrap();
     assert_eq!(users.len(), 2);
 }
 
 #[tokio::test]
 async fn users_cannot_delete_admin() {
     let app = common::TestApp::new().await;
-    let admin = users_repo::find_by_login(&app.state.pool, "admin")
+    let admin = users_repo::find_by_login(&app.state.pool(), "admin")
         .await
         .unwrap()
         .expect("admin user");
@@ -58,7 +58,7 @@ async fn users_cannot_delete_admin() {
         .await;
 
     assert_eq!(response.status(), StatusCode::OK);
-    let users = users_repo::list_all(&app.state.pool).await.unwrap();
+    let users = users_repo::list_all(&app.state.pool()).await.unwrap();
     assert_eq!(users.len(), 1);
 }
 

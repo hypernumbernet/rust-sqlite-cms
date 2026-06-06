@@ -65,12 +65,12 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn list(State(state): State<AppState>) -> ApiResult<Json<PlaceholderListResponse>> {
-    let items = services::placeholders::list_all(&state.pool).await?;
+    let items = services::placeholders::list_all(&state.pool()).await?;
     Ok(Json(PlaceholderListResponse { items }))
 }
 
 async fn get_one(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Placeholder>> {
-    let p = services::placeholders::find(&state.pool, id).await?;
+    let p = services::placeholders::find(&state.pool(), id).await?;
     Ok(Json(p))
 }
 
@@ -84,7 +84,7 @@ async fn create(
         config: payload.config.unwrap_or_else(|| "{}".to_string()),
     };
 
-    let created = services::placeholders::create(&state.pool, input)
+    let created = services::placeholders::create(&state.pool(), input)
         .await?;
 
     Ok(Json(created))
@@ -95,7 +95,7 @@ async fn update(
     Path(id): Path<i64>,
     Json(payload): Json<UpdatePlaceholderRequest>,
 ) -> ApiResult<Json<Placeholder>> {
-    let current = services::placeholders::find(&state.pool, id).await?;
+    let current = services::placeholders::find(&state.pool(), id).await?;
 
     let input = PlaceholderInput {
         name: payload.name.unwrap_or(current.name),
@@ -103,16 +103,16 @@ async fn update(
         config: payload.config.unwrap_or(current.config),
     };
 
-    services::placeholders::update(&state.pool, id, input)
+    services::placeholders::update(&state.pool(), id, input)
         .await
         ?;
 
-    let updated = services::placeholders::find(&state.pool, id).await?;
+    let updated = services::placeholders::find(&state.pool(), id).await?;
     Ok(Json(updated))
 }
 
 async fn delete_one(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<serde_json::Value>> {
-    services::placeholders::delete(&state.pool, id)
+    services::placeholders::delete(&state.pool(), id)
         .await
         ?;
 
@@ -121,9 +121,9 @@ async fn delete_one(State(state): State<AppState>, Path(id): Path<i64>) -> ApiRe
 
 async fn list_posts(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<serde_json::Value>> {
     // プレースホルダー存在確認
-    let _ = services::placeholders::find(&state.pool, id).await?;
+    let _ = services::placeholders::find(&state.pool(), id).await?;
 
-    let posts = services::posts::list_for_placeholder(&state.pool, id).await?;
+    let posts = services::posts::list_for_placeholder(&state.pool(), id).await?;
     Ok(Json(serde_json::json!({ "placeholder_id": id, "items": posts })))
 }
 
@@ -133,7 +133,7 @@ async fn create_post(
     Json(payload): Json<CreatePostRequest>,
 ) -> ApiResult<Json<crate::models::post::Post>> {
     // プレースホルダー存在確認（widget_type も後で使えるように）
-    let _ = services::placeholders::find(&state.pool, placeholder_id)
+    let _ = services::placeholders::find(&state.pool(), placeholder_id)
         .await
         ?;
 
@@ -148,7 +148,7 @@ async fn create_post(
 
     let meta = if payload.meta.is_empty() { None } else { Some(payload.meta) };
 
-    let created = services::posts::create(&state.pool, input, meta)
+    let created = services::posts::create(&state.pool(), input, meta)
         .await
         ?;
 

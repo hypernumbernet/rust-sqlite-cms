@@ -34,7 +34,7 @@ pub fn router() -> Router<AppState> {
 
 async fn show(State(state): State<AppState>) -> ApiResult<Json<SettingsResponse>> {
     let (blogname, blogdescription, siteurl) =
-        services::options::get_site_settings(&state.pool, &state.config).await?;
+        services::options::get_site_settings(&state.pool(), &state.config).await?;
 
     Ok(Json(SettingsResponse {
         blogname,
@@ -49,7 +49,7 @@ async fn update(
 ) -> ApiResult<Json<SettingsResponse>> {
     // 現在の値を取得して部分更新
     let (mut blogname, mut blogdescription, mut siteurl) =
-        services::options::get_site_settings(&state.pool, &state.config).await?;
+        services::options::get_site_settings(&state.pool(), &state.config).await?;
 
     if let Some(v) = payload.blogname {
         blogname = v;
@@ -69,7 +69,7 @@ async fn update(
         return Err(ApiError::Validation("サイトの説明は必須です".into()));
     }
 
-    services::options::update_site_settings(&state.pool, &blogname, &blogdescription, &siteurl).await?;
+    services::options::update_site_settings(&state.pool(), &blogname, &blogdescription, &siteurl).await?;
 
     Ok(Json(SettingsResponse {
         blogname,

@@ -53,7 +53,7 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn list(State(state): State<AppState>) -> ApiResult<Json<WidgetListResponse>> {
-    let items = services::widgets::list_all(&state.pool).await?;
+    let items = services::widgets::list_all(&state.pool()).await?;
     Ok(Json(WidgetListResponse { items }))
 }
 
@@ -61,7 +61,7 @@ async fn export_widget(
     State(state): State<AppState>,
     Path(type_key): Path<String>,
 ) -> ApiResult<Json<WidgetPackage>> {
-    let package = services::widgets::export_package(&state.pool, &type_key).await?;
+    let package = services::widgets::export_package(&state.pool(), &type_key).await?;
     Ok(Json(package))
 }
 
@@ -76,7 +76,7 @@ async fn import_widget(
         .map(str::trim)
         .filter(|k| !k.is_empty());
     let (action, message) = services::widgets::import_package(
-        &state.pool,
+        &state.pool(),
         &payload.package,
         mode,
         target_key,
@@ -118,7 +118,7 @@ async fn destroy(
     State(state): State<AppState>,
     Path(type_key): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    services::widgets::delete(&state.pool, &type_key).await?;
+    services::widgets::delete(&state.pool(), &type_key).await?;
     Ok(Json(serde_json::json!({
         "type_key": type_key,
         "action": "deleted"
@@ -130,7 +130,7 @@ async fn update_config(
     Path(type_key): Path<String>,
     Json(payload): Json<UpdateWidgetConfigRequest>,
 ) -> ApiResult<Json<WidgetType>> {
-    let current = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
+    let current = widget_types_repo::find_by_key(&state.pool(), &type_key).await?;
 
     let current_html = if let Some(h) = &payload.html_template {
         h.clone()
@@ -138,8 +138,8 @@ async fn update_config(
         current.html_template
     };
 
-    services::widgets::update_config(&state.pool, &type_key, &payload.config, &current_html).await?;
+    services::widgets::update_config(&state.pool(), &type_key, &payload.config, &current_html).await?;
 
-    let updated = widget_types_repo::find_by_key(&state.pool, &type_key).await?;
+    let updated = widget_types_repo::find_by_key(&state.pool(), &type_key).await?;
     Ok(Json(updated))
 }

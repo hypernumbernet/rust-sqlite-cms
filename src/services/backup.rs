@@ -12,6 +12,7 @@ use zip::{ZipArchive, ZipWriter};
 
 use crate::config::{self, AppConfig};
 use crate::error::{AppError, DomainError, DomainResult};
+use crate::state::AppState;
 
 const FORMAT_VERSION: u32 = 1;
 const DB_ZIP_PATH: &str = "database/cms.db";
@@ -148,13 +149,12 @@ pub async fn export_site_backup(pool: &SqlitePool, config: &AppConfig) -> Domain
 }
 
 /// ZIP からサイト全体をリストアする（既存データは上書き）。
-pub async fn import_site_backup(
-    _pool: &SqlitePool,
-    config: &AppConfig,
-    bytes: &[u8],
-) -> DomainResult<BackupRestoreResult> {
+pub async fn import_site_backup(state: &AppState, bytes: &[u8]) -> DomainResult<BackupRestoreResult> {
     let (manifest, zip_files) = parse_backup_zip(bytes)?;
     validate_backup_zip(&manifest, &zip_files)?;
+
+    let config = state.config.as_ref();
+    state.release_pool().await;
 
     let work_dir = Path::new(&config.paths.work_dir);
     let uploads_dir = Path::new(&config.paths.uploads_dir);
@@ -187,8 +187,10 @@ pub async fn import_site_backup(
         restored_files_count += 1;
     }
 
+    state.reload_storage().await.map_err(AppError::from)?;
+
     Ok(BackupRestoreResult {
-        message: "バックアップからのリストアが完了しました。サーバーを再起動することを強くおすすめします。"
+        message: "バックアップからのリストアが完了しました。再起動は不要です。"
             .to_string(),
         restored_files_count,
         backup_created_at: Some(manifest.created_at),

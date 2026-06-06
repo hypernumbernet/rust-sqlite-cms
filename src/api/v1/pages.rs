@@ -54,12 +54,12 @@ pub fn router() -> Router<AppState> {
 }
 
 async fn list(State(state): State<AppState>) -> ApiResult<Json<PageListResponse>> {
-    let items = services::pages::list_all(&state.pool).await?;
+    let items = services::pages::list_all(&state.pool()).await?;
     Ok(Json(PageListResponse { items }))
 }
 
 async fn get_one(State(state): State<AppState>, Path(id): Path<i64>) -> ApiResult<Json<Page>> {
-    let page = services::pages::find(&state.pool, id).await?;
+    let page = services::pages::find(&state.pool(), id).await?;
     Ok(Json(page))
 }
 
@@ -77,7 +77,7 @@ async fn create(
 
     let layout_id = match payload.layout_id {
         Some(id) => id,
-        None => layouts::find_default(&state.pool).await?.id,
+        None => layouts::find_default(&state.pool()).await?.id,
     };
 
     let input = PageInput {
@@ -88,9 +88,9 @@ async fn create(
         is_published: payload.is_published,
     };
 
-    let (id, _) = services::pages::create_page(&state.pool, &state.config, &input).await?;
+    let (id, _) = services::pages::create_page(&state.pool(), &state.config, &input).await?;
 
-    let created = services::pages::find(&state.pool, id).await?;
+    let created = services::pages::find(&state.pool(), id).await?;
     Ok(Json(created))
 }
 
@@ -99,7 +99,7 @@ async fn update(
     Path(id): Path<i64>,
     Json(payload): Json<UpdatePageRequest>,
 ) -> ApiResult<Json<Page>> {
-    let current = services::pages::find(&state.pool, id).await?;
+    let current = services::pages::find(&state.pool(), id).await?;
 
     let input = PageInput {
         name: payload.name.unwrap_or(current.name),
@@ -120,9 +120,9 @@ async fn update(
         is_published: payload.is_published.unwrap_or(current.is_published),
     };
 
-    services::pages::update_page(&state.pool, &state.config, id, &input).await?;
+    services::pages::update_page(&state.pool(), &state.config, id, &input).await?;
 
-    let updated = services::pages::find(&state.pool, id).await?;
+    let updated = services::pages::find(&state.pool(), id).await?;
     Ok(Json(updated))
 }
 
@@ -130,7 +130,7 @@ async fn delete_page(
     State(state): State<AppState>,
     Path(id): Path<i64>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    services::pages::delete_page(&state.pool, &state.config, id).await?;
+    services::pages::delete_page(&state.pool(), &state.config, id).await?;
 
     Ok(Json(serde_json::json!({ "deleted": true, "id": id })))
 }

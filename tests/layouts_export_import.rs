@@ -14,7 +14,7 @@ use zip::ZipArchive;
 mod common;
 
 async fn create_test_layout_with_page(app: &common::TestApp) -> (i64, String) {
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
     let input = LayoutInput {
@@ -23,7 +23,7 @@ async fn create_test_layout_with_page(app: &common::TestApp) -> (i64, String) {
         is_default: false,
         favicon_media_id: None,
     };
-    let layout_id = layouts_service::create_layout_with_defaults(pool, config, &input)
+    let layout_id = layouts_service::create_layout_with_defaults(&pool, config, &input)
         .await
         .expect("create layout");
 
@@ -37,7 +37,7 @@ async fn create_test_layout_with_page(app: &common::TestApp) -> (i64, String) {
     };
     layouts_service::write_shell_content(config, "export-src", "<!-- custom shell -->")
         .expect("write shell");
-    let (_, file_name) = pages::insert(pool, &page_input)
+    let (_, file_name) = pages::insert(&pool, &page_input)
         .await
         .expect("insert page");
     theme::write_page_body(
@@ -114,12 +114,12 @@ fn rewrite_manifest_key(bytes: &[u8], new_key: &str) -> Vec<u8> {
 #[tokio::test]
 async fn export_includes_manifest_shell_and_pages() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
     let (layout_id, layout_key) = create_test_layout_with_page(&app).await;
 
-    let bytes = layouts_service::export_layout_zip(pool, config, layout_id)
+    let bytes = layouts_service::export_layout_zip(&pool, config, layout_id)
         .await
         .expect("export");
 
@@ -144,18 +144,18 @@ async fn export_includes_manifest_shell_and_pages() {
 #[tokio::test]
 async fn import_creates_new_layout() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
     let (layout_id, _) = create_test_layout_with_page(&app).await;
-    let exported = layouts_service::export_layout_zip(pool, config, layout_id)
+    let exported = layouts_service::export_layout_zip(&pool, config, layout_id)
         .await
         .expect("export");
     let import_bytes = rewrite_manifest_key(&exported, "imported-new");
 
     let (action, _) =
         layouts_service::import_layout_zip(
-            pool,
+            &pool,
             config,
             &import_bytes,
             LayoutImportMode::Overwrite,
@@ -165,7 +165,7 @@ async fn import_creates_new_layout() {
         .expect("import");
     assert_eq!(action, LayoutImportAction::Created);
 
-    let imported = layouts::find_by_key(pool, "imported-new")
+    let imported = layouts::find_by_key(&pool, "imported-new")
         .await
         .expect("lookup")
         .expect("imported layout");
@@ -178,11 +178,11 @@ async fn import_creates_new_layout() {
 #[tokio::test]
 async fn import_overwrite_updates_layout() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
     let (layout_id, layout_key) = create_test_layout_with_page(&app).await;
-    let exported = layouts_service::export_layout_zip(pool, config, layout_id)
+    let exported = layouts_service::export_layout_zip(&pool, config, layout_id)
         .await
         .expect("export");
 
@@ -191,7 +191,7 @@ async fn import_overwrite_updates_layout() {
 
     let (action, _) =
         layouts_service::import_layout_zip(
-            pool,
+            &pool,
             config,
             &exported,
             LayoutImportMode::Overwrite,
@@ -209,11 +209,11 @@ async fn import_overwrite_updates_layout() {
 #[tokio::test]
 async fn import_skip_leaves_layout_unchanged() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
     let (layout_id, layout_key) = create_test_layout_with_page(&app).await;
-    let exported = layouts_service::export_layout_zip(pool, config, layout_id)
+    let exported = layouts_service::export_layout_zip(&pool, config, layout_id)
         .await
         .expect("export");
 
@@ -221,7 +221,7 @@ async fn import_skip_leaves_layout_unchanged() {
         .expect("mutate shell");
 
     let (action, _) =
-        layouts_service::import_layout_zip(pool, config, &exported, LayoutImportMode::Skip, None)
+        layouts_service::import_layout_zip(&pool, config, &exported, LayoutImportMode::Skip, None)
             .await
             .expect("import skip");
     assert_eq!(action, LayoutImportAction::Skipped);
@@ -233,10 +233,10 @@ async fn import_skip_leaves_layout_unchanged() {
 #[tokio::test]
 async fn import_rejects_url_path_conflict() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
-    let default_layout = layouts::find_default(pool).await.expect("default");
+    let default_layout = layouts::find_default(&pool).await.expect("default");
     let page_input = PageInput {
         name: "衝突ページ".to_string(),
         url_path: Some("/conflict-url".to_string()),
@@ -244,10 +244,10 @@ async fn import_rejects_url_path_conflict() {
         layout_id: default_layout.id,
         is_published: false,
     };
-    pages::insert(pool, &page_input).await.expect("seed page");
+    pages::insert(&pool, &page_input).await.expect("seed page");
 
     let (layout_id, _) = create_test_layout_with_page(&app).await;
-    let mut exported = layouts_service::export_layout_zip(pool, config, layout_id)
+    let mut exported = layouts_service::export_layout_zip(&pool, config, layout_id)
         .await
         .expect("export");
 
@@ -284,7 +284,7 @@ async fn import_rejects_url_path_conflict() {
     exported = out;
 
     let err = layouts_service::import_layout_zip(
-        pool,
+        &pool,
         config,
         &exported,
         LayoutImportMode::Overwrite,
@@ -300,7 +300,7 @@ async fn import_rename_creates_layout_with_rewritten_references() {
     let source_app = common::TestApp::new().await;
     let (layout_id, _) = create_test_layout_with_page(&source_app).await;
     let exported = layouts_service::export_layout_zip(
-        &source_app.state.pool,
+        &source_app.state.pool(),
         &source_app.state.config,
         layout_id,
     )
@@ -308,11 +308,11 @@ async fn import_rename_creates_layout_with_rewritten_references() {
     .expect("export");
 
     let target_app = common::TestApp::new().await;
-    let pool = &target_app.state.pool;
+    let pool = &target_app.state.pool();
     let config = target_app.state.config.as_ref();
 
     let (action, _) = layouts_service::import_layout_zip(
-        pool,
+        &pool,
         config,
         &exported,
         LayoutImportMode::Rename,
@@ -322,13 +322,13 @@ async fn import_rename_creates_layout_with_rewritten_references() {
     .expect("rename import");
     assert_eq!(action, LayoutImportAction::Created);
 
-    let imported = layouts::find_by_key(pool, "renamed-layout")
+    let imported = layouts::find_by_key(&pool, "renamed-layout")
         .await
         .expect("lookup")
         .expect("renamed layout");
     assert_eq!(imported.name, "エクスポート元");
 
-    let pages = pages::list_by_layout(pool, imported.id).await.expect("pages");
+    let pages = pages::list_by_layout(&pool, imported.id).await.expect("pages");
     let about = pages
         .iter()
         .find(|p| p.url_path.as_deref() == Some("/renamed-layout/export-src-about"))
@@ -342,16 +342,16 @@ async fn import_rename_creates_layout_with_rewritten_references() {
 #[tokio::test]
 async fn import_rename_on_same_site_prefixes_urls_to_avoid_conflict() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
     let (layout_id, _) = create_test_layout_with_page(&app).await;
-    let exported = layouts_service::export_layout_zip(pool, config, layout_id)
+    let exported = layouts_service::export_layout_zip(&pool, config, layout_id)
         .await
         .expect("export");
 
     let (action, _) = layouts_service::import_layout_zip(
-        pool,
+        &pool,
         config,
         &exported,
         LayoutImportMode::Rename,
@@ -361,18 +361,18 @@ async fn import_rename_on_same_site_prefixes_urls_to_avoid_conflict() {
     .expect("rename import on same site");
     assert_eq!(action, LayoutImportAction::Created);
 
-    let copied = layouts::find_by_key(pool, "layout-copy")
+    let copied = layouts::find_by_key(&pool, "layout-copy")
         .await
         .expect("lookup")
         .expect("copied layout");
-    let pages = pages::list_by_layout(pool, copied.id).await.expect("pages");
+    let pages = pages::list_by_layout(&pool, copied.id).await.expect("pages");
     let about = pages
         .iter()
         .find(|p| p.url_path.as_deref() == Some("/layout-copy/export-src-about"))
         .expect("prefixed url");
     assert!(about.is_published);
 
-    let original = pages::list_by_layout(pool, layout_id)
+    let original = pages::list_by_layout(&pool, layout_id)
         .await
         .expect("original pages")
         .into_iter()

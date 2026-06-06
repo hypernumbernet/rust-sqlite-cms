@@ -52,7 +52,7 @@ async fn show(
     State(state): State<AppState>,
     Query(query): Query<BackupQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let stats = backup::collect_stats(&state.pool).await?;
+    let stats = backup::collect_stats(&state.pool()).await?;
     let html = BackupTemplate {
         layout: layout::AdminLayoutCtx::new(&auth),
         stats,
@@ -72,7 +72,7 @@ async fn export_backup(
     _auth: AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<Response> {
-    let bytes = backup::export_site_backup(&state.pool, &state.config).await?;
+    let bytes = backup::export_site_backup(&state.pool(), &state.config).await?;
     let filename = backup::export_filename();
     let disposition = format!("attachment; filename=\"{filename}\"");
 
@@ -114,7 +114,7 @@ async fn restore_backup(
         return Ok(redirect_with_error("ZIP ファイル（package）を選択してください"));
     };
 
-    match backup::import_site_backup(&state.pool, &state.config, &bytes).await {
+    match backup::import_site_backup(&state, &bytes).await {
         Ok(result) => Ok(render_result(auth, state, result, String::new()).await?),
         Err(err) => Ok(redirect_with_error(&err.to_string())),
     }
@@ -126,7 +126,7 @@ async fn render_result(
     result: BackupRestoreResult,
     error_message: String,
 ) -> AppResult<Response> {
-    let stats = backup::collect_stats(&state.pool).await?;
+    let stats = backup::collect_stats(&state.pool()).await?;
     let html = BackupTemplate {
         layout: layout::AdminLayoutCtx::new(&auth),
         stats,

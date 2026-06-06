@@ -15,8 +15,8 @@ use tower::ServiceExt;
 #[tokio::test]
 async fn contact_html_renders_form_with_double_submit_guard() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
-    let contact_type = widget_types::find_by_key(pool, "contact_form")
+    let pool = app.state.pool();
+    let contact_type = widget_types::find_by_key(&pool, "contact_form")
         .await
         .expect("contact_form widget type");
     assert!(
@@ -25,7 +25,7 @@ async fn contact_html_renders_form_with_double_submit_guard() {
     );
 
     let placeholder_id = placeholders::insert(
-        pool,
+        &pool,
         &PlaceholderInput {
             name: "contact".to_string(),
             widget_type_id: contact_type.id,
@@ -36,7 +36,7 @@ async fn contact_html_renders_form_with_double_submit_guard() {
     .expect("insert placeholder");
 
     let ctx = widgets::build_render_context(
-        pool,
+        &pool,
         "Test Site".to_string(),
         "Description".to_string(),
         String::new(),
@@ -68,13 +68,13 @@ async fn contact_html_renders_form_with_double_submit_guard() {
 #[tokio::test]
 async fn contact_form_post_creates_single_post_and_redirects() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let contact_type = widget_types::find_by_key(pool, "contact_form")
+    let contact_type = widget_types::find_by_key(&pool, "contact_form")
         .await
         .expect("contact_form widget type");
     let placeholder_id = placeholders::insert(
-        pool,
+        &pool,
         &PlaceholderInput {
             name: "contact".to_string(),
             widget_type_id: contact_type.id,
@@ -128,7 +128,7 @@ async fn contact_form_post_creates_single_post_and_redirects() {
         "SELECT COUNT(*) FROM posts WHERE placeholder_id = ? AND post_type = 'post'",
     )
     .bind(placeholder_id)
-    .fetch_one(pool)
+    .fetch_one(&pool)
     .await
     .expect("count posts");
     assert_eq!(count, 1, "expected exactly one submission");
@@ -144,7 +144,7 @@ async fn contact_form_post_creates_single_post_and_redirects() {
         "#,
     )
     .bind(placeholder_id)
-    .fetch_one(pool)
+    .fetch_one(&pool)
     .await
     .expect("contact_email meta");
     assert_eq!(email.as_deref(), Some("test@example.com"));
@@ -170,7 +170,7 @@ async fn contact_form_post_creates_single_post_and_redirects() {
         "SELECT COUNT(*) FROM posts WHERE placeholder_id = ? AND post_type = 'post'",
     )
     .bind(placeholder_id)
-    .fetch_one(pool)
+    .fetch_one(&pool)
     .await
     .expect("count posts after duplicate");
     assert_eq!(
@@ -182,13 +182,13 @@ async fn contact_form_post_creates_single_post_and_redirects() {
 #[tokio::test]
 async fn contact_sent_shows_success_message_without_form() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let contact_type = widget_types::find_by_key(pool, "contact_form")
+    let contact_type = widget_types::find_by_key(&pool, "contact_form")
         .await
         .expect("contact_form widget type");
     placeholders::insert(
-        pool,
+        &pool,
         &PlaceholderInput {
             name: "contact".to_string(),
             widget_type_id: contact_type.id,
@@ -199,7 +199,7 @@ async fn contact_sent_shows_success_message_without_form() {
     .expect("insert placeholder");
 
     let ctx = widgets::build_render_context(
-        pool,
+        &pool,
         "Test Site".to_string(),
         "Description".to_string(),
         String::new(),
@@ -230,13 +230,13 @@ async fn contact_sent_shows_success_message_without_form() {
 #[tokio::test]
 async fn contact_error_still_renders_form_for_retry() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let contact_type = widget_types::find_by_key(pool, "contact_form")
+    let contact_type = widget_types::find_by_key(&pool, "contact_form")
         .await
         .expect("contact_form widget type");
     placeholders::insert(
-        pool,
+        &pool,
         &PlaceholderInput {
             name: "contact".to_string(),
             widget_type_id: contact_type.id,
@@ -247,7 +247,7 @@ async fn contact_error_still_renders_form_for_retry() {
     .expect("insert placeholder");
 
     let ctx = widgets::build_render_context(
-        pool,
+        &pool,
         "Test Site".to_string(),
         "Description".to_string(),
         String::new(),

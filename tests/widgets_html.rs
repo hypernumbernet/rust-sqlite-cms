@@ -12,9 +12,9 @@ use rust_sqlite_cms::{
 #[tokio::test]
 async fn announcements_html_renders_with_type_fixed_template_vars() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let news_type = widget_types::find_by_key(pool, "news")
+    let news_type = widget_types::find_by_key(&pool, "news")
         .await
         .expect("news widget type");
     assert!(
@@ -23,7 +23,7 @@ async fn announcements_html_renders_with_type_fixed_template_vars() {
     );
 
     let placeholder_id = placeholders::insert(
-        pool,
+        &pool,
         &PlaceholderInput {
             name: "announcements".to_string(),
             widget_type_id: news_type.id,
@@ -34,7 +34,7 @@ async fn announcements_html_renders_with_type_fixed_template_vars() {
     .expect("insert placeholder");
 
     posts::insert(
-        pool,
+        &pool,
         &PostInput {
             placeholder_id,
             title: "テストお知らせ".to_string(),
@@ -48,7 +48,7 @@ async fn announcements_html_renders_with_type_fixed_template_vars() {
     .expect("insert post");
 
     let ctx = widgets::build_render_context(
-        pool,
+        &pool,
         "Test Site".to_string(),
         "Description".to_string(),
         String::new(),
@@ -75,14 +75,14 @@ async fn announcements_html_renders_with_type_fixed_template_vars() {
 #[tokio::test]
 async fn annotate_widgets_wraps_html_with_preview_markers() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let news_type = widget_types::find_by_key(pool, "news")
+    let news_type = widget_types::find_by_key(&pool, "news")
         .await
         .expect("news widget type");
 
     let placeholder_id = placeholders::insert(
-        pool,
+        &pool,
         &PlaceholderInput {
             name: "marked_news".to_string(),
             widget_type_id: news_type.id,
@@ -93,7 +93,7 @@ async fn annotate_widgets_wraps_html_with_preview_markers() {
     .expect("insert placeholder");
 
     posts::insert(
-        pool,
+        &pool,
         &PostInput {
             placeholder_id,
             title: "マーカー付き".to_string(),
@@ -107,7 +107,7 @@ async fn annotate_widgets_wraps_html_with_preview_markers() {
     .expect("insert post");
 
     let ctx = widgets::build_render_context(
-        pool,
+        &pool,
         "Test Site".to_string(),
         "Description".to_string(),
         String::new(),

@@ -3,7 +3,6 @@
 use std::io::{Cursor, Read, Write};
 
 use http_body_util::BodyExt;
-use rust_sqlite_cms::db;
 use rust_sqlite_cms::error::DomainError;
 use rust_sqlite_cms::services::backup as backup_service;
 use tower::ServiceExt;
@@ -30,10 +29,10 @@ fn zip_entry_names(bytes: &[u8]) -> Vec<String> {
 #[tokio::test]
 async fn export_includes_manifest_database_and_layout_files() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
-    let bytes = backup_service::export_site_backup(pool, config)
+    let bytes = backup_service::export_site_backup(&&pool, config)
         .await
         .expect("export backup");
 
@@ -53,17 +52,17 @@ async fn export_includes_manifest_database_and_layout_files() {
 #[tokio::test]
 async fn roundtrip_restore_returns_original_data() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
     let original_posts: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM posts WHERE post_type = 'post' AND post_status != 'trash'",
     )
-    .fetch_one(pool)
+    .fetch_one(&pool)
     .await
     .expect("count posts");
 
-    let bytes = backup_service::export_site_backup(pool, config)
+    let bytes = backup_service::export_site_backup(&&pool, config)
         .await
         .expect("export backup");
 
@@ -71,26 +70,23 @@ async fn roundtrip_restore_returns_original_data() {
         "INSERT INTO posts (post_type, post_status, title, post_name, content)
          VALUES ('post', 'publish', 'Temporary', 'temporary-backup-test', 'body')",
     )
-    .execute(pool)
+    .execute(&pool)
     .await
     .expect("insert temp post");
 
     let marker = app.state.config.paths.work_dir.clone() + "/backup-marker.txt";
     std::fs::write(&marker, "changed").expect("write marker");
 
-    backup_service::import_site_backup(pool, config, &bytes)
+    backup_service::import_site_backup(&app.state, &bytes)
         .await
         .expect("import backup");
 
-    let fresh_pool = db::connect(&config.database.path)
-        .await
-        .expect("reconnect db");
     let restored_posts: (i64,) = sqlx::query_as(
         "SELECT COUNT(*) FROM posts WHERE post_type = 'post' AND post_status != 'trash'",
     )
-    .fetch_one(&fresh_pool)
+    .fetch_one(&app.state.pool())
     .await
-    .expect("count restored posts");
+    .expect("count restored posts via reloaded pool");
 
     assert_eq!(restored_posts.0, original_posts.0);
     assert!(
@@ -108,7 +104,7 @@ async fn import_rejects_missing_manifest() {
     zip.write_all(b"sqlite").unwrap();
     let bytes = zip.finish().unwrap().into_inner();
 
-    let err = backup_service::import_site_backup(&app.state.pool, &app.state.config, &bytes)
+    let err = backup_service::import_site_backup(&app.state, &bytes)
         .await
         .expect_err("missing manifest should fail");
 
@@ -119,7 +115,7 @@ async fn import_rejects_missing_manifest() {
 async fn import_rejects_unsupported_format_version() {
     let app = common::TestApp::new().await;
     let db_bytes = read_zip_entry(
-        &backup_service::export_site_backup(&app.state.pool, &app.state.config)
+        &backup_service::export_site_backup(&app.state.pool(), app.state.config.as_ref())
             .await
             .expect("export"),
         "database/cms.db",
@@ -145,7 +141,7 @@ async fn import_rejects_unsupported_format_version() {
     zip.write_all(&db_bytes).unwrap();
     let bytes = zip.finish().unwrap().into_inner();
 
-    let err = backup_service::import_site_backup(&app.state.pool, &app.state.config, &bytes)
+    let err = backup_service::import_site_backup(&app.state, &bytes)
         .await
         .expect_err("unsupported format should fail");
 
@@ -179,7 +175,7 @@ async fn import_rejects_unsafe_zip_paths() {
     zip.write_all(db_bytes).unwrap();
     let bytes = zip.finish().unwrap().into_inner();
 
-    let err = backup_service::import_site_backup(&app.state.pool, &app.state.config, &bytes)
+    let err = backup_service::import_site_backup(&app.state, &bytes)
         .await
         .expect_err("path traversal should fail");
 
@@ -230,4 +226,5 @@ async fn admin_backup_page_renders_panels() {
     assert!(html.contains("バックアップをダウンロード"));
     assert!(html.contains("リストアを実行"));
     assert!(html.contains("backup-panels"));
+    assert!(!html.contains("サーバーを再起動"));
 }

@@ -69,10 +69,10 @@ async fn dashboard(
     auth: auth::AuthUser,
     State(state): State<AppState>,
 ) -> AppResult<impl IntoResponse> {
-    let blogname = options::get(&state.pool, "blogname")
+    let blogname = options::get(&state.pool(), "blogname")
         .await?
         .unwrap_or_else(|| state.config.site.title.clone());
-    let blogdescription = options::get(&state.pool, "blogdescription")
+    let blogdescription = options::get(&state.pool(), "blogdescription")
         .await?
         .unwrap_or_else(|| state.config.site.tagline.clone());
 

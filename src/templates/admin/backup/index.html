@@ -82,6 +82,11 @@
     font-weight: 600;
     margin-top: 12px;
   }
+  .restore-note {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 12px;
+  }
 </style>
 
 {% if !success_message.is_empty() %}
@@ -136,7 +141,7 @@
       <div class="field">
         <label for="package">バックアップファイル（.zip）</label>
         <input id="package" name="package" type="file" accept="application/zip,.zip" required>
-        <p class="help">この CMS からエクスポートした ZIP のみ対応しています。</p>
+        <p class="help">この CMS からエクスポートした ZIP のみ対応しています。リストア後もサーバーの再起動は不要です。</p>
       </div>
       <div class="actions">
         <button class="button danger" type="submit">リストアを実行</button>
@@ -152,7 +157,6 @@
         <li>バックアップ作成日時: {{ created_at }}</li>
         {% endif %}
       </ul>
-      <p class="restart-notice">このページを閉じて、サーバーを再起動してください。</p>
     </div>
     {% endif %}
   </section>

@@ -76,7 +76,7 @@ async fn save(
     let blogdescription = form.blogdescription.trim().to_string();
     let siteurl = form.siteurl.trim().to_string();
 
-    services::options::update_site_settings(&state.pool, &blogname, &blogdescription, &siteurl).await?;
+    services::options::update_site_settings(&state.pool(), &blogname, &blogdescription, &siteurl).await?;
 
     Ok(Redirect::to("/admin/settings?saved=1").into_response())
 }
@@ -109,13 +109,13 @@ async fn render_form(
 }
 
 async fn load_current_values(state: &AppState) -> AppResult<(String, String, String)> {
-    let blogname = options::get(&state.pool, "blogname")
+    let blogname = options::get(&state.pool(), "blogname")
         .await?
         .unwrap_or_else(|| state.config.site.title.clone());
-    let blogdescription = options::get(&state.pool, "blogdescription")
+    let blogdescription = options::get(&state.pool(), "blogdescription")
         .await?
         .unwrap_or_else(|| state.config.site.tagline.clone());
-    let siteurl = options::get(&state.pool, "siteurl").await?.unwrap_or_else(|| {
+    let siteurl = options::get(&state.pool(), "siteurl").await?.unwrap_or_else(|| {
         format!("http://{}", state.config.server.bind_addr)
     });
 

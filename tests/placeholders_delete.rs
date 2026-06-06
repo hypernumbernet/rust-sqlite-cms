@@ -11,14 +11,14 @@ use rust_sqlite_cms::{
 #[tokio::test]
 async fn delete_placeholder_after_entries_are_trashed() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let news_type = widget_types::find_by_key(pool, "news")
+    let news_type = widget_types::find_by_key(&pool, "news")
         .await
         .expect("news widget type");
 
     let placeholder_id = placeholders::insert(
-        pool,
+        &pool,
         &PlaceholderInput {
             name: "delete_after_trash".to_string(),
             widget_type_id: news_type.id,
@@ -29,7 +29,7 @@ async fn delete_placeholder_after_entries_are_trashed() {
     .expect("insert placeholder");
 
     let post_id = posts::insert(
-        pool,
+        &pool,
         &PostInput {
             placeholder_id,
             title: "削除予定".to_string(),
@@ -42,28 +42,28 @@ async fn delete_placeholder_after_entries_are_trashed() {
     .await
     .expect("insert post");
 
-    posts::delete_in_placeholder(pool, placeholder_id, post_id)
+    posts::delete_in_placeholder(&pool, placeholder_id, post_id)
         .await
         .expect("trash post");
 
-    placeholders::delete(pool, placeholder_id)
+    placeholders::delete(&pool, placeholder_id)
         .await
         .expect("placeholder delete should succeed after trash cleanup");
 
-    assert!(placeholders::find(pool, placeholder_id).await.is_err());
+    assert!(placeholders::find(&pool, placeholder_id).await.is_err());
 }
 
 #[tokio::test]
 async fn delete_placeholder_blocked_when_active_post_exists() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let news_type = widget_types::find_by_key(pool, "news")
+    let news_type = widget_types::find_by_key(&pool, "news")
         .await
         .expect("news widget type");
 
     let placeholder_id = placeholders::insert(
-        pool,
+        &pool,
         &PlaceholderInput {
             name: "delete_blocked".to_string(),
             widget_type_id: news_type.id,
@@ -74,7 +74,7 @@ async fn delete_placeholder_blocked_when_active_post_exists() {
     .expect("insert placeholder");
 
     posts::insert(
-        pool,
+        &pool,
         &PostInput {
             placeholder_id,
             title: "残す".to_string(),
@@ -87,7 +87,7 @@ async fn delete_placeholder_blocked_when_active_post_exists() {
     .await
     .expect("insert post");
 
-    let err = placeholders::delete(pool, placeholder_id)
+    let err = placeholders::delete(&pool, placeholder_id)
         .await
         .expect_err("active post should block delete");
     assert!(err.to_string().contains("紐付いている"));

@@ -45,7 +45,7 @@ async fn render_page_with_options(
     _page_options: RenderPageOptions,
 ) -> AppResult<Html<String>> {
     let ctx = build_site_context(state, page.layout_id, widget_options).await?;
-    let html = state.templates.render(&page.template_name(), ctx)?;
+    let html = state.templates().render(&page.template_name(), ctx)?;
     Ok(Html(html))
 }
 
@@ -63,18 +63,18 @@ async fn build_site_context(
     layout_id: i64,
     options: widgets::RenderOptions,
 ) -> AppResult<Value> {
-    let blogname = options::get(&state.pool, "blogname")
+    let blogname = options::get(&state.pool(), "blogname")
         .await?
         .unwrap_or_else(|| state.config.site.title.clone());
-    let blogdescription = options::get(&state.pool, "blogdescription")
+    let blogdescription = options::get(&state.pool(), "blogdescription")
         .await?
         .unwrap_or_else(|| state.config.site.tagline.clone());
-    let favicon_url = services::layouts::favicon_url_for_layout(&state.pool, layout_id)
+    let favicon_url = services::layouts::favicon_url_for_layout(&state.pool(), layout_id)
         .await
         .unwrap_or_default();
 
     widgets::build_render_context(
-        &state.pool,
+        &state.pool(),
         blogname,
         blogdescription,
         favicon_url,

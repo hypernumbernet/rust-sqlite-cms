@@ -10,7 +10,7 @@ mod common;
 #[tokio::test]
 async fn import_creates_custom_widget_type() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
     let package = WidgetPackage {
         format_version: 1,
@@ -22,12 +22,12 @@ async fn import_creates_custom_widget_type() {
         config_schema: r#"{"fields":[]}"#.to_string(),
     };
 
-    let (action, _) = widgets::import_package(pool, &package, WidgetImportMode::Overwrite, None)
+    let (action, _) = widgets::import_package(&pool, &package, WidgetImportMode::Overwrite, None)
         .await
         .expect("import should succeed");
     assert_eq!(action, rust_sqlite_cms::models::widget::WidgetImportAction::Created);
 
-    let row = widget_types::find_by_key(pool, "my_banner")
+    let row = widget_types::find_by_key(&pool, "my_banner")
         .await
         .expect("custom widget should exist");
     assert_eq!(row.label, "カスタムバナー");
@@ -37,9 +37,9 @@ async fn import_creates_custom_widget_type() {
 #[tokio::test]
 async fn export_import_roundtrip_preserves_html_template() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let exported = widgets::export_package(pool, "news")
+    let exported = widgets::export_package(&pool, "news")
         .await
         .expect("export news");
     assert_eq!(exported.format_version, 1);
@@ -49,11 +49,11 @@ async fn export_import_roundtrip_preserves_html_template() {
     let mut modified = exported.clone();
     modified.html_template = "<!-- roundtrip test -->\n".to_string() + &modified.html_template;
 
-    widgets::import_package(pool, &modified, WidgetImportMode::Overwrite, None)
+    widgets::import_package(&pool, &modified, WidgetImportMode::Overwrite, None)
         .await
         .expect("re-import");
 
-    let re_exported = widgets::export_package(pool, "news")
+    let re_exported = widgets::export_package(&pool, "news")
         .await
         .expect("re-export");
     assert_eq!(re_exported.html_template, modified.html_template);
@@ -62,16 +62,16 @@ async fn export_import_roundtrip_preserves_html_template() {
 #[tokio::test]
 async fn import_skip_does_not_overwrite() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let before = widgets::export_package(pool, "image")
+    let before = widgets::export_package(&pool, "image")
         .await
         .expect("export image");
 
     let mut attacker = before.clone();
     attacker.html_template = "<!-- should not apply -->".to_string();
 
-    let (action, _) = widgets::import_package(pool, &attacker, WidgetImportMode::Skip, None)
+    let (action, _) = widgets::import_package(&pool, &attacker, WidgetImportMode::Skip, None)
         .await
         .expect("skip import");
     assert_eq!(
@@ -79,7 +79,7 @@ async fn import_skip_does_not_overwrite() {
         rust_sqlite_cms::models::widget::WidgetImportAction::Skipped
     );
 
-    let after = widgets::export_package(pool, "image")
+    let after = widgets::export_package(&pool, "image")
         .await
         .expect("export image again");
     assert_eq!(after.html_template, before.html_template);
@@ -125,7 +125,7 @@ async fn api_export_and_import() {
 #[tokio::test]
 async fn delete_custom_widget_without_placeholders() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
     let package = WidgetPackage {
         format_version: 1,
@@ -136,20 +136,20 @@ async fn delete_custom_widget_without_placeholders() {
         html_template: "<p>x</p>".to_string(),
         config_schema: "{}".to_string(),
     };
-    widgets::import_package(pool, &package, WidgetImportMode::Overwrite, None)
+    widgets::import_package(&pool, &package, WidgetImportMode::Overwrite, None)
         .await
         .unwrap();
 
-    widgets::delete(pool, "to_delete").await.expect("delete should succeed");
-    assert!(widget_types::find_by_key(pool, "to_delete").await.is_err());
+    widgets::delete(&pool, "to_delete").await.expect("delete should succeed");
+    assert!(widget_types::find_by_key(&pool, "to_delete").await.is_err());
 }
 
 #[tokio::test]
 async fn delete_blocked_when_placeholder_exists() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let err = widgets::delete(pool, "news")
+    let err = widgets::delete(&pool, "news")
         .await
         .expect_err("news has default placeholder");
     assert!(err.to_string().contains("プレースホルダー"));
@@ -158,7 +158,7 @@ async fn delete_blocked_when_placeholder_exists() {
 #[tokio::test]
 async fn validate_package_rejects_invalid_type_key() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
     let package = WidgetPackage {
         format_version: 1,
@@ -170,7 +170,7 @@ async fn validate_package_rejects_invalid_type_key() {
         config_schema: "{}".to_string(),
     };
 
-    let err = widgets::import_package(pool, &package, WidgetImportMode::Overwrite, None)
+    let err = widgets::import_package(&pool, &package, WidgetImportMode::Overwrite, None)
         .await
         .expect_err("invalid type_key should fail");
     assert!(err.to_string().contains("type_key"));
@@ -179,14 +179,14 @@ async fn validate_package_rejects_invalid_type_key() {
 #[tokio::test]
 async fn import_rename_creates_widget_under_new_type_key() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
 
-    let exported = widgets::export_package(pool, "news")
+    let exported = widgets::export_package(&pool, "news")
         .await
         .expect("export news");
 
     let (action, _) =
-        widgets::import_package(pool, &exported, WidgetImportMode::Rename, Some("news_copy"))
+        widgets::import_package(&pool, &exported, WidgetImportMode::Rename, Some("news_copy"))
             .await
             .expect("rename import");
     assert_eq!(
@@ -194,9 +194,9 @@ async fn import_rename_creates_widget_under_new_type_key() {
         rust_sqlite_cms::models::widget::WidgetImportAction::Created
     );
 
-    let row = widget_types::find_by_key(pool, "news_copy")
+    let row = widget_types::find_by_key(&pool, "news_copy")
         .await
         .expect("renamed widget should exist");
     assert_eq!(row.html_template, exported.html_template);
-    assert!(widget_types::find_by_key(pool, "news").await.is_ok());
+    assert!(widget_types::find_by_key(&pool, "news").await.is_ok());
 }

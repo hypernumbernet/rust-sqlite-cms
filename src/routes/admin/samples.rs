@@ -104,7 +104,7 @@ async fn apply(
                 (
                     "リセットが完了しました。".to_string(),
                     "リセット完了".to_string(),
-                    true,
+                    false,
                 )
             };
 

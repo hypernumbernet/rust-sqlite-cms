@@ -59,7 +59,7 @@ async fn login_submit(
         return Ok(Redirect::to("/admin").into_response());
     }
 
-    match users_service::authenticate(&state.pool, &form.login, &form.password).await {
+    match users_service::authenticate(&state.pool(), &form.login, &form.password).await {
         Ok(user) => {
             let auth = AuthUser {
                 id: user.id,

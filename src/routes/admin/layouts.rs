@@ -200,10 +200,10 @@ async fn index(
     State(state): State<AppState>,
     Query(query): Query<LayoutIndexQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let rows = layouts_repo::list_all(&state.pool).await?;
+    let rows = layouts_repo::list_all(&state.pool()).await?;
     let mut layouts = Vec::with_capacity(rows.len());
     for row in rows {
-        let page_count = layouts_repo::count_pages(&state.pool, row.id).await?;
+        let page_count = layouts_repo::count_pages(&state.pool(), row.id).await?;
         layouts.push(LayoutListItem {
             id: row.id,
             key: row.key,
@@ -239,8 +239,8 @@ async fn export_layout(
     State(state): State<AppState>,
     AxumPath(id): AxumPath<i64>,
 ) -> AppResult<Response> {
-    let layout = layouts_repo::find(&state.pool, id).await?;
-    let bytes = services::layouts::export_layout_zip(&state.pool, &state.config, id).await?;
+    let layout = layouts_repo::find(&state.pool(), id).await?;
+    let bytes = services::layouts::export_layout_zip(&state.pool(), &state.config, id).await?;
     let filename = format!("layout-{}.zip", layout.key);
     let disposition = format!("attachment; filename=\"{filename}\"");
 
@@ -307,7 +307,7 @@ async fn import_layout(
 
     let target_key = (!target_key.trim().is_empty()).then(|| target_key.trim());
     match services::layouts::import_layout_zip(
-        &state.pool,
+        &state.pool(),
         &state.config,
         &bytes,
         mode,
@@ -331,7 +331,7 @@ fn redirect_index_with_error(message: &str) -> Response {
 
 async fn new_form(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
     let html = build_layout_form(
-        &state.pool,
+        &state.pool(),
         admin_layout::AdminLayoutCtx::new(&auth),
         "レイアウトを新規追加",
         "/admin/layouts",
@@ -360,13 +360,13 @@ async fn create(
 ) -> AppResult<Response> {
     match form.into_input() {
         Ok(input) => {
-            match services::layouts::create_layout_with_defaults(&state.pool, &state.config, &input)
+            match services::layouts::create_layout_with_defaults(&state.pool(), &state.config, &input)
                 .await
             {
                 Ok(id) => Ok(redirect_layout_edit(id, None).into_response()),
                 Err(err) => {
                     layout_error_response(
-                        &state.pool,
+                        &state.pool(),
                         &state.config.paths.work_dir,
                         &auth,
                         &form,
@@ -380,7 +380,7 @@ async fn create(
         }
         Err(message) => {
             layout_error_response(
-                &state.pool,
+                &state.pool(),
                 &state.config.paths.work_dir,
                 &auth,
                 &form,
@@ -399,11 +399,11 @@ async fn edit(
     AxumPath(id): AxumPath<i64>,
     Query(query): Query<EditQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let row = layouts_repo::find(&state.pool, id).await?;
+    let row = layouts_repo::find(&state.pool(), id).await?;
     let layout_files = load_layout_file_rows(&state.config.paths.work_dir, id, &row.key);
 
     let html = build_layout_form(
-        &state.pool,
+        &state.pool(),
         admin_layout::AdminLayoutCtx::new(&auth),
         "レイアウトを編集",
         &format!("/admin/layouts/{id}/edit"),
@@ -434,10 +434,10 @@ async fn update(
     match form.into_input() {
         Ok(input) => {
             if let Err(err) =
-                services::layouts::update_layout_meta(&state.pool, &state.config, id, &input).await
+                services::layouts::update_layout_meta(&state.pool(), &state.config, id, &input).await
             {
                 return layout_error_response(
-                    &state.pool,
+                    &state.pool(),
                     &state.config.paths.work_dir,
                     &auth,
                     &form,
@@ -451,7 +451,7 @@ async fn update(
         }
         Err(message) => {
             layout_error_response(
-                &state.pool,
+                &state.pool(),
                 &state.config.paths.work_dir,
                 &auth,
                 &form,
@@ -470,7 +470,7 @@ async fn edit_shell(
     AxumPath(id): AxumPath<i64>,
     Query(query): Query<EditQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let row = layouts_repo::find(&state.pool, id).await?;
+    let row = layouts_repo::find(&state.pool(), id).await?;
     let content =
         theme::read_shell(&state.config.paths.work_dir, &row.key).unwrap_or_default();
 
@@ -496,7 +496,7 @@ async fn update_shell(
     AxumPath(id): AxumPath<i64>,
     Form(form): Form<LayoutFileForm>,
 ) -> AppResult<Response> {
-    let row = layouts_repo::find(&state.pool, id).await?;
+    let row = layouts_repo::find(&state.pool(), id).await?;
     match services::layouts::write_shell_content(&state.config, &row.key, &form.content) {
         Ok(()) => Ok(redirect_layout_edit(id, None).into_response()),
         Err(err) => {
@@ -525,7 +525,7 @@ async fn edit_static(
     AxumPath((id, path)): AxumPath<(i64, String)>,
     Query(query): Query<EditQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let row = layouts_repo::find(&state.pool, id).await?;
+    let row = layouts_repo::find(&state.pool(), id).await?;
     if !theme::is_editable_text_static(&path) {
         return Err(AppError::NotFound);
     }
@@ -555,7 +555,7 @@ async fn update_static(
     AxumPath((id, path)): AxumPath<(i64, String)>,
     Form(form): Form<LayoutFileForm>,
 ) -> AppResult<Response> {
-    let row = layouts_repo::find(&state.pool, id).await?;
+    let row = layouts_repo::find(&state.pool(), id).await?;
     let label = format!("static/{path}");
     match services::layouts::write_static_text_file(&state.config, &row.key, &path, &form.content) {
         Ok(()) => Ok(redirect_layout_edit(id, None).into_response()),
@@ -586,7 +586,7 @@ async fn new_static_file(
     AxumPath(id): AxumPath<i64>,
     Query(query): Query<EditQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let row = layouts_repo::find(&state.pool, id).await?;
+    let row = layouts_repo::find(&state.pool(), id).await?;
     render_file_edit_page(
         &auth,
         FileEditView {
@@ -609,7 +609,7 @@ async fn create_static_file(
     AxumPath(id): AxumPath<i64>,
     Form(form): Form<NewStaticFileForm>,
 ) -> AppResult<Response> {
-    let row = layouts_repo::find(&state.pool, id).await?;
+    let row = layouts_repo::find(&state.pool(), id).await?;
     match services::layouts::write_static_text_file(
         &state.config,
         &row.key,
@@ -643,7 +643,7 @@ async fn upload_static(
     AxumPath(id): AxumPath<i64>,
     mut multipart: Multipart,
 ) -> AppResult<Response> {
-    let layout = layouts_repo::find(&state.pool, id).await?;
+    let layout = layouts_repo::find(&state.pool(), id).await?;
     let mut relative_path = String::new();
     let mut file_bytes: Option<axum::body::Bytes> = None;
     let mut original_name = String::new();
@@ -695,13 +695,13 @@ async fn delete_static(
     AxumPath(id): AxumPath<i64>,
     Form(form): Form<StaticDeleteForm>,
 ) -> AppResult<Redirect> {
-    let layout = layouts_repo::find(&state.pool, id).await?;
+    let layout = layouts_repo::find(&state.pool(), id).await?;
     services::layouts::delete_static_file(&state.config, &layout.key, &form.relative_path)?;
     Ok(redirect_layout_edit(id, None))
 }
 
 async fn destroy(State(state): State<AppState>, AxumPath(id): AxumPath<i64>) -> AppResult<Redirect> {
-    services::layouts::delete_layout(&state.pool, &state.config, id).await?;
+    services::layouts::delete_layout(&state.pool(), &state.config, id).await?;
     Ok(Redirect::to("/admin/layouts"))
 }
 

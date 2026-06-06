@@ -12,9 +12,9 @@ use rust_sqlite_cms::{
 #[tokio::test]
 async fn create_page_and_file_persistence() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
-    let default = layouts::find_default(pool).await.expect("default layout");
+    let default = layouts::find_default(&pool).await.expect("default layout");
 
     let input = PageInput {
         name: "テストページ from service".to_string(),
@@ -26,14 +26,14 @@ async fn create_page_and_file_persistence() {
         is_published: true,
     };
 
-    let (id, file_name) = services::pages::create_page(pool, config, &input)
+    let (id, file_name) = services::pages::create_page(&pool, config, &input)
         .await
         .expect("create_page failed");
 
     assert!(id > 0);
     assert!(file_name.starts_with("pages/page-"));
 
-    let page = services::pages::find(pool, id).await.expect("find failed");
+    let page = services::pages::find(&pool, id).await.expect("find failed");
     assert_eq!(page.name, "テストページ from service");
     assert_eq!(page.layout_id, default.id);
     assert_eq!(page.layout_key, "default");
@@ -47,9 +47,9 @@ async fn create_page_and_file_persistence() {
 #[tokio::test]
 async fn delete_page_removes_file() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
-    let default = layouts::find_default(pool).await.unwrap();
+    let default = layouts::find_default(&pool).await.unwrap();
 
     let input = PageInput {
         name: "削除テスト".to_string(),
@@ -60,11 +60,11 @@ async fn delete_page_removes_file() {
         is_published: false,
     };
 
-    let (id, file_name) = services::pages::create_page(pool, config, &input)
+    let (id, file_name) = services::pages::create_page(&pool, config, &input)
         .await
         .unwrap();
 
-    services::pages::delete_page(pool, config, id)
+    services::pages::delete_page(&pool, config, id)
         .await
         .expect("delete_page failed");
 

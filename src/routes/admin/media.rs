@@ -91,13 +91,13 @@ async fn delete(
     Path(id): Path<i64>,
 ) -> AppResult<Response> {
     let uploads_root = &state.config.paths.uploads_dir;
-    let item = media_repo::find(&state.pool, id).await?;
+    let item = media_repo::find(&state.pool(), id).await?;
 
     if let Some(file_path) = item.file_path.as_deref() {
         media::delete_file(uploads_root, file_path)?;
     }
 
-    media_repo::delete(&state.pool, id).await?;
+    media_repo::delete(&state.pool(), id).await?;
     Ok(Redirect::to("/admin/media").into_response())
 }
 
@@ -117,7 +117,7 @@ async fn process_upload(
         file_size: data.len() as i64,
     };
 
-    media_repo::insert(&state.pool, &input).await?;
+    media_repo::insert(&state.pool(), &input).await?;
     Ok(())
 }
 
@@ -127,7 +127,7 @@ async fn render_index(
     error_message: &str,
     success_message: &str,
 ) -> AppResult<String> {
-    let media_items = media_repo::list_all(&state.pool)
+    let media_items = media_repo::list_all(&state.pool())
         .await?
         .into_iter()
         .map(|item| MediaListItem {

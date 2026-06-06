@@ -42,7 +42,7 @@ impl TestApp {
         media::ensure_uploads_dir(uploads_dir.to_str().unwrap()).unwrap();
 
         let pool = db::connect(&db_path).await.expect("failed to connect test db");
-        db::migrate(&pool).await.expect("failed to migrate test db");
+        db::migrate(&&pool).await.expect("failed to migrate test db");
 
         let mut config = AppConfig::default();
         config.database.path = db_path.clone();
@@ -50,18 +50,18 @@ impl TestApp {
         config.paths.uploads_dir = uploads_dir.to_string_lossy().to_string();
         config.security.session_secret = Some("test-session-secret-for-integration-tests".to_string());
 
-        options::ensure_defaults(&pool, &config)
+        options::ensure_defaults(&&pool, &config)
             .await
             .expect("failed to ensure defaults");
 
-        auth::ensure_test_admin(&pool, TEST_ADMIN_PASSWORD)
+        auth::ensure_test_admin(&&pool, TEST_ADMIN_PASSWORD)
             .await
             .expect("failed to ensure test admin");
 
-        layouts::find_default(&pool)
+        layouts::find_default(&&pool)
             .await
             .expect("default layout from migration");
-        pages::ensure_index_page(&pool)
+        pages::ensure_index_page(&&pool)
             .await
             .expect("failed to ensure index page");
 
@@ -69,11 +69,7 @@ impl TestApp {
         let uploads_dir_path = media::uploads_dir(&uploads_dir.to_string_lossy());
 
         let session_layer = session::session_layer(&config);
-        let state = AppState {
-            pool,
-            config: Arc::new(config),
-            templates,
-        };
+        let state = AppState::new(pool, Arc::new(config), templates);
 
         let app = routes::router(uploads_dir_path)
             .layer(session_layer)

@@ -25,10 +25,10 @@ const TINY_PNG: &[u8] = &[
 #[tokio::test]
 async fn update_layout_syncs_site_css() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
-    let layout = layouts::find_default(pool).await.expect("default layout");
+    let layout = layouts::find_default(&pool).await.expect("default layout");
     let shell = theme::read_shell(&config.paths.work_dir, &layout.key).unwrap_or_default();
     let input = LayoutInput {
         key: layout.key.clone(),
@@ -41,7 +41,7 @@ async fn update_layout_syncs_site_css() {
     static_files.insert("site.css".to_string(), "body { color: red; }".to_string());
 
     services::layouts::update_layout(
-        pool,
+        &pool,
         config,
         layout.id,
         &input,
@@ -127,7 +127,7 @@ async fn upload_static_binary_served_at_public_url() {
 async fn list_admin_files_includes_shell_and_static() {
     let app = common::TestApp::new().await;
     let config = app.state.config.as_ref();
-    let layout = layouts::find_default(&app.state.pool)
+    let layout = layouts::find_default(&app.state.pool())
         .await
         .expect("default layout");
 
@@ -150,7 +150,7 @@ async fn list_admin_files_includes_shell_and_static() {
 #[tokio::test]
 async fn create_layout_seeds_site_css() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
     let input = LayoutInput {
@@ -162,7 +162,7 @@ async fn create_layout_seeds_site_css() {
     let static_files = services::layouts::default_static_text_files_for_create();
 
     services::layouts::create_layout(
-        pool,
+        &pool,
         config,
         &input,
         "<html></html>",

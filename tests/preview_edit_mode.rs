@@ -16,7 +16,7 @@ async fn response_body_string(response: axum::http::Response<axum::body::Body>) 
 #[tokio::test]
 async fn preview_includes_edit_mode_ui_and_widget_markers() {
     let app = common::TestApp::new().await;
-    let page = pages::find_home(&app.state.pool)
+    let page = pages::find_home(&app.state.pool())
         .await
         .expect("lookup home page")
         .expect("home page should exist");

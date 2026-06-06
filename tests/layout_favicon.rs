@@ -40,14 +40,14 @@ fn ico_extension_is_allowed_for_upload() {
 #[tokio::test]
 async fn layout_rejects_non_favicon_media() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
     let uploads = &config.paths.uploads_dir;
 
     let (file_path, mime_type) =
         media::save_upload(uploads, "doc.pdf", b"%PDF-1.4\n").expect("pdf upload");
     let pdf_id = media_repo::insert(
-        pool,
+        &pool,
         &MediaInput {
             title: "doc.pdf".to_string(),
             file_path,
@@ -59,7 +59,7 @@ async fn layout_rejects_non_favicon_media() {
     .await
     .expect("insert pdf");
 
-    let layout = layouts::find_default(pool).await.expect("default layout");
+    let layout = layouts::find_default(&pool).await.expect("default layout");
     let shell = theme::read_shell(&config.paths.work_dir, &layout.key).unwrap_or_default();
     let input = LayoutInput {
         key: layout.key.clone(),
@@ -69,7 +69,7 @@ async fn layout_rejects_non_favicon_media() {
     };
 
     let err = services::layouts::update_layout(
-        pool,
+        &pool,
         config,
         layout.id,
         &input,
@@ -88,14 +88,14 @@ async fn layout_rejects_non_favicon_media() {
 #[tokio::test]
 async fn rendered_page_includes_favicon_link() {
     let app = common::TestApp::new().await;
-    let pool = &app.state.pool;
+    let pool = app.state.pool();
     let config = app.state.config.as_ref();
     let uploads = &config.paths.uploads_dir;
 
     let (file_path, mime_type) =
         media::save_upload(uploads, "favicon.png", TINY_PNG).expect("png upload");
     let media_id = media_repo::insert(
-        pool,
+        &pool,
         &MediaInput {
             title: "favicon.png".to_string(),
             file_path: file_path.clone(),
@@ -107,7 +107,7 @@ async fn rendered_page_includes_favicon_link() {
     .await
     .expect("insert media");
 
-    let layout = layouts::find_default(pool).await.expect("default layout");
+    let layout = layouts::find_default(&pool).await.expect("default layout");
     let shell = theme::read_shell(&config.paths.work_dir, &layout.key).unwrap_or_default();
     let input = LayoutInput {
         key: layout.key.clone(),
@@ -116,7 +116,7 @@ async fn rendered_page_includes_favicon_link() {
         favicon_media_id: Some(media_id),
     };
     services::layouts::update_layout(
-        pool,
+        &pool,
         config,
         layout.id,
         &input,
@@ -127,7 +127,7 @@ async fn rendered_page_includes_favicon_link() {
     .await
     .expect("update layout favicon");
 
-    let page = pages::find_home(pool).await.expect("home").expect("home page");
+    let page = pages::find_home(&pool).await.expect("home").expect("home page");
     let html = page_render::render_page(&app.state, &page)
         .await
         .expect("render home")

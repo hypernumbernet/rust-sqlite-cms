@@ -29,7 +29,7 @@ async fn create_test_layout_with_page(app: &common::TestApp) -> (i64, String) {
 
     let page_input = PageInput {
         name: "About".to_string(),
-        url_path: Some("/about-export".to_string()),
+        url_path: Some("/export-src-about".to_string()),
         content: "{% extends \"export-src/shell.html\" %}\n{% block content %}<p>about</p>{% endblock %}"
             .to_string(),
         layout_id,
@@ -73,8 +73,8 @@ fn rewrite_manifest_key(bytes: &[u8], new_key: &str) -> Vec<u8> {
     let mut manifest = read_zip_manifest(bytes);
     manifest.layout.key = new_key.to_string();
     for page in &mut manifest.pages {
-        if page.url_path.as_deref() == Some("/about-export") {
-            page.url_path = Some("/imported-about-export".to_string());
+        if page.url_path.as_deref() == Some("/export-src-about") {
+            page.url_path = Some("/imported-about".to_string());
         }
     }
     let manifest_json = serde_json::to_string_pretty(&manifest).expect("serialize manifest");
@@ -131,7 +131,10 @@ async fn export_includes_manifest_shell_and_pages() {
     let shell = read_zip_entry(&bytes, &format!("{layout_key}/shell.html"));
     assert!(shell.contains("custom shell"));
 
-    let page = manifest.pages.iter().find(|p| p.url_path.as_deref() == Some("/about-export"));
+    let page = manifest
+        .pages
+        .iter()
+        .find(|p| p.url_path.as_deref() == Some("/export-src-about"));
     assert!(page.is_some());
     let page = page.expect("about page");
     let body = read_zip_entry(&bytes, &format!("{layout_key}/{}", page.file_name));
@@ -151,9 +154,15 @@ async fn import_creates_new_layout() {
     let import_bytes = rewrite_manifest_key(&exported, "imported-new");
 
     let (action, _) =
-        layouts_service::import_layout_zip(pool, config, &import_bytes, LayoutImportMode::Overwrite)
-            .await
-            .expect("import");
+        layouts_service::import_layout_zip(
+            pool,
+            config,
+            &import_bytes,
+            LayoutImportMode::Overwrite,
+            None,
+        )
+        .await
+        .expect("import");
     assert_eq!(action, LayoutImportAction::Created);
 
     let imported = layouts::find_by_key(pool, "imported-new")
@@ -181,9 +190,15 @@ async fn import_overwrite_updates_layout() {
         .expect("mutate shell");
 
     let (action, _) =
-        layouts_service::import_layout_zip(pool, config, &exported, LayoutImportMode::Overwrite)
-            .await
-            .expect("import overwrite");
+        layouts_service::import_layout_zip(
+            pool,
+            config,
+            &exported,
+            LayoutImportMode::Overwrite,
+            None,
+        )
+        .await
+        .expect("import overwrite");
     assert_eq!(action, LayoutImportAction::Updated);
 
     let shell = theme::read_shell(&config.paths.work_dir, &layout_key).expect("shell");
@@ -206,7 +221,7 @@ async fn import_skip_leaves_layout_unchanged() {
         .expect("mutate shell");
 
     let (action, _) =
-        layouts_service::import_layout_zip(pool, config, &exported, LayoutImportMode::Skip)
+        layouts_service::import_layout_zip(pool, config, &exported, LayoutImportMode::Skip, None)
             .await
             .expect("import skip");
     assert_eq!(action, LayoutImportAction::Skipped);
@@ -238,7 +253,7 @@ async fn import_rejects_url_path_conflict() {
 
     let mut manifest = read_zip_manifest(&exported);
     for page in &mut manifest.pages {
-        if page.url_path.as_deref() == Some("/about-export") {
+        if page.url_path.as_deref() == Some("/export-src-about") {
             page.url_path = Some("/conflict-url".to_string());
         }
     }
@@ -273,8 +288,95 @@ async fn import_rejects_url_path_conflict() {
         config,
         &exported,
         LayoutImportMode::Overwrite,
+        None,
     )
     .await
     .expect_err("url conflict");
     assert!(err.to_string().contains("conflict-url"));
+}
+
+#[tokio::test]
+async fn import_rename_creates_layout_with_rewritten_references() {
+    let source_app = common::TestApp::new().await;
+    let (layout_id, _) = create_test_layout_with_page(&source_app).await;
+    let exported = layouts_service::export_layout_zip(
+        &source_app.state.pool,
+        &source_app.state.config,
+        layout_id,
+    )
+    .await
+    .expect("export");
+
+    let target_app = common::TestApp::new().await;
+    let pool = &target_app.state.pool;
+    let config = target_app.state.config.as_ref();
+
+    let (action, _) = layouts_service::import_layout_zip(
+        pool,
+        config,
+        &exported,
+        LayoutImportMode::Rename,
+        Some("renamed-layout"),
+    )
+    .await
+    .expect("rename import");
+    assert_eq!(action, LayoutImportAction::Created);
+
+    let imported = layouts::find_by_key(pool, "renamed-layout")
+        .await
+        .expect("lookup")
+        .expect("renamed layout");
+    assert_eq!(imported.name, "エクスポート元");
+
+    let pages = pages::list_by_layout(pool, imported.id).await.expect("pages");
+    let about = pages
+        .iter()
+        .find(|p| p.url_path.as_deref() == Some("/renamed-layout/export-src-about"))
+        .expect("about page");
+    let body = theme::read_page_body(&config.paths.work_dir, "renamed-layout", &about.file_name)
+        .expect("page body");
+    assert!(body.contains("renamed-layout/shell.html"));
+    assert!(!body.contains("export-src/shell.html"));
+}
+
+#[tokio::test]
+async fn import_rename_on_same_site_prefixes_urls_to_avoid_conflict() {
+    let app = common::TestApp::new().await;
+    let pool = &app.state.pool;
+    let config = app.state.config.as_ref();
+
+    let (layout_id, _) = create_test_layout_with_page(&app).await;
+    let exported = layouts_service::export_layout_zip(pool, config, layout_id)
+        .await
+        .expect("export");
+
+    let (action, _) = layouts_service::import_layout_zip(
+        pool,
+        config,
+        &exported,
+        LayoutImportMode::Rename,
+        Some("layout-copy"),
+    )
+    .await
+    .expect("rename import on same site");
+    assert_eq!(action, LayoutImportAction::Created);
+
+    let copied = layouts::find_by_key(pool, "layout-copy")
+        .await
+        .expect("lookup")
+        .expect("copied layout");
+    let pages = pages::list_by_layout(pool, copied.id).await.expect("pages");
+    let about = pages
+        .iter()
+        .find(|p| p.url_path.as_deref() == Some("/layout-copy/export-src-about"))
+        .expect("prefixed url");
+    assert!(about.is_published);
+
+    let original = pages::list_by_layout(pool, layout_id)
+        .await
+        .expect("original pages")
+        .into_iter()
+        .find(|p| p.url_path.as_deref() == Some("/export-src-about"))
+        .expect("original page still exists");
+    assert_ne!(about.id, original.id);
 }

@@ -247,6 +247,7 @@ async fn import_layout(
     mut multipart: Multipart,
 ) -> AppResult<Response> {
     let mut mode = LayoutImportMode::Overwrite;
+    let mut target_key = String::new();
     let mut package_bytes: Option<Vec<u8>> = None;
 
     while let Some(field) = multipart
@@ -260,9 +261,17 @@ async fn import_layout(
                     .text()
                     .await
                     .map_err(|err| AppError::Other(err.into()))?;
-                if text.trim() == "skip" {
-                    mode = LayoutImportMode::Skip;
+                match text.trim() {
+                    "skip" => mode = LayoutImportMode::Skip,
+                    "rename" => mode = LayoutImportMode::Rename,
+                    _ => mode = LayoutImportMode::Overwrite,
                 }
+            }
+            Some("target_key") => {
+                target_key = field
+                    .text()
+                    .await
+                    .map_err(|err| AppError::Other(err.into()))?;
             }
             Some("package") => {
                 let data = field
@@ -281,7 +290,15 @@ async fn import_layout(
         ));
     };
 
-    match services::layouts::import_layout_zip(&state.pool, &state.config, &bytes, mode).await {
+    let target_key = (!target_key.trim().is_empty()).then(|| target_key.trim());
+    match services::layouts::import_layout_zip(
+        &state.pool,
+        &state.config,
+        &bytes,
+        mode,
+        target_key,
+    )
+    .await {
         Ok((_, message)) => Ok(redirect_index_with_success(&message)),
         Err(err) => Ok(redirect_index_with_error(&err.to_string())),
     }

@@ -34,6 +34,8 @@ pub enum LayoutImportMode {
     Overwrite,
     /// 既存レイアウトがあれば変更しない。
     Skip,
+    /// 指定した key で新規作成する（manifest の key は使わない）。
+    Rename,
 }
 
 /// インポート結果。

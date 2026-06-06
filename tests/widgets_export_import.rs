@@ -22,7 +22,7 @@ async fn import_creates_custom_widget_type() {
         config_schema: r#"{"fields":[]}"#.to_string(),
     };
 
-    let (action, _) = widgets::import_package(pool, &package, WidgetImportMode::Overwrite)
+    let (action, _) = widgets::import_package(pool, &package, WidgetImportMode::Overwrite, None)
         .await
         .expect("import should succeed");
     assert_eq!(action, rust_sqlite_cms::models::widget::WidgetImportAction::Created);
@@ -49,7 +49,7 @@ async fn export_import_roundtrip_preserves_html_template() {
     let mut modified = exported.clone();
     modified.html_template = "<!-- roundtrip test -->\n".to_string() + &modified.html_template;
 
-    widgets::import_package(pool, &modified, WidgetImportMode::Overwrite)
+    widgets::import_package(pool, &modified, WidgetImportMode::Overwrite, None)
         .await
         .expect("re-import");
 
@@ -71,7 +71,7 @@ async fn import_skip_does_not_overwrite() {
     let mut attacker = before.clone();
     attacker.html_template = "<!-- should not apply -->".to_string();
 
-    let (action, _) = widgets::import_package(pool, &attacker, WidgetImportMode::Skip)
+    let (action, _) = widgets::import_package(pool, &attacker, WidgetImportMode::Skip, None)
         .await
         .expect("skip import");
     assert_eq!(
@@ -136,7 +136,7 @@ async fn delete_custom_widget_without_placeholders() {
         html_template: "<p>x</p>".to_string(),
         config_schema: "{}".to_string(),
     };
-    widgets::import_package(pool, &package, WidgetImportMode::Overwrite)
+    widgets::import_package(pool, &package, WidgetImportMode::Overwrite, None)
         .await
         .unwrap();
 
@@ -170,8 +170,33 @@ async fn validate_package_rejects_invalid_type_key() {
         config_schema: "{}".to_string(),
     };
 
-    let err = widgets::import_package(pool, &package, WidgetImportMode::Overwrite)
+    let err = widgets::import_package(pool, &package, WidgetImportMode::Overwrite, None)
         .await
         .expect_err("invalid type_key should fail");
     assert!(err.to_string().contains("type_key"));
+}
+
+#[tokio::test]
+async fn import_rename_creates_widget_under_new_type_key() {
+    let app = common::TestApp::new().await;
+    let pool = &app.state.pool;
+
+    let exported = widgets::export_package(pool, "news")
+        .await
+        .expect("export news");
+
+    let (action, _) =
+        widgets::import_package(pool, &exported, WidgetImportMode::Rename, Some("news_copy"))
+            .await
+            .expect("rename import");
+    assert_eq!(
+        action,
+        rust_sqlite_cms::models::widget::WidgetImportAction::Created
+    );
+
+    let row = widget_types::find_by_key(pool, "news_copy")
+        .await
+        .expect("renamed widget should exist");
+    assert_eq!(row.html_template, exported.html_template);
+    assert!(widget_types::find_by_key(pool, "news").await.is_ok());
 }

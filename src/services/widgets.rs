@@ -143,11 +143,41 @@ pub async fn import_package(
     pool: &SqlitePool,
     package: &WidgetPackage,
     mode: WidgetImportMode,
+    target_key: Option<&str>,
 ) -> DomainResult<(WidgetImportAction, String)> {
     validate_package(package)?;
 
-    let type_key = package.type_key.trim();
-    let exists = widget_types_repo::exists_by_key(pool, type_key).await?;
+    let (type_key, package) = if mode == WidgetImportMode::Rename {
+        let key = target_key
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
+            .ok_or_else(|| {
+                crate::error::DomainError::Validation(
+                    "インポート先 type_key を指定してください".to_string(),
+                )
+            })?;
+        if !is_valid_type_key(key) {
+            return Err(crate::error::DomainError::Validation(
+                "type_key は英小文字で始まり、英小文字・数字・アンダースコアのみ使用できます"
+                    .to_string(),
+            )
+            .into());
+        }
+        if widget_types_repo::exists_by_key(pool, key).await? {
+            return Err(crate::error::DomainError::Conflict(format!(
+                "指定した type_key「{key}」は既に使われています"
+            ))
+            .into());
+        }
+        let mut renamed = package.clone();
+        renamed.type_key = key.to_string();
+        validate_package(&renamed)?;
+        (key.to_string(), renamed)
+    } else {
+        (package.type_key.trim().to_string(), package.clone())
+    };
+
+    let exists = widget_types_repo::exists_by_key(pool, &type_key).await?;
 
     if exists && mode == WidgetImportMode::Skip {
         return Ok((
@@ -159,7 +189,7 @@ pub async fn import_package(
     let label = {
         let trimmed = package.label.trim();
         if trimmed.is_empty() {
-            type_key.to_string()
+            type_key.clone()
         } else {
             trimmed.to_string()
         }
@@ -174,7 +204,7 @@ pub async fn import_package(
 
     widget_types_repo::upsert_package(
         pool,
-        type_key,
+        &type_key,
         &label,
         &description,
         &package.config,
@@ -184,7 +214,13 @@ pub async fn import_package(
     .await?;
 
     let message = match action {
-        WidgetImportAction::Created => format!("ウィジェット「{type_key}」を新規登録しました"),
+        WidgetImportAction::Created => {
+            if mode == WidgetImportMode::Rename {
+                format!("ウィジェット「{type_key}」を別名で新規登録しました")
+            } else {
+                format!("ウィジェット「{type_key}」を新規登録しました")
+            }
+        }
         WidgetImportAction::Updated => format!("ウィジェット「{type_key}」を更新しました"),
         WidgetImportAction::Skipped => unreachable!(),
     };

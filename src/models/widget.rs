@@ -21,6 +21,8 @@ pub enum WidgetImportMode {
     Overwrite,
     /// 既存行があれば更新しない。
     Skip,
+    /// 指定した type_key で新規作成する（パッケージの type_key は使わない）。
+    Rename,
 }
 
 /// インポート結果。

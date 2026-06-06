@@ -125,6 +125,7 @@ async fn import_widget(
     mut multipart: Multipart,
 ) -> AppResult<Response> {
     let mut mode = WidgetImportMode::Overwrite;
+    let mut target_key = String::new();
     let mut package_bytes: Option<Vec<u8>> = None;
 
     while let Some(field) = multipart
@@ -138,9 +139,17 @@ async fn import_widget(
                     .text()
                     .await
                     .map_err(|err| AppError::Other(err.into()))?;
-                if text.trim() == "skip" {
-                    mode = WidgetImportMode::Skip;
+                match text.trim() {
+                    "skip" => mode = WidgetImportMode::Skip,
+                    "rename" => mode = WidgetImportMode::Rename,
+                    _ => mode = WidgetImportMode::Overwrite,
                 }
+            }
+            Some("target_key") => {
+                target_key = field
+                    .text()
+                    .await
+                    .map_err(|err| AppError::Other(err.into()))?;
             }
             Some("package") => {
                 let data = field
@@ -168,7 +177,8 @@ async fn import_widget(
         }
     };
 
-    match services::widgets::import_package(&state.pool, &package, mode).await {
+    let target_key = (!target_key.trim().is_empty()).then(|| target_key.trim());
+    match services::widgets::import_package(&state.pool, &package, mode, target_key).await {
         Ok((_, message)) => Ok(redirect_index_with_success(&message)),
         Err(err) => {
             let msg = err.to_string();

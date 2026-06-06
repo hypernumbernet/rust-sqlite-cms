@@ -24,6 +24,8 @@ struct ImportWidgetRequest {
     package: WidgetPackage,
     #[serde(default = "default_import_mode")]
     mode: String,
+    #[serde(default)]
+    target_key: Option<String>,
 }
 
 fn default_import_mode() -> String {
@@ -68,10 +70,24 @@ async fn import_widget(
     Json(payload): Json<ImportWidgetRequest>,
 ) -> ApiResult<Json<ImportWidgetResponse>> {
     let mode = parse_import_mode(&payload.mode)?;
-    let (action, message) =
-        services::widgets::import_package(&state.pool, &payload.package, mode).await?;
+    let target_key = payload
+        .target_key
+        .as_deref()
+        .map(str::trim)
+        .filter(|k| !k.is_empty());
+    let (action, message) = services::widgets::import_package(
+        &state.pool,
+        &payload.package,
+        mode,
+        target_key,
+    )
+    .await?;
 
-    let type_key = payload.package.type_key.trim().to_string();
+    let type_key = if mode == WidgetImportMode::Rename {
+        target_key.expect("rename requires target_key").to_string()
+    } else {
+        payload.package.type_key.trim().to_string()
+    };
     Ok(Json(ImportWidgetResponse {
         type_key,
         action: import_action_str(action).to_string(),
@@ -83,8 +99,9 @@ fn parse_import_mode(mode: &str) -> ApiResult<WidgetImportMode> {
     match mode.trim() {
         "overwrite" => Ok(WidgetImportMode::Overwrite),
         "skip" => Ok(WidgetImportMode::Skip),
+        "rename" => Ok(WidgetImportMode::Rename),
         other => Err(ApiError::Validation(format!(
-            "mode は overwrite または skip を指定してください（got: {other}）"
+            "mode は overwrite / skip / rename を指定してください（got: {other}）"
         ))),
     }
 }

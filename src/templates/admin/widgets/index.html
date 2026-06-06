@@ -38,6 +38,14 @@
       <label class="label-option">
         <input type="radio" name="mode" value="skip"> スキップする（変更しない）
       </label>
+      <label class="label-option">
+        <input type="radio" name="mode" value="rename"> 別の type_key でインポートする（新規作成）
+      </label>
+    </div>
+    <div class="field">
+      <label for="target_key">インポート先 type_key</label>
+      <input id="target_key" name="target_key" type="text" placeholder="例: news_copy">
+      <p class="help">「別の type_key でインポートする」を選んだときに指定してください。英小文字で始まり、英小文字・数字・アンダースコアのみ。</p>
     </div>
     <div class="actions">
       <button class="button" type="submit">インポート</button>

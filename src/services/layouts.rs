@@ -454,12 +454,34 @@ pub async fn import_layout_zip(
     config: &AppConfig,
     bytes: &[u8],
     mode: LayoutImportMode,
+    target_key: Option<&str>,
 ) -> DomainResult<(LayoutImportAction, String)> {
-    let (manifest, zip_files) = parse_layout_zip(bytes)?;
+    let (mut manifest, mut zip_files) = parse_layout_zip(bytes)?;
+
+    let layout_key = if mode == LayoutImportMode::Rename {
+        let key = target_key
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
+            .ok_or_else(|| {
+                DomainError::Validation("インポート先 layout key を指定してください".to_string())
+            })?;
+        validate_layout_key(key)?;
+        if layouts_repo::find_by_key(pool, key).await?.is_some() {
+            return Err(AppError::Conflict(format!(
+                "指定した layout key「{key}」は既に使われています"
+            ))
+            .into());
+        }
+        let source_key = manifest.layout.key.trim();
+        (manifest, zip_files) = remap_layout_package(source_key, key, &manifest, &zip_files);
+        key.to_string()
+    } else {
+        manifest.layout.key.trim().to_string()
+    };
+
     validate_manifest(&manifest, &zip_files)?;
 
-    let layout_key = manifest.layout.key.trim();
-    let existing = layouts_repo::find_by_key(pool, layout_key).await?;
+    let existing = layouts_repo::find_by_key(pool, &layout_key).await?;
 
     if existing.is_some() && mode == LayoutImportMode::Skip {
         return Ok((
@@ -490,25 +512,29 @@ pub async fn import_layout_zip(
             favicon_media_id,
         };
         update_layout_meta(pool, config, layout.id, &input).await?;
-        apply_layout_package(pool, config, layout.id, layout_key, &manifest, &zip_files).await?;
+        apply_layout_package(pool, config, layout.id, &layout_key, &manifest, &zip_files).await?;
         LayoutImportAction::Updated
     } else {
         let input = LayoutInput {
-            key: layout_key.to_string(),
+            key: layout_key.clone(),
             name: manifest.layout.name.trim().to_string(),
             is_default: false,
             favicon_media_id,
         };
         validate_layout_key(&input.key)?;
         let id = layouts_repo::insert(pool, &input).await?;
-        theme::ensure_layout_dirs(&config.paths.work_dir, layout_key).map_err(AppError::from)?;
-        apply_layout_package(pool, config, id, layout_key, &manifest, &zip_files).await?;
+        theme::ensure_layout_dirs(&config.paths.work_dir, &layout_key).map_err(AppError::from)?;
+        apply_layout_package(pool, config, id, &layout_key, &manifest, &zip_files).await?;
         LayoutImportAction::Created
     };
 
     let message = match action {
         LayoutImportAction::Created => {
-            format!("レイアウト「{layout_key}」をインポートしました（新規作成）")
+            if mode == LayoutImportMode::Rename {
+                format!("レイアウト「{layout_key}」を別名でインポートしました（新規作成）")
+            } else {
+                format!("レイアウト「{layout_key}」をインポートしました（新規作成）")
+            }
         }
         LayoutImportAction::Updated => {
             format!("レイアウト「{layout_key}」をインポートしました（上書き）")
@@ -717,6 +743,70 @@ fn parse_layout_zip(bytes: &[u8]) -> DomainResult<(LayoutExportManifest, HashMap
     Ok((manifest, zip_files))
 }
 
+fn remap_layout_package(
+    source_key: &str,
+    target_key: &str,
+    manifest: &LayoutExportManifest,
+    zip_files: &HashMap<String, Vec<u8>>,
+) -> (LayoutExportManifest, HashMap<String, Vec<u8>>) {
+    let mut remapped_manifest = manifest.clone();
+    remapped_manifest.layout.key = target_key.to_string();
+
+    let old_prefix = format!("{source_key}/");
+    let new_prefix = format!("{target_key}/");
+    let mut remapped_files = HashMap::new();
+
+    for (path, bytes) in zip_files {
+        let Some(relative) = path.strip_prefix(&old_prefix) else {
+            continue;
+        };
+        let new_path = format!("{new_prefix}{relative}");
+        let new_bytes = if relative == "shell.html" || relative.starts_with("pages/") {
+            rewrite_layout_key_in_text(bytes, source_key, target_key)
+        } else if let Some(static_rel) = relative.strip_prefix("static/") {
+            if theme::is_editable_text_static(static_rel) {
+                rewrite_layout_key_in_text(bytes, source_key, target_key)
+            } else {
+                bytes.clone()
+            }
+        } else {
+            bytes.clone()
+        };
+        remapped_files.insert(new_path, new_bytes);
+    }
+
+    for page in &mut remapped_manifest.pages {
+        page.url_path = prefix_url_path_for_rename_import(target_key, &page.url_path);
+    }
+
+    (remapped_manifest, remapped_files)
+}
+
+/// 別名インポート時に layout key を URL パスの先頭へ 1 段追加する。
+/// `/` は `/{target_key}`、それ以外は `/{target_key}{元のパス}` になる。
+fn prefix_url_path_for_rename_import(target_key: &str, url_path: &Option<String>) -> Option<String> {
+    let Some(path) = url_path.as_deref().map(str::trim).filter(|p| !p.is_empty()) else {
+        return None;
+    };
+    if path == "/" {
+        Some(format!("/{target_key}"))
+    } else {
+        Some(format!("/{target_key}{path}"))
+    }
+}
+
+fn rewrite_layout_key_in_text(bytes: &[u8], source_key: &str, target_key: &str) -> Vec<u8> {
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return bytes.to_vec();
+    };
+    text.replace(&format!("{source_key}/"), &format!("{target_key}/"))
+        .replace(
+            &format!("/static/{source_key}/"),
+            &format!("/static/{target_key}/"),
+        )
+        .into_bytes()
+}
+
 async fn resolve_import_favicon_media_id(
     pool: &SqlitePool,
     media_id: Option<i64>,
@@ -769,5 +859,31 @@ fn validate_layout_key(key: &str) -> DomainResult<()> {
             "レイアウト key は英数字・ハイフン・アンダースコアのみ（先頭に _ は不可）".into(),
         )
         .into())
+    }
+}
+
+#[cfg(test)]
+mod rename_import_tests {
+    use super::prefix_url_path_for_rename_import;
+
+    #[test]
+    fn prefix_url_path_maps_home_to_layout_key() {
+        assert_eq!(
+            prefix_url_path_for_rename_import("corp-copy", &Some("/".to_string())),
+            Some("/corp-copy".to_string())
+        );
+    }
+
+    #[test]
+    fn prefix_url_path_prepends_key_segment() {
+        assert_eq!(
+            prefix_url_path_for_rename_import("corp-copy", &Some("/about".to_string())),
+            Some("/corp-copy/about".to_string())
+        );
+    }
+
+    #[test]
+    fn prefix_url_path_keeps_none_as_none() {
+        assert_eq!(prefix_url_path_for_rename_import("corp-copy", &None), None);
     }
 }

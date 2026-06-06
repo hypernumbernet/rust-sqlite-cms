@@ -38,6 +38,14 @@
       <label class="label-option">
         <input type="radio" name="mode" value="skip"> スキップする（変更しない）
       </label>
+      <label class="label-option">
+        <input type="radio" name="mode" value="rename"> 別の key でインポートする（新規作成）
+      </label>
+    </div>
+    <div class="field">
+      <label for="target_key">インポート先 layout key</label>
+      <input id="target_key" name="target_key" type="text" placeholder="例: corporate-copy">
+      <p class="help">「別の key でインポートする」を選んだときに指定してください。英数字・ハイフン・アンダースコアのみ。別名インポート時は各ページの URL に <code>/{key}</code> が先頭へ付与されます（例: <code>/about</code> → <code>/corporate-copy/about</code>）。</p>
     </div>
     <div class="actions">
       <button class="button" type="submit">インポート</button>

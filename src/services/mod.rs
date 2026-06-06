@@ -4,6 +4,7 @@
 //! DB + ファイルI/O のオーケストレーションを担当。
 //! すべての HTTP アダプタ（HTML ルート / JSON API）から利用される。
 
+pub mod backup;
 pub mod contact_form;
 pub mod layouts;
 pub mod media;

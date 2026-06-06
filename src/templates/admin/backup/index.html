@@ -1,0 +1,160 @@
+{% extends "admin/base.html" %}
+
+{% block title %}バックアップ{% endblock %}
+{% block nav_backup %}active{% endblock %}
+{% block heading %}バックアップ / リストア{% endblock %}
+
+{% block content %}
+<style>
+  .backup-panels {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  @media (min-width: 860px) {
+    .backup-panels {
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  .backup-panels > .panel {
+    min-width: 0;
+    height: 100%;
+    box-sizing: border-box;
+  }
+  .backup-stats {
+    margin: 16px 0;
+    padding: 0;
+    list-style: none;
+  }
+  .backup-stats li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+  }
+  .backup-stats li:last-child {
+    border-bottom: none;
+  }
+  .backup-stats strong {
+    font-variant-numeric: tabular-nums;
+  }
+  .backup-paths {
+    margin: 12px 0 0;
+    padding: 12px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .backup-paths code {
+    word-break: break-all;
+  }
+  .restore-panel {
+    border: 2px solid #b32d2e;
+    background: #fff5f5;
+  }
+  .restore-panel h2 {
+    color: #b32d2e;
+    margin-top: 0;
+  }
+  .restore-warning {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    padding: 12px 16px;
+    border-radius: 4px;
+    color: #856404;
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+  .restore-result {
+    background: #e8f5e9;
+    border: 1px solid #81c784;
+    padding: 16px;
+    border-radius: 4px;
+    margin-top: 16px;
+  }
+  .restore-result .restart-notice {
+    color: #b32d2e;
+    font-weight: 600;
+    margin-top: 12px;
+  }
+</style>
+
+{% if !success_message.is_empty() %}
+<div class="notice success">{{ success_message }}</div>
+{% endif %}
+{% if !error_message.is_empty() %}
+<div class="notice error">{{ error_message }}</div>
+{% endif %}
+
+<div class="backup-panels">
+  <section class="panel">
+    <h2>バックアップ</h2>
+    <p>サイトの全データを ZIP 1 ファイルにまとめてダウンロードします。</p>
+
+    <div class="notice info">
+      次の内容が含まれます:
+      <ul>
+        <li>SQLite データベース（投稿・ページ・ウィジェット・ユーザー・設定）</li>
+        <li>設定ファイル（<code>{{ config_path }}</code>）</li>
+        <li>レイアウトとページ本文（<code>{{ work_dir }}/layouts/</code>）</li>
+        <li>メディアファイル（<code>{{ uploads_dir }}/</code>）</li>
+      </ul>
+    </div>
+
+    <h3>現在のデータ</h3>
+    <ul class="backup-stats">
+      <li><span>投稿</span><strong>{{ stats.posts_count }}</strong></li>
+      <li><span>ページ</span><strong>{{ stats.pages_count }}</strong></li>
+      <li><span>メディア</span><strong>{{ stats.media_count }}</strong></li>
+      <li><span>レイアウト</span><strong>{{ stats.layouts_count }}</strong></li>
+      <li><span>ユーザー</span><strong>{{ stats.users_count }}</strong></li>
+    </ul>
+
+    <div class="backup-paths">
+      <div>DB: <code>{{ database_path }}</code></div>
+      <div>work: <code>{{ work_dir }}/</code></div>
+      <div>uploads: <code>{{ uploads_dir }}/</code></div>
+    </div>
+
+    <div class="actions mt-16">
+      <a class="button" href="/admin/backup/export">バックアップをダウンロード</a>
+    </div>
+  </section>
+
+  <section class="panel restore-panel">
+    <h2>リストア</h2>
+    <div class="restore-warning">
+      <strong>注意:</strong> バックアップ ZIP を適用すると、現在のデータベースと work/ 配下のファイルが<strong>すべて上書き</strong>されます。この操作は元に戻せません。
+    </div>
+
+    <form method="post" action="/admin/backup/restore" enctype="multipart/form-data" onsubmit="return confirm('本当にバックアップからリストアしますか？現在のデータはすべて失われます。');">
+      <div class="field">
+        <label for="package">バックアップファイル（.zip）</label>
+        <input id="package" name="package" type="file" accept="application/zip,.zip" required>
+        <p class="help">この CMS からエクスポートした ZIP のみ対応しています。</p>
+      </div>
+      <div class="actions">
+        <button class="button danger" type="submit">リストアを実行</button>
+      </div>
+    </form>
+
+    {% if let Some(result) = last_result %}
+    <div class="restore-result">
+      <p><strong>{{ result.message }}</strong></p>
+      <ul>
+        <li>復元ファイル数: {{ result.restored_files_count }}</li>
+        {% if let Some(created_at) = result.backup_created_at %}
+        <li>バックアップ作成日時: {{ created_at }}</li>
+        {% endif %}
+      </ul>
+      <p class="restart-notice">このページを閉じて、サーバーを再起動してください。</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

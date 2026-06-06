@@ -18,6 +18,7 @@ use crate::state::AppState;
 use chrono::DateTime;
 
 pub mod auth;
+pub mod backup;
 pub mod layout;
 pub mod layouts;
 pub mod media;
@@ -58,6 +59,7 @@ pub fn router() -> Router<AppState> {
         .merge(settings::router())
         .merge(users::router())
         .merge(samples::router())
+        .merge(backup::router())
         .route_layer(middleware::from_fn(auth::require_admin_auth));
 
     public.merge(protected)

@@ -368,7 +368,7 @@ HTML からの参照例:
 | `src/repos/`, `src/services/` | `layouts` CRUD、ページ作成時の `layout_id` 必須化。 |
 | `src/routes/admin/pages.rs` | 静的トグル・`simple-page` の is_static 特例削除。 |
 | `src/routes/public.rs` | `/static/{key}/*` ルート追加または置換。 |
-| `migrations/` | `0002_layouts.sql` 等（既存 DB 方針は PLAN.md のマイグレーション運用に従う）。 |
+| `migrations/` | `0001_init.sql`（`layouts` / `pages` 最終形を含む統合初期スキーマ。既存 DB 方針は PLAN.md のマイグレーション運用に従う）。 |
 | `doc/PLAN.md`, `README.md` | 実装完了時に現状記述を更新。 |
 
 ---
@@ -377,11 +377,11 @@ HTML からの参照例:
 
 ### Phase A — 基盤（必須）
 
-- [x] `layouts` テーブル + `pages.layout_id` + `pages.is_static` 削除マイグレーション（`migrations/0002_layouts.sql`）
+- [x] `layouts` テーブル + `pages.layout_id` + `pages.is_static` 削除（`migrations/0001_init.sql`）
 - [x] `work/layouts/default/` の seed（`shell.html`, `pages/index.html`, `static/site.css`）
 - [x] 描画パイプライン（MiniJinja のみ、`page_render` 分岐削除）
 - [x] `/static/{layout_key}/*` 配信
-- [x] dev reset の `work/layouts` 対応（既存 DB はマイグレーションで移行）
+- [x] dev reset の `work/layouts` 対応（スキーマ変更時は既存 DB を削除して再生成）
 
 ### Phase B — 管理 UI
 
@@ -443,12 +443,3 @@ HTML からの参照例:
 | 作業ディレクトリ | `work/templates` + `work/pages` | `work/layouts/{key}/` のみ |
 | ページの親 | なし（フラット） | 必ず 1 Layout |
 | 公開 HTML の生成 | ページ単体 or 生返し | 本文テンプレート（通常 `extends` shell） |
-
----
-
-## 改訂履歴
-
-| 日付 | 内容 |
-|------|------|
-| 2026-06-04 | 初版（会話での設計考察を詳細設計として文書化） |
-| 2026-06-04 | `is_static` を廃止。公開描画を MiniJinja に一本化。将来の高速化は別節へ |

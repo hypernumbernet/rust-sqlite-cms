@@ -59,19 +59,31 @@ CREATE TABLE IF NOT EXISTS options (
     autoload     INTEGER NOT NULL DEFAULT 1
 );
 
--- ページ（テンプレート / 固定ページ。本文は work/ 配下、DB にはメタ情報のみ） ----
--- is_static=0: work/templates/ + MiniJinja、is_static=1: work/pages/ + 生 HTML
+-- レイアウト（公開サイトの shell / pages / static の単位） --------------------
+CREATE TABLE IF NOT EXISTS layouts (
+    id               INTEGER PRIMARY KEY,
+    key              TEXT    NOT NULL UNIQUE,
+    name             TEXT    NOT NULL DEFAULT '',
+    is_default       INTEGER NOT NULL DEFAULT 0,
+    favicon_media_id INTEGER,
+    created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+-- ページ（テンプレート / 固定ページ。本文は work/layouts/{key}/ 配下、DB にはメタ情報のみ） --
 CREATE TABLE IF NOT EXISTS pages (
     id           INTEGER PRIMARY KEY,
+    layout_id    INTEGER NOT NULL REFERENCES layouts(id) ON DELETE RESTRICT,
     name         TEXT    NOT NULL DEFAULT '',
     url_path     TEXT    UNIQUE,
-    file_name    TEXT    UNIQUE,
-    is_static    INTEGER NOT NULL DEFAULT 0,
+    file_name    TEXT    NOT NULL,
     is_published INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    updated_at   TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE (layout_id, file_name)
 );
 CREATE INDEX IF NOT EXISTS idx_pages_published ON pages(is_published);
+CREATE INDEX IF NOT EXISTS idx_pages_layout ON pages(layout_id);
 
 -- 管理ユーザー -------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
@@ -86,6 +98,9 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_users_login ON users(login);
 
 -- 初期シードデータ ---------------------------------------------------------
+INSERT INTO layouts (key, name, is_default)
+VALUES ('default', '既定', 1);
+
 -- テンプレート（presets/index.html など）が参照する "news" プレースホルダー
 INSERT INTO widget_types (type_key, label, description, config, html_template, config_schema)
 VALUES (

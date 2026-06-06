@@ -5,7 +5,7 @@
 
 ## 現状
 
-Phase 1 のコンテンツ管理機能（ページ + ウィジェット） + レイアウト基盤（Phase A/B） + メディアライブラリ + 画像カルーセルウィジェット + ウィジェット配布 まで実装済みです。`cargo run` で設定読み込み → SQLite プール生成 → マイグレーション適用（`migrations/0001_init.sql` + `0002_layouts.sql` + `0003_layout_favicon.sql`） → 既定 `options` 投入 → 既定ユーザー確認 → `work/` ディレクトリ初期化（`theme::ensure_seeded` で `work/layouts/default/` の shell/pages/static seed + legacy 移行、既定レイアウト行確保、 `media::ensure_uploads_dir`、 `pages::ensure_index_page`） → axum サーバー起動までが一連で動作します。初回起動時に `data/cms.db`（親 dir 含め）が自動生成されます。開発用の `cargo run -- --test` では `admin` のパスワードを常に `testpass` に固定します。サンプルデータは `/admin/samples` からリセット/追記可能。
+Phase 1 のコンテンツ管理機能（ページ + ウィジェット） + レイアウト基盤（Phase A/B） + メディアライブラリ + 画像カルーセルウィジェット + ウィジェット配布 まで実装済みです。`cargo run` で設定読み込み → SQLite プール生成 → マイグレーション適用（`migrations/0001_init.sql`） → 既定 `options` 投入 → 既定ユーザー確認 → `work/` ディレクトリ初期化（`theme::ensure_seeded` で `work/layouts/default/` の shell/pages/static seed + legacy 移行、既定レイアウト行確保、 `media::ensure_uploads_dir`、 `pages::ensure_index_page`） → axum サーバー起動までが一連で動作します。初回起動時に `data/cms.db`（親 dir 含め）が自動生成されます。開発用の `cargo run -- --test` では `admin` のパスワードを常に `testpass` に固定します。サンプルデータは `/admin/samples` からリセット/追記可能。
 
 **利用可能な主な機能**:
 
@@ -46,7 +46,7 @@ Phase 1 のコンテンツ管理機能（ページ + ウィジェット） + レ
 
 ## アーキテクチャ
 
-Phase 1.5 以降の構成です。リクエストは HTTP 層（axum handlers）からサービス層を経由してリポジトリとテーマ/ウィジェット層を呼び出します。サービス層・認証ミドルウェアは導入済み。レイアウト基盤（0002/0003 マイグレーション）により公開ページ構造が `layouts` + `work/layouts/{key}/` に再編されました。
+Phase 1.5 以降の構成です。リクエストは HTTP 層（axum handlers）からサービス層を経由してリポジトリとテーマ/ウィジェット層を呼び出します。サービス層・認証ミドルウェアは導入済み。レイアウト基盤（`migrations/0001_init.sql` の `layouts` / `pages` スキーマ）により公開ページ構造が `layouts` + `work/layouts/{key}/` に再編されました。
 
 ```mermaid
 flowchart TB
@@ -118,7 +118,7 @@ flowchart TB
 | 用途 | クレート | 状態 | 備考 |
 |------|----------|------|------|
 | HTTP | `axum` + `tokio` | ✅ | 軽量・型安全 |
-| DB | `sqlx`（sqlite, バンドル） | ✅ | マイグレーションは `migrations/0001_init.sql` の手書き SQL（`sqlx::migrate!`） |
+| DB | `sqlx`（sqlite, バンドル） | ✅ | マイグレーションは `migrations/0001_init.sql` の手書き SQL（統合初期スキーマ、`sqlx::migrate!`） |
 | テンプレート（管理画面） | `askama` | ✅ | コンパイル時テンプレート検証（公開テンプレートの影響を受けない） |
 | テンプレート（公開サイト） | `minijinja` + `minijinja-autoreload` | ✅ | ランタイム評価。`work/layouts/{key}/` 配下を監視し、ファイル編集を再起動なしで反映（`theme::layouts_dir`） |
 | 静的配信 | `tower-http`（ServeDir） | ✅ | `work/layouts/{key}/static/*` を `/static/{key}/*` で配信（レイアウト名前空間） |
@@ -143,7 +143,7 @@ rust-sqlite-cms/
 │   └── LAYOUT_SPEC.md       # レイアウト再編の詳細設計（Phase A/B 実装済み）
 ├── Cargo.toml
 ├── config.example.toml      # 設定のサンプル（初回起動で work/config.toml へコピー）
-├── migrations/              # SQLite スキーマ（0001_init.sql + 0002_layouts.sql + 0003_layout_favicon.sql）
+├── migrations/              # SQLite スキーマ（0001_init.sql：統合初期スキーマ）
 ├── presets/                 # 同梱スターターデザイン（git 管理・seed 元）
 │   ├── shell.html           # 既定レイアウト shell（HEAD/nav/footer + extends ブロック）
 │   ├── home_page.html       # トップページ本文（carousel + news ウィジェット使用例）
@@ -276,7 +276,7 @@ flowchart LR
 
 ## データモデル概要
 
-`migrations/0001_init.sql`（ウィジェット/ページ/投稿/オプション/ユーザー初期） + `0002_layouts.sql`（layouts テーブル + pages 再編: layout_id 追加 / is_static 廃止 / file_name 統一） + `0003_layout_favicon.sql` が現在のデータモデル基盤です（`users` / タクソノミー系は未導入。将来フェーズで追加予定）。`layouts` + `media` + `postmeta` が積極的に使われています。
+`migrations/0001_init.sql`（ウィジェット/投稿/オプション/ユーザー + `layouts` / `pages`（`layout_id` 必須・`is_static` なし）/ `favicon_media_id` + news/image/carousel シード）が現在のデータモデル基盤です（`users` / タクソノミー系は未導入。将来フェーズで追加予定）。`layouts` + `media` + `postmeta` が積極的に使われています。
 
 **主な関係（実装済み部分）**:
 
@@ -310,7 +310,7 @@ erDiagram
 
 - 型は `INTEGER PRIMARY KEY`, `TEXT`, 必要に応じて `JSON`（config など）
 - 外部キーで参照整合性を担保（`placeholder_id`, `layout_id`, `post_id` など）
-- マイグレーションは `migrations/` 配下の複数ファイル（`0001_init.sql` でウィジェット体系・投稿・オプション・ユーザー + news/image/carousel シード、`0002_layouts.sql` で layouts 追加 + pages 再編（layout_id 必須化 / is_static 廃止 / file_name レイアウト内相対化 + ホーム正規化）、`0003_layout_favicon.sql` で layouts.favicon_media_id）。`sqlx::migrate!` で自動適用
+- マイグレーションは `migrations/0001_init.sql` の単一ファイル（ウィジェット体系・投稿・オプション・ユーザー + `layouts` / `pages` 最終形 + news/image/carousel シード）。`sqlx::migrate!` で自動適用
 - 全文検索は Phase 1 では `LIKE`、将来 **FTS5** を検討
 - スキーマ変更後は既存 `data/cms.db` を削除して再生成（`sqlx::migrate!` のチェックサム検証のため）
 （従来予定の `post_type` による pages/posts 統一モデルは、Phase 1 実装で `pages`（サイト構造 + layouts 所属） + ウィジェット用 `posts` に分離・進化しました。レイアウト移行は LAYOUT_SPEC.md 参照。）
@@ -421,7 +421,7 @@ flowchart TB
 
 進捗凡例: `[x]` 完了 / `[~]` 一部 / `[ ]` 未着手
 
-- [x] SQLite マイグレーション（`migrations/0001_init.sql` + `0002_layouts.sql` + `0003_layout_favicon.sql` でウィジェット体系・layouts・pages 再編・favicon）
+- [x] SQLite マイグレーション（`migrations/0001_init.sql` でウィジェット体系・layouts・pages・favicon を含む統合初期スキーマ）
 - [x] サイト基本設定（`options` テーブル + 起動時の既定値投入 + `ensure_defaults`）
 - [x] サイト設定画面（`/admin/settings`、`work/config.toml` の `[site]` 同期）
 - [x] 管理画面（Askama）（ダッシュボード + 投稿/ページ/レイアウト/ウィジェット/メディア/サンプル/ユーザー管理画面のフル CRUD）

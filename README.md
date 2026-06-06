@@ -57,7 +57,7 @@ cargo run -- --test
 
 `--test` 指定時は起動のたびに `admin` のパスワードが `testpass` に設定されます（既存 DB に `admin` がいても上書き）。本番環境では使用しないでください。
 
-`cargo run` で次の起動シーケンスが実行されます: `work/config.toml` の確認（無ければ `config.example.toml` から生成）→ 設定読み込み → `data/cms.db`（親 dir 含め自動生成）への接続 → マイグレーション適用（0001_init + 0002_layouts + 0003_layout_favicon） → 既定 `options` の確認 → 既定ユーザー `admin` の確認（通常起動: 初回のみランダムパスワードを起動ログに一度出力 / `--test`: パスワードを `testpass` に設定）→ `work/` ディレクトリの初期化（`work/layouts/default/` の shell/pages/static seed、既定レイアウト行の確保、uploads ディレクトリ確保、トップページ行の確保） → `127.0.0.1:3000` で待受。
+`cargo run` で次の起動シーケンスが実行されます: `work/config.toml` の確認（無ければ `config.example.toml` から生成）→ 設定読み込み → `data/cms.db`（親 dir 含め自動生成）への接続 → マイグレーション適用（`migrations/0001_init.sql`） → 既定 `options` の確認 → 既定ユーザー `admin` の確認（通常起動: 初回のみランダムパスワードを起動ログに一度出力 / `--test`: パスワードを `testpass` に設定）→ `work/` ディレクトリの初期化（`work/layouts/default/` の shell/pages/static seed、既定レイアウト行の確保、uploads ディレクトリ確保、トップページ行の確保） → `127.0.0.1:3000` で待受。
 
 `work/config.toml` が無くてもデフォルト値で起動します（初回起動時に自動生成されます）。設定は環境変数でも上書きできます（例: `CMS_BIND_ADDR=0.0.0.0:3000 cargo run`）。
 

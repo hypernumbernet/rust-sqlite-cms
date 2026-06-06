@@ -2,6 +2,7 @@ use askama::Template;
 use axum::{
     Form, Router,
     extract::{Multipart, Path as AxumPath, Query, State},
+    http::{header, HeaderMap, HeaderValue},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -9,7 +10,7 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 
 use crate::error::{AppError, AppResult};
-use crate::models::layout::LayoutInput;
+use crate::models::layout::{LayoutImportMode, LayoutInput};
 use crate::repos::{layouts as layouts_repo, media as media_repo};
 use crate::services::{self, layouts::LayoutAdminFile};
 use crate::state::AppState;
@@ -42,6 +43,14 @@ struct NewStaticFileForm {
 struct EditQuery {
     #[serde(default)]
     error: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct LayoutIndexQuery {
+    #[serde(default)]
+    success_message: String,
+    #[serde(default)]
+    error_message: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -113,6 +122,8 @@ const NEW_STATIC_HELP: &str = "static/ からの相対パス（例: site.css, js
 struct LayoutIndexTemplate {
     layout: admin_layout::AdminLayoutCtx,
     layouts: Vec<LayoutListItem>,
+    success_message: String,
+    error_message: String,
 }
 
 #[derive(Template)]
@@ -157,6 +168,8 @@ struct LayoutFileEditTemplate {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/layouts", get(index).post(create))
+        .route("/admin/layouts/import", post(import_layout))
+        .route("/admin/layouts/{id}/export", get(export_layout))
         .route("/admin/layouts/new", get(new_form))
         .route("/admin/layouts/{id}/edit", get(edit).post(update))
         .route("/admin/layouts/{id}/delete", post(destroy))
@@ -176,7 +189,11 @@ pub fn router() -> Router<AppState> {
         )
 }
 
-async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+async fn index(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Query(query): Query<LayoutIndexQuery>,
+) -> AppResult<impl IntoResponse> {
     let rows = layouts_repo::list_all(&state.pool).await?;
     let mut layouts = Vec::with_capacity(rows.len());
     for row in rows {
@@ -195,10 +212,89 @@ async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl 
     let html = LayoutIndexTemplate {
         layout: admin_layout::AdminLayoutCtx::new(&auth),
         layouts,
+        success_message: query.success_message,
+        error_message: query.error_message,
     }
     .render()?;
 
     Ok(Html(html))
+}
+
+async fn export_layout(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<i64>,
+) -> AppResult<Response> {
+    let layout = layouts_repo::find(&state.pool, id).await?;
+    let bytes = services::layouts::export_layout_zip(&state.pool, &state.config, id).await?;
+    let filename = format!("layout-{}.zip", layout.key);
+    let disposition = format!("attachment; filename=\"{filename}\"");
+
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/zip"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&disposition).map_err(|e| AppError::Other(e.into()))?,
+    );
+
+    Ok((headers, bytes).into_response())
+}
+
+async fn import_layout(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> AppResult<Response> {
+    let mut mode = LayoutImportMode::Overwrite;
+    let mut package_bytes: Option<Vec<u8>> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|err| AppError::Other(err.into()))?
+    {
+        match field.name() {
+            Some("mode") => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|err| AppError::Other(err.into()))?;
+                if text.trim() == "skip" {
+                    mode = LayoutImportMode::Skip;
+                }
+            }
+            Some("package") => {
+                let data = field
+                    .bytes()
+                    .await
+                    .map_err(|err| AppError::Other(err.into()))?;
+                package_bytes = Some(data.to_vec());
+            }
+            _ => {}
+        }
+    }
+
+    let Some(bytes) = package_bytes else {
+        return Ok(redirect_index_with_error(
+            "ZIP ファイル（package）を選択してください",
+        ));
+    };
+
+    match services::layouts::import_layout_zip(&state.pool, &state.config, &bytes, mode).await {
+        Ok((_, message)) => Ok(redirect_index_with_success(&message)),
+        Err(err) => Ok(redirect_index_with_error(&err.to_string())),
+    }
+}
+
+fn redirect_index_with_success(message: &str) -> Response {
+    let encoded = urlencoding::encode(message);
+    Redirect::to(&format!("/admin/layouts?success_message={encoded}")).into_response()
+}
+
+fn redirect_index_with_error(message: &str) -> Response {
+    let encoded = urlencoding::encode(message);
+    Redirect::to(&format!("/admin/layouts?error_message={encoded}")).into_response()
 }
 
 async fn new_form(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {

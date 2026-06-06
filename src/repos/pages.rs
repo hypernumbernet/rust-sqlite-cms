@@ -6,6 +6,23 @@ use crate::repos::{layouts, url_paths};
 
 const HOME_FILE_NAME: &str = "pages/index.html";
 
+/// 指定レイアウトに所属するページを取得する。
+pub async fn list_by_layout(pool: &SqlitePool, layout_id: i64) -> AppResult<Vec<Page>> {
+    Ok(sqlx::query_as::<_, Page>(
+        "SELECT p.id, p.layout_id, p.name, p.url_path, p.file_name, p.is_published,
+         p.created_at, p.updated_at, l.key AS layout_key
+         FROM pages p
+         INNER JOIN layouts l ON l.id = p.layout_id
+         WHERE p.layout_id = ?
+         ORDER BY CASE WHEN p.url_path = '/' THEN 0 ELSE 1 END,
+                  datetime(p.updated_at) DESC,
+                  p.id DESC",
+    )
+    .bind(layout_id)
+    .fetch_all(pool)
+    .await?)
+}
+
 /// 管理画面向けに、全ページを取得する（トップを先頭、以降は更新日時の新しい順）。
 pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Page>> {
     Ok(sqlx::query_as::<_, Page>(
@@ -100,6 +117,31 @@ pub async fn ensure_index_page(pool: &SqlitePool) -> AppResult<()> {
     .await?;
 
     Ok(())
+}
+
+/// 指定した `file_name` でページメタを作成する（インポート用）。
+/// 本文ファイルの書き込みは呼び出し側で行う。
+pub async fn insert_with_file_name(
+    pool: &SqlitePool,
+    input: &PageInput,
+    file_name: &str,
+) -> AppResult<i64> {
+    url_paths::ensure_url_available(pool, input.url_path.as_deref(), None).await?;
+
+    let row: (i64,) = sqlx::query_as(
+        "INSERT INTO pages (name, url_path, file_name, layout_id, is_published)
+         VALUES (?, ?, ?, ?, ?)
+         RETURNING id",
+    )
+    .bind(&input.name)
+    .bind(&input.url_path)
+    .bind(file_name)
+    .bind(input.layout_id)
+    .bind(input.is_published)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row.0)
 }
 
 /// メタ情報を作成し、`id` から確定したファイル名（`pages/page-{id}.html`）を

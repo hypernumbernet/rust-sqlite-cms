@@ -127,6 +127,12 @@ struct LayoutIndexTemplate {
 }
 
 #[derive(Template)]
+#[template(path = "admin/layouts/import.html")]
+struct LayoutImportTemplate {
+    layout: admin_layout::AdminLayoutCtx,
+}
+
+#[derive(Template)]
 #[template(path = "admin/layouts/form.html")]
 struct LayoutFormTemplate {
     layout: admin_layout::AdminLayoutCtx,
@@ -168,7 +174,7 @@ struct LayoutFileEditTemplate {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/layouts", get(index).post(create))
-        .route("/admin/layouts/import", post(import_layout))
+        .route("/admin/layouts/import", get(import_form).post(import_layout))
         .route("/admin/layouts/{id}/export", get(export_layout))
         .route("/admin/layouts/new", get(new_form))
         .route("/admin/layouts/{id}/edit", get(edit).post(update))
@@ -214,6 +220,15 @@ async fn index(
         layouts,
         success_message: query.success_message,
         error_message: query.error_message,
+    }
+    .render()?;
+
+    Ok(Html(html))
+}
+
+async fn import_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
+    let html = LayoutImportTemplate {
+        layout: admin_layout::AdminLayoutCtx::new(&auth),
     }
     .render()?;
 
@@ -318,7 +333,7 @@ async fn new_form(auth: AuthUser, State(state): State<AppState>) -> AppResult<im
     let html = build_layout_form(
         &state.pool,
         admin_layout::AdminLayoutCtx::new(&auth),
-        "レイアウトを追加",
+        "レイアウトを新規追加",
         "/admin/layouts",
         "作成する",
         String::new(),
@@ -766,7 +781,7 @@ async fn layout_error_response(
         )
     } else {
         (
-            "レイアウトを追加",
+            "レイアウトを新規追加",
             "/admin/layouts".to_string(),
             "作成する",
             String::new(),

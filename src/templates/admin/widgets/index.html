@@ -8,11 +8,12 @@
 <style>
   .type-name { font-weight: 600; }
   .type-key { color: var(--muted); font-size: 12px; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  .import-panel { margin-bottom: 20px; }
 </style>
 
 <div class="toolbar">
   <p>ウィジェットタイプのHTML構成を編集します。<code>html_template</code> が公開ページで <code>&#123;&#123; プレースホルダー名 &#125;&#125;_html</code> として利用可能になります。インスタンスごとの設定（表示件数など）はプレースホルダー側で管理します。</p>
+  <a class="button" href="/admin/widgets/new">新規追加</a>
+  <a class="button secondary" href="/admin/widgets/import">インポート</a>
 </div>
 
 {% if !success_message.is_empty() %}
@@ -21,37 +22,6 @@
 {% if !error_message.is_empty() %}
 <div class="notice error">{{ error_message }}</div>
 {% endif %}
-
-<section class="panel import-panel">
-  <h3 class="panel-title">ウィジェットをインポート</h3>
-  <p class="help mb-12">JSON パッケージ（<code>format_version: 1</code>）をアップロードすると、新しいウィジェットタイプの登録または既存タイプの更新ができます。</p>
-  <form method="post" action="/admin/widgets/import" enctype="multipart/form-data">
-    <div class="field">
-      <label for="package">パッケージファイル（.json）</label>
-      <input id="package" name="package" type="file" accept="application/json,.json" required>
-    </div>
-    <div class="field">
-      <label>既存の type_key がある場合</label>
-      <label class="label-option">
-        <input type="radio" name="mode" value="overwrite" checked> 上書きする
-      </label>
-      <label class="label-option">
-        <input type="radio" name="mode" value="skip"> スキップする（変更しない）
-      </label>
-      <label class="label-option">
-        <input type="radio" name="mode" value="rename"> 別の type_key でインポートする（新規作成）
-      </label>
-    </div>
-    <div class="field">
-      <label for="target_key">インポート先 type_key</label>
-      <input id="target_key" name="target_key" type="text" placeholder="例: news_copy">
-      <p class="help">「別の type_key でインポートする」を選んだときに指定してください。英小文字で始まり、英小文字・数字・アンダースコアのみ。</p>
-    </div>
-    <div class="actions">
-      <button class="button" type="submit">インポート</button>
-    </div>
-  </form>
-</section>
 
 <section class="panel panel-table">
   <table>

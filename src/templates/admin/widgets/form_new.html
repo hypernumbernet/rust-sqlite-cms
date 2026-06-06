@@ -1,0 +1,46 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_widgets %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<form method="post" action="{{ action }}">
+  <div class="panel panel-spaced">
+    <div class="field mb-0">
+      <label>カスタムウィジェットタイプ</label>
+      <p class="help mb-0">
+        新しい <code>type_key</code> でウィジェットタイプを登録します。HTML（MiniJinja）を編集すると、
+        対応するプレースホルダーを使うページで <code>&#123;&#123; プレースホルダー名 &#125;&#125;_html</code> として出力されます。
+      </p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="field">
+      <label for="type_key">タイプキー (type_key)</label>
+      <input id="type_key" name="type_key" type="text" class="input-mono" value="{{ type_key }}" required pattern="[a-z][a-z0-9_]*">
+      <p class="help">英小文字で始まり、英小文字・数字・アンダースコアのみ。</p>
+    </div>
+
+    <div class="field">
+      <label for="html_template">ウィジェットを構成するHTML（MiniJinjaテンプレート）</label>
+      <textarea id="html_template" name="html_template" class="code-editor code-editor--tall" spellcheck="false">{{ html_template }}</textarea>
+    </div>
+
+    <div class="field">
+      <label for="config_schema">インスタンス設定スキーマ定義（JSON）</label>
+      <textarea id="config_schema" name="config_schema" class="code-editor code-editor--json" spellcheck="false">{{ config_schema }}</textarea>
+      <p class="help help-mt-6">プレースホルダー編集画面で自動生成する入力欄の定義です。</p>
+    </div>
+
+    <div class="actions mt-20">
+      <button class="button" type="submit">{{ submit_label }}</button>
+      <a class="button secondary" href="/admin/widgets">戻る</a>
+    </div>
+  </div>
+</form>
+
+{% if !error_message.is_empty() %}
+<div class="notice error mt-16">{{ error_message }}</div>
+{% endif %}
+{% endblock %}

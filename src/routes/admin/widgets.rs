@@ -43,6 +43,25 @@ struct WidgetTypeListItem {
 }
 
 #[derive(Template)]
+#[template(path = "admin/widgets/import.html")]
+struct WidgetImportTemplate {
+    layout: layout::AdminLayoutCtx,
+}
+
+#[derive(Template)]
+#[template(path = "admin/widgets/form_new.html")]
+struct WidgetNewFormTemplate {
+    layout: layout::AdminLayoutCtx,
+    heading: String,
+    action: String,
+    submit_label: String,
+    type_key: String,
+    html_template: String,
+    config_schema: String,
+    error_message: String,
+}
+
+#[derive(Template)]
 #[template(path = "admin/widgets/index.html")]
 struct WidgetIndexTemplate {
     layout: layout::AdminLayoutCtx,
@@ -70,8 +89,9 @@ struct WidgetEditFormTemplate {
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/admin/widgets", get(index))
-        .route("/admin/widgets/import", post(import_widget))
+        .route("/admin/widgets", get(index).post(create_widget))
+        .route("/admin/widgets/import", get(import_form).post(import_widget))
+        .route("/admin/widgets/new", get(new_form))
         .route("/admin/widgets/{type_key}/export", get(export_widget))
         .route("/admin/widgets/{type_key}/edit", get(edit).post(update))
         .route("/admin/widgets/{type_key}/delete", post(destroy))
@@ -96,6 +116,90 @@ async fn index(
     .render()?;
 
     Ok(Html(html))
+}
+
+async fn import_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
+    let html = WidgetImportTemplate {
+        layout: layout::AdminLayoutCtx::new(&auth),
+    }
+    .render()?;
+
+    Ok(Html(html))
+}
+
+async fn new_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
+    let html = WidgetNewFormTemplate {
+        layout: layout::AdminLayoutCtx::new(&auth),
+        heading: "ウィジェットを新規追加".to_string(),
+        action: "/admin/widgets".to_string(),
+        submit_label: "作成する".to_string(),
+        type_key: String::new(),
+        html_template: "<div></div>".to_string(),
+        config_schema: r#"{"fields":[]}"#.to_string(),
+        error_message: String::new(),
+    }
+    .render()?;
+
+    Ok(Html(html))
+}
+
+async fn create_widget(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Form(form): Form<WidgetTypeForm>,
+) -> AppResult<Response> {
+    let type_key = form.type_key.trim();
+    if type_key.is_empty() {
+        return Ok(render_new_form_error(&auth, &form, "type_key を入力してください")?);
+    }
+
+    if widget_types_repo::exists_by_key(&state.pool, type_key).await? {
+        return Ok(render_new_form_error(
+            &auth,
+            &form,
+            &format!("type_key「{type_key}」は既に使われています"),
+        )?);
+    }
+
+    let html_template = form.html_template.clone();
+    let config_schema = form.config_schema.clone();
+
+    if let Err(err) = widget_types_repo::upsert_package(
+        &state.pool,
+        type_key,
+        type_key,
+        "",
+        "{}",
+        &html_template,
+        &config_schema,
+    )
+    .await
+    {
+        return Ok(render_new_form_error(&auth, &form, &err.to_string())?);
+    }
+
+    Ok(redirect_index_with_success(&format!(
+        "ウィジェット「{type_key}」を新規登録しました"
+    )))
+}
+
+fn render_new_form_error(
+    auth: &AuthUser,
+    form: &WidgetTypeForm,
+    message: &str,
+) -> AppResult<Response> {
+    let html = WidgetNewFormTemplate {
+        layout: layout::AdminLayoutCtx::new(auth),
+        heading: "ウィジェットを新規追加".to_string(),
+        action: "/admin/widgets".to_string(),
+        submit_label: "作成する".to_string(),
+        type_key: form.type_key.clone(),
+        html_template: form.html_template.clone(),
+        config_schema: form.config_schema.clone(),
+        error_message: message.to_string(),
+    }
+    .render()?;
+    Ok(Html(html).into_response())
 }
 
 async fn export_widget(

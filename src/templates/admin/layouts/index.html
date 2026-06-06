@@ -5,13 +5,10 @@
 {% block heading %}レイアウト{% endblock %}
 
 {% block content %}
-<style>
-  .import-panel { margin-bottom: 20px; }
-</style>
-
 <div class="toolbar">
   <p>公開サイトの共通枠（shell）と静的アセットをレイアウト単位で管理します。各ページは必ずいずれかのレイアウトに属します。</p>
-  <a class="button" href="/admin/layouts/new">レイアウトを追加</a>
+  <a class="button" href="/admin/layouts/new">新規追加</a>
+  <a class="button secondary" href="/admin/layouts/import">インポート</a>
   <a class="button secondary" href="/admin/pages">ページ一覧</a>
 </div>
 
@@ -21,37 +18,6 @@
 {% if !error_message.is_empty() %}
 <div class="notice error">{{ error_message }}</div>
 {% endif %}
-
-<section class="panel import-panel">
-  <h3 class="panel-title">レイアウトをインポート</h3>
-  <p class="help mb-12">ZIP パッケージ（<code>format_version: 1</code>）をアップロードすると、新しいレイアウトの登録または既存レイアウトの更新ができます。ウィジェット・プレースホルダーは含まれません。</p>
-  <form method="post" action="/admin/layouts/import" enctype="multipart/form-data">
-    <div class="field">
-      <label for="package">パッケージファイル（.zip）</label>
-      <input id="package" name="package" type="file" accept="application/zip,.zip" required>
-    </div>
-    <div class="field">
-      <label>既存の layout key がある場合</label>
-      <label class="label-option">
-        <input type="radio" name="mode" value="overwrite" checked> 上書きする
-      </label>
-      <label class="label-option">
-        <input type="radio" name="mode" value="skip"> スキップする（変更しない）
-      </label>
-      <label class="label-option">
-        <input type="radio" name="mode" value="rename"> 別の key でインポートする（新規作成）
-      </label>
-    </div>
-    <div class="field">
-      <label for="target_key">インポート先 layout key</label>
-      <input id="target_key" name="target_key" type="text" placeholder="例: corporate-copy">
-      <p class="help">「別の key でインポートする」を選んだときに指定してください。英数字・ハイフン・アンダースコアのみ。別名インポート時は各ページの URL に <code>/{key}</code> が先頭へ付与されます（例: <code>/about</code> → <code>/corporate-copy/about</code>）。</p>
-    </div>
-    <div class="actions">
-      <button class="button" type="submit">インポート</button>
-    </div>
-  </form>
-</section>
 
 <section class="panel panel-table">
   <table>

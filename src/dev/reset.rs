@@ -59,6 +59,11 @@ const BASIC_PLACEHOLDERS: &[PlaceholderSpec] = &[
         type_key: "news",
         config: r#"{"limit": 4}"#,
     },
+    PlaceholderSpec {
+        name: "contact",
+        type_key: "contact_form",
+        config: r#"{"heading":"お問い合わせ"}"#,
+    },
 ];
 
 const BASIC_POST_SLUGS: &[&str] = &[
@@ -85,9 +90,21 @@ const BASIC_MEDIA_FILES: &[&str] = &[
     "carousel-3.png",
 ];
 
-const BASIC_PAGE_URL_PATHS: &[&str] = &["/news", "/about"];
+const BASIC_PAGE_URL_PATHS: &[&str] = &["/news", "/about", "/contact"];
 
 const BASIC_NEWS_PAGE_HTML: &str = include_str!("../../presets/pages/news.html");
+
+const BASIC_CONTACT_PAGE_HTML: &str = r#"{% extends "default/shell.html" %}
+{% block title %}お問い合わせ - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container" style="max-width:720px;padding:64px 0">
+      <p class="lead">ご質問・ご相談は以下のフォームよりお送りください。</p>
+      {{ contact_html | safe }}
+    </div>
+  </section>
+{% endblock %}
+"#;
 
 const BASIC_ABOUT_PAGE_HTML: &str = r#"{% extends "default/shell.html" %}
 {% block title %}会社概要 - {{ blogname }}{% endblock %}
@@ -121,6 +138,7 @@ const BASIC_SAMPLE_SHELL: &str = r#"<!DOCTYPE html>
         <a href="/">ホーム</a>
         <a href="/about">会社概要</a>
         <a href="/news">お知らせ</a>
+        <a href="/contact">お問い合わせ</a>
         <a href="/admin/posts">管理画面</a>
       </nav>
     </div>
@@ -157,6 +175,11 @@ const BASIC_EXTRA_PAGES: &[BasicPageSpec] = &[
         url_path: "/about",
         content: BASIC_ABOUT_PAGE_HTML,
     },
+    BasicPageSpec {
+        name: "お問い合わせ",
+        url_path: "/contact",
+        content: BASIC_CONTACT_PAGE_HTML,
+    },
 ];
 
 struct PlaceholderIds {
@@ -165,6 +188,8 @@ struct PlaceholderIds {
     hero: i64,
     carousel: i64,
     sidebar: i64,
+    #[allow(dead_code)]
+    contact: i64,
 }
 
 /// 基本テストデータを適用する（現在唯一のサンプル）
@@ -374,12 +399,14 @@ async fn resolve_placeholder_ids(
             let hero = ensure_placeholder(tx, &BASIC_PLACEHOLDERS[2]).await?;
             let carousel = ensure_placeholder(tx, &BASIC_PLACEHOLDERS[3]).await?;
             let sidebar = ensure_placeholder(tx, &BASIC_PLACEHOLDERS[4]).await?;
+            let contact = ensure_placeholder(tx, &BASIC_PLACEHOLDERS[5]).await?;
             Ok(PlaceholderIds {
                 news,
                 announcements,
                 hero,
                 carousel,
                 sidebar,
+                contact,
             })
         }
         SeedStrategy::Append => {
@@ -388,12 +415,14 @@ async fn resolve_placeholder_ids(
             let hero = insert_placeholder(tx, &BASIC_PLACEHOLDERS[2]).await?;
             let carousel = insert_placeholder(tx, &BASIC_PLACEHOLDERS[3]).await?;
             let sidebar = insert_placeholder(tx, &BASIC_PLACEHOLDERS[4]).await?;
+            let contact = insert_placeholder(tx, &BASIC_PLACEHOLDERS[5]).await?;
             Ok(PlaceholderIds {
                 news,
                 announcements,
                 hero,
                 carousel,
                 sidebar,
+                contact,
             })
         }
     }

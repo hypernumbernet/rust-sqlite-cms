@@ -4,10 +4,11 @@ use sqlx::SqlitePool;
 use crate::error::AppResult;
 use crate::models::post::Post;
 use crate::models::widget::{
-    build_image_img_style, build_image_style, CarouselWidgetConfig, ImageWidgetConfig,
-    NewsWidgetConfig, WidgetType,
+    build_image_img_style, build_image_style, CarouselWidgetConfig, ContactFormWidgetConfig,
+    ImageWidgetConfig, NewsWidgetConfig, WidgetType,
 };
 use crate::repos::{media, placeholders, postmeta, posts, widget_types};
+use crate::services::contact_form;
 
 /// 登録済みウィジェットタイプの定義。
 #[derive(Debug, Clone, Copy)]
@@ -32,6 +33,11 @@ pub const WIDGET_TYPES: &[WidgetTypeDef] = &[
         key: "carousel",
         label: "画像カルーセル",
         description: "複数の画像をスライドショー形式で表示します。各画像にリンクを設定可能",
+    },
+    WidgetTypeDef {
+        key: "contact_form",
+        label: "お問い合わせフォーム",
+        description: "名前・メール・本文を受け付けるフォーム。二重送信防止付き",
     },
 ];
 
@@ -151,6 +157,11 @@ pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String
   {{{{ {name}_html | safe }}}}
 </div>"#
         ),
+        "contact_form" => format!(
+            r#"<section id="{name}">
+  {{{{ {name}_html | safe }}}}
+</section>"#
+        ),
         _ => format!("{{{{ {name}_html | safe }}}}"),
     };
 
@@ -166,6 +177,10 @@ pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String
         "carousel" => format!(
             "上級者向け（インライン）: <code>has_{name}</code> / <code>{name}.slides</code> など \
              構造化データをページ内で直接ループも可能。"
+        ),
+        "contact_form" => format!(
+            "お問い合わせフォームは <code>{{{{ {name}_html | safe }}}}</code> で差し込みます。\
+             送信先は <code>/contact/&lt;プレースホルダーID&gt;</code> です。"
         ),
         other => format!(
             "ウィジェットタイプ <code>{other}</code> 向け。<code>{name}</code> / \
@@ -183,10 +198,16 @@ pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String
 }
 
 /// ウィジェット HTML 生成時のオプション。
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct RenderOptions {
     /// プレビュー編集モード向けに `cms-widget-target` ラッパーを付与する。
     pub annotate_widgets: bool,
+    /// PRG 後に送信完了を表示するプレースホルダー名。
+    pub contact_sent: Option<String>,
+    /// 送信失敗を表示するプレースホルダー名。
+    pub contact_error: Option<String>,
+    /// フォームトークン署名用シークレット。
+    pub session_secret: Option<String>,
 }
 
 /// サイト変数と全プレースホルダーを解決し、MiniJinja 用コンテキストを返す。
@@ -225,7 +246,7 @@ pub async fn build_render_context(
             );
             continue;
         };
-        resolve_placeholder(pool, placeholder, widget_type, &mut ctx, options).await?;
+        resolve_placeholder(pool, placeholder, widget_type, &mut ctx, &options).await?;
     }
 
     Ok(minijinja::Value::from_serialize(ctx))
@@ -257,7 +278,7 @@ async fn resolve_placeholder(
     placeholder: &crate::models::placeholder::Placeholder,
     widget_type: &WidgetType,
     ctx: &mut serde_json::Map<String, serde_json::Value>,
-    options: RenderOptions,
+    options: &RenderOptions,
 ) -> AppResult<()> {
     // インスタンス設定（placeholder.config）を優先、未設定時はタイプのconfigをフォールバック
     let instance_config: serde_json::Value =
@@ -544,6 +565,81 @@ async fn resolve_placeholder(
             frag_ctx.insert("config".to_string(), instance_config.clone());
             insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
         }
+        "contact_form" => {
+            let mut cfg: ContactFormWidgetConfig =
+                serde_json::from_str(&widget_type.config).unwrap_or_default();
+            if let Some(heading) = instance_config.get("heading").and_then(|v| v.as_str()) {
+                if !heading.trim().is_empty() {
+                    cfg.heading = heading.trim().to_string();
+                }
+            }
+            if let Some(submit_label) = instance_config.get("submit_label").and_then(|v| v.as_str()) {
+                if !submit_label.trim().is_empty() {
+                    cfg.submit_label = submit_label.trim().to_string();
+                }
+            }
+            if let Some(success_message) =
+                instance_config.get("success_message").and_then(|v| v.as_str())
+            {
+                if !success_message.trim().is_empty() {
+                    cfg.success_message = success_message.trim().to_string();
+                }
+            }
+            if let Some(show_phone) = instance_config.get("show_phone").and_then(|v| v.as_bool()) {
+                cfg.show_phone = show_phone;
+            }
+
+            let sent = options
+                .contact_sent
+                .as_deref()
+                .is_some_and(|name| name == placeholder.name);
+            let error = options
+                .contact_error
+                .as_deref()
+                .is_some_and(|name| name == placeholder.name);
+
+            let token = match options.session_secret.as_deref() {
+                Some(secret) => match contact_form::issue_token(placeholder.id, secret) {
+                    Ok(value) => value,
+                    Err(err) => {
+                        tracing::error!(
+                            placeholder = %placeholder.name,
+                            error = %err,
+                            "contact form token issue failed"
+                        );
+                        String::new()
+                    }
+                },
+                None => {
+                    tracing::warn!(
+                        placeholder = %placeholder.name,
+                        "contact form rendered without session secret"
+                    );
+                    String::new()
+                }
+            };
+
+            let form = serde_json::json!({
+                "id": placeholder.id,
+                "action": format!("/contact/{}", placeholder.id),
+                "token": token,
+                "sent": sent,
+                "error": error,
+            });
+
+            ctx.insert(
+                format!("has_{}", placeholder.name),
+                serde_json::Value::Bool(true),
+            );
+
+            let mut frag_ctx: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+            frag_ctx.insert("form".to_string(), form);
+            frag_ctx.insert(
+                "config".to_string(),
+                serde_json::to_value(&cfg).unwrap_or_default(),
+            );
+            insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
+        }
         other => {
             tracing::debug!(
                 widget_type = other,
@@ -569,7 +665,7 @@ async fn insert_placeholder_html(
     placeholder: &crate::models::placeholder::Placeholder,
     widget_type: &WidgetType,
     frag_ctx: serde_json::Map<String, serde_json::Value>,
-    options: RenderOptions,
+    options: &RenderOptions,
 ) -> bool {
     if let Some(html) = render_widget_fragment_with_data(widget_type, &frag_ctx).await {
         let html = if options.annotate_widgets {

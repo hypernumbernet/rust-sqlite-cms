@@ -113,6 +113,7 @@ async fn annotate_widgets_wraps_html_with_preview_markers() {
         String::new(),
         widgets::RenderOptions {
             annotate_widgets: true,
+            ..Default::default()
         },
     )
     .await

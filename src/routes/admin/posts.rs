@@ -1157,6 +1157,11 @@ async fn build_manage_template(
                 .to_string(),
             "スライドを追加".to_string(),
         ),
+        "contact_form" => (
+            "公開フォームからの送信がここに記録されます".to_string(),
+            "サイトから受信したお問い合わせ一覧です。".to_string(),
+            "新規追加".to_string(),
+        ),
         _ => (
             String::new(),
             "このプレースホルダーに表示する投稿を管理します。".to_string(),

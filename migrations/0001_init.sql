@@ -303,3 +303,118 @@ VALUES (
   ]
 }'
 );
+
+-- お問い合わせフォームウィジェットタイプ
+INSERT INTO widget_types (type_key, label, description, config, html_template, config_schema)
+VALUES (
+    'contact_form',
+    'お問い合わせフォーム',
+    '名前・メール・本文を受け付けるフォーム。二重送信防止（ボタン無効化 + PRG）付き',
+    '{"heading":"お問い合わせ","submit_label":"送信する","success_message":"お問い合わせを受け付けました。担当者より折り返しご連絡いたします。","show_phone":false}',
+    '{% if form.sent %}
+<div class="contact-form-message contact-form-success" role="status">{{ config.success_message }}</div>
+{% else %}
+<div class="contact-form-widget">
+  {% if form.error %}
+  <div class="contact-form-message contact-form-error" role="alert">送信に失敗しました。入力内容を確認して再度お試しください。</div>
+  {% endif %}
+  {% if not form.token %}
+  <div class="contact-form-message contact-form-error" role="alert">フォームを初期化できませんでした。ページを再読み込みしてください。</div>
+  {% else %}
+  <h2 class="contact-form-heading">{{ config.heading }}</h2>
+  <form class="contact-form" method="post" action="{{ form.action }}" novalidate>
+    <input type="hidden" name="token" value="{{ form.token }}">
+    <div class="form-group">
+      <label for="contact-name-{{ form.id }}">お名前 <span class="required" aria-hidden="true">*</span></label>
+      <input type="text" id="contact-name-{{ form.id }}" name="name" required maxlength="100" autocomplete="name">
+    </div>
+    <div class="form-group">
+      <label for="contact-email-{{ form.id }}">メールアドレス <span class="required" aria-hidden="true">*</span></label>
+      <input type="email" id="contact-email-{{ form.id }}" name="email" required maxlength="254" autocomplete="email">
+    </div>
+    {% if config.show_phone %}
+    <div class="form-group">
+      <label for="contact-phone-{{ form.id }}">電話番号</label>
+      <input type="tel" id="contact-phone-{{ form.id }}" name="phone" maxlength="30" autocomplete="tel">
+    </div>
+    {% endif %}
+    <div class="form-group">
+      <label for="contact-message-{{ form.id }}">お問い合わせ内容 <span class="required" aria-hidden="true">*</span></label>
+      <textarea id="contact-message-{{ form.id }}" name="message" required maxlength="5000" rows="6"></textarea>
+    </div>
+    <button type="submit" class="button contact-form-submit">{{ config.submit_label }}</button>
+  </form>
+  {% endif %}
+</div>
+<style>
+.contact-form-widget { max-width: 560px; }
+.contact-form-heading { margin: 0 0 1.25rem; font-size: 1.5rem; }
+.contact-form .form-group { margin-bottom: 1rem; }
+.contact-form label { display: block; margin-bottom: 0.35rem; font-weight: 600; }
+.contact-form .required { color: #b32d2e; }
+.contact-form input[type="text"],
+.contact-form input[type="email"],
+.contact-form input[type="tel"],
+.contact-form textarea {
+  width: 100%; padding: 0.6rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit;
+}
+.contact-form-submit { margin-top: 0.5rem; }
+.contact-form-submit:disabled { opacity: 0.65; cursor: not-allowed; }
+.contact-form-message { padding: 1rem 1.25rem; border-radius: 8px; margin: 1rem 0; }
+.contact-form-success { background: #e8f5e9; border: 1px solid #81c784; color: #2e7d32; }
+.contact-form-error { background: #fff5f5; border: 1px solid #f5c6cb; color: #b32d2e; }
+</style>
+<script>
+(function() {
+  var root = document.currentScript.previousElementSibling;
+  if (!root || !root.classList.contains(''contact-form-widget'')) {
+    root = document.currentScript.parentElement.querySelector(''.contact-form-widget'');
+  }
+  if (!root) return;
+  var form = root.querySelector(''form.contact-form'');
+  if (!form) return;
+  var btn = form.querySelector(''.contact-form-submit'');
+  form.addEventListener(''submit'', function(e) {
+    if (form.dataset.submitting === ''1'') {
+      e.preventDefault();
+      return;
+    }
+    form.dataset.submitting = ''1'';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = ''送信中…'';
+    }
+  });
+})();
+</script>
+{% endif %}',
+    '{
+  "fields": [
+    {
+      "key": "heading",
+      "label": "見出し",
+      "type": "text",
+      "default": "お問い合わせ",
+      "help": "フォーム上部に表示する見出し"
+    },
+    {
+      "key": "submit_label",
+      "label": "送信ボタン文言",
+      "type": "text",
+      "default": "送信する"
+    },
+    {
+      "key": "success_message",
+      "label": "送信完了メッセージ",
+      "type": "text",
+      "default": "お問い合わせを受け付けました。担当者より折り返しご連絡いたします。"
+    },
+    {
+      "key": "show_phone",
+      "label": "電話番号フィールドを表示",
+      "type": "boolean",
+      "default": false
+    }
+  ]
+}'
+);

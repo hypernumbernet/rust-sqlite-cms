@@ -302,6 +302,42 @@ pub fn validate_carousel_size(value: &str, field: &str) -> Result<(), String> {
     validate_css_size(value, field)
 }
 
+/// contact_form ウィジェットタイプの設定。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactFormWidgetConfig {
+    #[serde(default = "default_contact_heading")]
+    pub heading: String,
+    #[serde(default = "default_contact_submit_label")]
+    pub submit_label: String,
+    #[serde(default = "default_contact_success_message")]
+    pub success_message: String,
+    #[serde(default)]
+    pub show_phone: bool,
+}
+
+impl Default for ContactFormWidgetConfig {
+    fn default() -> Self {
+        Self {
+            heading: default_contact_heading(),
+            submit_label: default_contact_submit_label(),
+            success_message: default_contact_success_message(),
+            show_phone: false,
+        }
+    }
+}
+
+fn default_contact_heading() -> String {
+    "お問い合わせ".to_string()
+}
+
+fn default_contact_submit_label() -> String {
+    "送信する".to_string()
+}
+
+fn default_contact_success_message() -> String {
+    "お問い合わせを受け付けました。担当者より折り返しご連絡いたします。".to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

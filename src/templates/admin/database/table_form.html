@@ -36,7 +36,7 @@
 {% endif %}
 
 {% if is_edit %}
-<div class="notice info">列の追加・改名は既存の行データを保持します。削除した列のデータのみ失われます。既存列の型と NULL 設定は変更できません。</div>
+<div class="notice info">列の追加・改名は既存の行データを保持します。削除した列のデータのみ失われます。既存列の型は変更できません。NOT NULL から NULL 可への変更のみ可能です。</div>
 {% endif %}
 
 <form method="post" action="{{ action }}" class="form-layout" id="table-create-form">

@@ -139,6 +139,8 @@ pub struct ColumnMigrationPlan {
     pub renames: Vec<(String, String)>,
     pub drops: Vec<String>,
     pub adds: Vec<TableColumnInput>,
+    /// NOT NULL から NULL 可へ緩和する列の元カラム名。
+    pub nullable_relaxations: Vec<String>,
 }
 
 /// ユーザーテーブルのデータ一覧（1チャンク分）。
@@ -444,7 +446,7 @@ pub async fn update_user_table_from_columns(
     let current = load_user_table_columns(pool, name).await?;
     let plan = plan_column_migration(&current, columns)?;
     validate_column_migration_adds(pool, name, &plan).await?;
-    apply_column_migration(pool, name, &plan).await?;
+    apply_column_migration(pool, name, &plan, columns).await?;
     Ok(())
 }
 
@@ -475,6 +477,7 @@ pub fn plan_column_migration(
         .collect();
 
     let mut renames = Vec::new();
+    let mut nullable_relaxations = Vec::new();
     for column in &normalized {
         let Some(orig_name) = column.orig_name.as_deref() else {
             continue;
@@ -489,10 +492,13 @@ pub fn plan_column_migration(
                 "列 `{orig_name}` の型は変更できません"
             )));
         }
-        if existing.nullable != column.nullable {
+        if existing.nullable && !column.nullable {
             return Err(DomainError::Validation(format!(
-                "列 `{orig_name}` の NULL 設定は変更できません"
+                "列 `{orig_name}` を NOT NULL に変更することはできません"
             )));
+        }
+        if !existing.nullable && column.nullable {
+            nullable_relaxations.push(orig_name.to_string());
         }
         if orig_name != column.name {
             renames.push((orig_name.to_string(), column.name.clone()));
@@ -519,6 +525,7 @@ pub fn plan_column_migration(
         renames,
         drops,
         adds,
+        nullable_relaxations,
     })
 }
 
@@ -549,7 +556,12 @@ async fn apply_column_migration(
     pool: &SqlitePool,
     name: &str,
     plan: &ColumnMigrationPlan,
+    desired: &[TableColumnInput],
 ) -> DomainResult<()> {
+    if !plan.nullable_relaxations.is_empty() {
+        return rebuild_user_table(pool, name, desired).await;
+    }
+
     if plan.renames.is_empty() && plan.drops.is_empty() && plan.adds.is_empty() {
         return Ok(());
     }
@@ -586,6 +598,72 @@ async fn apply_column_migration(
             .await?;
     }
 
+    tx.commit().await?;
+    Ok(())
+}
+
+/// NOT NULL 緩和など、ALTER TABLE だけでは反映できない変更をテーブル再構築で適用する。
+async fn rebuild_user_table(
+    pool: &SqlitePool,
+    table_name: &str,
+    desired: &[TableColumnInput],
+) -> DomainResult<()> {
+    let mut normalized = Vec::new();
+    for column in desired {
+        if column.name.trim().is_empty() {
+            continue;
+        }
+        let name = validate_column_name(&column.name)?;
+        normalized.push(TableColumnInput {
+            name,
+            type_key: column.type_key.clone(),
+            nullable: column.nullable,
+            orig_name: column.orig_name.clone(),
+        });
+    }
+
+    let definition = build_table_definition(&normalized)?;
+    let quoted_table = quote_sql_identifier(table_name);
+    let temp_name = format!("{table_name}__cms_rebuild");
+    let quoted_temp = quote_sql_identifier(&temp_name);
+
+    let mut dest_columns = vec![quote_sql_identifier("id")];
+    let mut source_exprs = vec!["id".to_string()];
+    for column in &normalized {
+        dest_columns.push(quote_sql_identifier(&column.name));
+        let source = if let Some(orig_name) = column.orig_name.as_deref() {
+            quote_sql_identifier(orig_name)
+        } else {
+            "NULL".to_string()
+        };
+        source_exprs.push(source);
+    }
+
+    let create_ddl = format!("CREATE TABLE {quoted_temp} ({definition})");
+    let insert_ddl = format!(
+        "INSERT INTO {quoted_temp} ({}) SELECT {} FROM {quoted_table}",
+        dest_columns.join(", "),
+        source_exprs.join(", ")
+    );
+    let drop_ddl = format!("DROP TABLE {quoted_table}");
+    let rename_ddl = format!(
+        "ALTER TABLE {quoted_temp} RENAME TO {}",
+        quote_sql_identifier(table_name)
+    );
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(sqlx::AssertSqlSafe(create_ddl))
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(insert_ddl))
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(drop_ddl))
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(rename_ddl))
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -1670,12 +1748,24 @@ mod tests {
     }
 
     #[test]
-    fn plan_column_migration_rejects_nullable_change() {
+    fn plan_column_migration_allows_not_null_to_nullable() {
         let current = vec![sample_column("body", "text", false)];
         let desired = vec![sample_column_with_orig("body", "body", "text", true)];
 
+        let plan = plan_column_migration(&current, &desired).unwrap();
+        assert_eq!(plan.nullable_relaxations, vec!["body".to_string()]);
+        assert!(plan.renames.is_empty());
+        assert!(plan.drops.is_empty());
+        assert!(plan.adds.is_empty());
+    }
+
+    #[test]
+    fn plan_column_migration_rejects_nullable_to_not_null() {
+        let current = vec![sample_column("body", "text", true)];
+        let desired = vec![sample_column_with_orig("body", "body", "text", false)];
+
         let err = plan_column_migration(&current, &desired).unwrap_err();
-        assert!(err.to_string().contains("NULL 設定は変更できません"));
+        assert!(err.to_string().contains("NOT NULL に変更することはできません"));
     }
 
     #[test]

@@ -390,6 +390,82 @@ async fn database_edit_user_table_rejects_type_change() {
 }
 
 #[tokio::test]
+async fn database_edit_user_table_relaxes_not_null_to_nullable() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=null_relax&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "null_relax" ("body") VALUES ('hello')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/null_relax/edit",
+            Some("name=null_relax&col_orig_name=body&col_name=body&col_type=text&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("列定義を保存しました"));
+
+    let definition = sqlx::query_scalar::<_, String>(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'null_relax'",
+    )
+    .fetch_one(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(definition.contains(r#""body" TEXT"#));
+    assert!(!definition.contains(r#""body" TEXT NOT NULL"#));
+
+    let value: String = sqlx::query_scalar(r#"SELECT "body" FROM "null_relax" WHERE id = 1"#)
+        .fetch_one(&app.state.pool())
+        .await
+        .unwrap();
+    assert_eq!(value, "hello");
+}
+
+#[tokio::test]
+async fn database_edit_user_table_rejects_nullable_to_not_null() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=null_tighten&col_name=body&col_type=text&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/null_tighten/edit",
+            Some("name=null_tighten&col_orig_name=body&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("NOT NULL に変更することはできません"));
+}
+
+#[tokio::test]
 async fn database_edit_user_table_rejects_not_null_add_with_existing_rows() {
     let app = common::TestApp::new().await;
 

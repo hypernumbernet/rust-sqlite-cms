@@ -42,7 +42,7 @@
           <div class="op-actions">
             <a class="button secondary" href="/admin/users/{{ user.id }}/edit">編集</a>
             {% if user.can_delete %}
-            <form method="post" action="/admin/users/{{ user.id }}/delete" onsubmit="return confirm('このユーザーを削除しますか？');">
+            <form method="post" action="/admin/users/{{ user.id }}/delete" data-confirm="このユーザーを削除しますか？">
               <button class="button danger" type="submit">削除</button>
             </form>
             {% endif %}

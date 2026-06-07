@@ -89,6 +89,7 @@ struct DatabaseTemplate {
 #[derive(Debug, Clone)]
 struct ColumnFormRow {
     name: String,
+    orig_name: String,
     type_key: String,
     nullable: bool,
 }
@@ -106,6 +107,8 @@ struct TableFormTemplate {
     is_edit: bool,
     columns: Vec<ColumnFormRow>,
     error_message: String,
+    success_message: String,
+    data_url: String,
 }
 
 #[derive(Template)]
@@ -135,6 +138,8 @@ struct TableCreateForm {
     col_type: Vec<String>,
     #[serde(default)]
     col_nullable: Vec<String>,
+    #[serde(default)]
+    col_orig_name: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -215,6 +220,7 @@ async fn new_table_form(auth: AuthUser) -> AppResult<Response> {
             is_edit: false,
             columns: &[],
             error_message: "",
+            success_message: "",
         },
     )?;
     Ok(Html(html).into_response())
@@ -244,6 +250,7 @@ async fn edit_table_form(
                     is_edit: true,
                     columns: &[],
                     error_message: &message,
+                    success_message: "",
                 },
             )?;
             return Ok(Html(html).into_response());
@@ -262,6 +269,7 @@ async fn edit_table_form(
             is_edit: true,
             columns: &rows,
             error_message: "",
+            success_message: "",
         },
     )?;
     Ok(Html(html).into_response())
@@ -446,6 +454,7 @@ async fn create_table(
                     is_edit: false,
                     columns: &[],
                     error_message: &message,
+                    success_message: "",
                 },
             )?;
             return Ok(Html(html).into_response());
@@ -468,6 +477,7 @@ async fn create_table(
                     is_edit: false,
                     columns: &rows,
                     error_message: &domain_error_message(&err),
+                    success_message: "",
                 },
             )?;
             Ok(Html(html).into_response())
@@ -495,6 +505,7 @@ async fn update_table(
                     is_edit: true,
                     columns: &[],
                     error_message: &message,
+                    success_message: "",
                 },
             )?;
             return Ok(Html(html).into_response());
@@ -513,6 +524,7 @@ async fn update_table(
                 is_edit: true,
                 columns: &columns_to_form_rows(&table_form_to_columns(&form)),
                 error_message: "テーブル名は変更できません",
+                success_message: "",
             },
         )?;
         return Ok(Html(html).into_response());
@@ -520,7 +532,25 @@ async fn update_table(
 
     let columns = table_form_to_columns(&form);
     match database::update_user_table_from_columns(&state.pool(), &name, &columns).await {
-        Ok(()) => Ok(Redirect::to("/admin/database").into_response()),
+        Ok(()) => {
+            let updated = database::load_user_table_columns(&state.pool(), &name).await?;
+            let rows = columns_to_form_rows(&updated);
+            let html = table_form_template(
+                &auth,
+                TableFormParams {
+                    heading: "列を編集",
+                    action: table_url(&name, "/edit"),
+                    submit_label: "保存する",
+                    name: &name,
+                    name_readonly: true,
+                    is_edit: true,
+                    columns: &rows,
+                    error_message: "",
+                    success_message: "列定義を保存しました",
+                },
+            )?;
+            Ok(Html(html).into_response())
+        }
         Err(DomainError::SystemTable(message)) => {
             Ok(system_table_notice_response(&auth, &name, &message).await?)
         }
@@ -538,6 +568,7 @@ async fn update_table(
                     is_edit: true,
                     columns: &rows,
                     error_message: &domain_error_message(&err),
+                    success_message: "",
                 },
             )?;
             Ok(Html(html).into_response())
@@ -735,7 +766,8 @@ fn table_form_to_columns(form: &TableCreateForm) -> Vec<TableColumnInput> {
         .col_name
         .len()
         .max(form.col_type.len())
-        .max(form.col_nullable.len());
+        .max(form.col_nullable.len())
+        .max(form.col_orig_name.len());
 
     let mut columns = Vec::new();
     for index in 0..row_count {
@@ -750,11 +782,17 @@ fn table_form_to_columns(form: &TableCreateForm) -> Vec<TableColumnInput> {
             .get(index)
             .map(|value| value == "1")
             .unwrap_or(true);
+        let orig_name = form
+            .col_orig_name
+            .get(index)
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
 
         columns.push(TableColumnInput {
             name,
             type_key,
             nullable,
+            orig_name,
         });
     }
     columns
@@ -765,6 +803,10 @@ fn columns_to_form_rows(columns: &[TableColumnInput]) -> Vec<ColumnFormRow> {
         .iter()
         .map(|column| ColumnFormRow {
             name: column.name.clone(),
+            orig_name: column
+                .orig_name
+                .clone()
+                .unwrap_or_else(|| column.name.clone()),
             type_key: column.type_key.clone(),
             nullable: column.nullable,
         })
@@ -780,9 +822,15 @@ struct TableFormParams<'a> {
     is_edit: bool,
     columns: &'a [ColumnFormRow],
     error_message: &'a str,
+    success_message: &'a str,
 }
 
 fn table_form_template(auth: &AuthUser, params: TableFormParams<'_>) -> AppResult<String> {
+    let data_url = if params.is_edit {
+        table_url(params.name, "/data")
+    } else {
+        String::new()
+    };
     Ok(TableFormTemplate {
         layout: layout::AdminLayoutCtx::new(auth),
         heading: params.heading.to_string(),
@@ -794,6 +842,8 @@ fn table_form_template(auth: &AuthUser, params: TableFormParams<'_>) -> AppResul
         is_edit: params.is_edit,
         columns: params.columns.to_vec(),
         error_message: params.error_message.to_string(),
+        success_message: params.success_message.to_string(),
+        data_url,
     }
     .render()?)
 }

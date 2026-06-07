@@ -24,13 +24,13 @@
 </form>
 
 {% if is_edit %}
-<form method="post" action="{{ delete_action }}" class="placeholder-delete-form" onsubmit="return confirm('このプレースホルダーを削除しますか？');">
+<form method="post" action="{{ delete_action }}" class="placeholder-delete-form" data-confirm="このプレースホルダーを削除しますか？">
   <button class="button danger" type="submit">削除する</button>
 </form>
 {% endif %}
 
 {% if !error_message.is_empty() %}
-<script>alert("{{ error_message }}");</script>
+<div class="notice error">{{ error_message }}</div>
 {% endif %}
 
 {% include "admin/posts/placeholders/partials/widget_config_script.html" %}

@@ -65,7 +65,7 @@
 <div class="notice error mt-16">{{ error_message }}</div>
 {% endif %}
 
-<form method="post" action="{{ delete_action }}" class="delete-form" onsubmit="return confirm('ウィジェット「{{ type_label }}」を削除しますか？\nプレースホルダーが紐付いている場合は削除できません。');">
+<form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="ウィジェット「{{ type_label }}」を削除しますか？&#10;プレースホルダーが紐付いている場合は削除できません。">
   <button class="button danger" type="submit">削除する</button>
 </form>
 {% endblock %}

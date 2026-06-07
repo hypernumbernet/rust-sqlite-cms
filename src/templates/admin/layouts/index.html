@@ -44,7 +44,7 @@
             <a class="button secondary" href="/admin/layouts/{{ row.id }}/edit">編集</a>
             <a class="button secondary" href="/admin/layouts/{{ row.id }}/export">エクスポート</a>
             {% if row.can_delete %}
-            <form method="post" action="/admin/layouts/{{ row.id }}/delete" onsubmit="return confirm('削除しますか？');">
+            <form method="post" action="/admin/layouts/{{ row.id }}/delete" data-confirm="削除しますか？">
               <button type="submit" class="button danger">削除</button>
             </form>
             {% endif %}

@@ -259,11 +259,15 @@ async fn database_edit_user_table_updates_columns() {
         .admin_request(
             "POST",
             "/admin/database/tables/edit_me/edit",
-            Some("name=edit_me&col_name=title&col_type=integer&col_nullable=1"),
+            Some("name=edit_me&col_orig_name=body&col_name=title&col_type=text&col_nullable=0"),
             Some("application/x-www-form-urlencoded"),
         )
         .await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("列定義を保存しました"));
+    assert!(html.contains("列を編集"));
 
     let definition = sqlx::query_scalar::<_, String>(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'edit_me'",
@@ -271,8 +275,153 @@ async fn database_edit_user_table_updates_columns() {
     .fetch_one(&app.state.pool())
     .await
     .unwrap();
-    assert!(definition.contains(r#""title" INTEGER"#));
+    assert!(definition.contains(r#""title" TEXT NOT NULL"#));
     assert!(!definition.contains("body"));
+}
+
+#[tokio::test]
+async fn database_edit_user_table_preserves_rows_when_adding_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=keep_rows&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "keep_rows" ("body") VALUES ('hello')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/keep_rows/edit",
+            Some(
+                "name=keep_rows&col_orig_name=body&col_name=body&col_type=text&col_nullable=0&col_name=memo&col_type=text&col_nullable=1",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let value: String = sqlx::query_scalar(r#"SELECT "body" FROM "keep_rows" WHERE id = 1"#)
+        .fetch_one(&app.state.pool())
+        .await
+        .unwrap();
+    assert_eq!(value, "hello");
+}
+
+#[tokio::test]
+async fn database_edit_user_table_preserves_rows_when_renaming_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=rename_rows&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "rename_rows" ("body") VALUES ('hello')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/rename_rows/edit",
+            Some("name=rename_rows&col_orig_name=body&col_name=title&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let value: String = sqlx::query_scalar(r#"SELECT "title" FROM "rename_rows" WHERE id = 1"#)
+        .fetch_one(&app.state.pool())
+        .await
+        .unwrap();
+    assert_eq!(value, "hello");
+}
+
+#[tokio::test]
+async fn database_edit_user_table_rejects_type_change() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=type_lock&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/type_lock/edit",
+            Some("name=type_lock&col_orig_name=body&col_name=body&col_type=integer&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("型は変更できません"));
+
+    let definition = sqlx::query_scalar::<_, String>(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'type_lock'",
+    )
+    .fetch_one(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(definition.contains(r#""body" TEXT NOT NULL"#));
+}
+
+#[tokio::test]
+async fn database_edit_user_table_rejects_not_null_add_with_existing_rows() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=not_null_add&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "not_null_add" ("body") VALUES ('hello')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/not_null_add/edit",
+            Some(
+                "name=not_null_add&col_orig_name=body&col_name=body&col_type=text&col_nullable=0&col_name=code&col_type=text&col_nullable=0",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("NOT NULL な列を追加できません"));
 }
 
 #[tokio::test]

@@ -18,7 +18,7 @@
   {% include "admin/posts/placeholders/partials/placeholder_guide_panel.html" %}
 </form>
 
-<form method="post" action="{{ delete_action }}" class="placeholder-delete-form" onsubmit="return confirm('このプレースホルダーを削除しますか？');">
+<form method="post" action="{{ delete_action }}" class="placeholder-delete-form" data-confirm="このプレースホルダーを削除しますか？">
   <button class="button danger" type="submit">削除する</button>
 </form>
 

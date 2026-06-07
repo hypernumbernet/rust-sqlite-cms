@@ -17,7 +17,7 @@
     プレースホルダー名・投稿スラッグ・メディアファイル名のいずれかが既にある場合は、<strong>追加を中止</strong>します（上書きしません）。
     サーバーの再起動は不要です。
   </div>
-  <form method="post" action="/admin/samples" onsubmit="return confirm('基本テストデータを既存データに追加しますか？同名のデータがある場合は追加されません。');">
+  <form method="post" action="/admin/samples" data-confirm="基本テストデータを既存データに追加しますか？同名のデータがある場合は追加されません。">
     <input type="hidden" name="sample" value="basic">
     <input type="hidden" name="action" value="append">
     <button type="submit" class="button primary">
@@ -33,7 +33,7 @@
     公開ページや管理画面で作成したすべてのデータが失われます。サーバーの再起動は不要です。
   </div>
 
-  <form method="post" action="/admin/samples" onsubmit="return confirm('本当にすべてのデータを削除して基本テストデータを適用しますか？この操作は元に戻せません。');">
+  <form method="post" action="/admin/samples" data-confirm="本当にすべてのデータを削除して基本テストデータを適用しますか？この操作は元に戻せません。">
     <input type="hidden" name="sample" value="basic">
     <input type="hidden" name="action" value="reset">
     <button type="submit" class="button danger">

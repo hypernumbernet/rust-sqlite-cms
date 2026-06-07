@@ -115,7 +115,7 @@
       <strong>注意:</strong> バックアップ ZIP を適用すると、現在のデータベースと work/ 配下のファイルが<strong>すべて上書き</strong>されます。この操作は元に戻せません。
     </div>
 
-    <form method="post" action="/admin/backup/restore" enctype="multipart/form-data" onsubmit="return confirm('本当にバックアップからリストアしますか？現在のデータはすべて失われます。');">
+    <form method="post" action="/admin/backup/restore" enctype="multipart/form-data" data-confirm="本当にバックアップからリストアしますか？現在のデータはすべて失われます。">
       <div class="field">
         <label for="package">バックアップファイル（.zip）</label>
         <input id="package" name="package" type="file" accept="application/zip,.zip" required>

@@ -48,7 +48,7 @@
           <div class="op-actions">
             <a class="button" href="/admin/widgets/{{ widget_type.type_key }}/edit">編集</a>
             <a class="button secondary" href="/admin/widgets/{{ widget_type.type_key }}/export">エクスポート</a>
-            <form method="post" action="/admin/widgets/{{ widget_type.type_key }}/delete" onsubmit="return confirm('ウィジェット「{{ widget_type.type_label }}」を削除しますか？');">
+            <form method="post" action="/admin/widgets/{{ widget_type.type_key }}/delete" data-confirm="ウィジェット「{{ widget_type.type_label }}」を削除しますか？">
               <button class="button danger" type="submit">削除</button>
             </form>
           </div>

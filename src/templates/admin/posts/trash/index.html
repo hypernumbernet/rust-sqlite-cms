@@ -43,7 +43,7 @@
             <form method="post" action="/admin/posts/trash/{{ item.id }}/restore">
               <button class="button secondary" type="submit">復元</button>
             </form>
-            <form method="post" action="/admin/posts/trash/{{ item.id }}/purge" onsubmit="return confirm('完全に削除すると元に戻せません。続行しますか？');">
+            <form method="post" action="/admin/posts/trash/{{ item.id }}/purge" data-confirm="完全に削除すると元に戻せません。続行しますか？">
               <button class="button danger" type="submit">完全に削除</button>
             </form>
           </div>

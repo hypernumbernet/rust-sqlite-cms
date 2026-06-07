@@ -108,11 +108,11 @@
       <p class="meta">{{ item.file_size_label }} · {{ item.updated_at }}</p>
       <div class="url-row">
         <input type="text" value="{{ item.public_url }}" readonly id="url-{{ item.id }}">
-        <button class="button secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('url-{{ item.id }}').value)">コピー</button>
+        <button class="button secondary" type="button" data-copy-target="#url-{{ item.id }}">コピー</button>
       </div>
       <div class="ops">
         <a class="button secondary" href="{{ item.public_url }}" target="_blank" rel="noopener">表示</a>
-        <form method="post" action="/admin/media/{{ item.id }}/delete" onsubmit="return confirm('このメディアを削除しますか？');">
+        <form method="post" action="/admin/media/{{ item.id }}/delete" data-confirm="このメディアを削除しますか？">
           <button class="button danger" type="submit">削除</button>
         </form>
       </div>

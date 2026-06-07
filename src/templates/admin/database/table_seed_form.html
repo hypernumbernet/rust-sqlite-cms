@@ -204,36 +204,4 @@
   </aside>
 </form>
 
-<script>
-(function() {
-  function syncRow(row) {
-    const typeKey = row.dataset.typeKey;
-    row.querySelectorAll('.seed-param-group').forEach(function(group) {
-      const active = group.dataset.type === typeKey;
-      group.classList.toggle('active', active);
-      group.querySelectorAll('input, select').forEach(function(input) {
-        input.disabled = !active;
-        input.required = active && input.type !== 'checkbox';
-      });
-    });
-  }
-
-  document.querySelectorAll('.seed-row').forEach(syncRow);
-
-  document.getElementById('seed-form').addEventListener('submit', function(event) {
-    document.querySelectorAll('.seed-row').forEach(function(row) {
-      const checkbox = row.querySelector('.null-checkbox');
-      const hidden = row.querySelector('.null-value');
-      if (checkbox && hidden) {
-        hidden.value = checkbox.checked ? '1' : '0';
-      }
-    });
-
-    const count = document.getElementById('count').value;
-    if (!confirm(count + ' 件のテストデータを生成します。続行しますか？')) {
-      event.preventDefault();
-    }
-  });
-})();
-</script>
 {% endblock %}

@@ -129,6 +129,16 @@ pub struct TableColumnInput {
     pub name: String,
     pub type_key: String,
     pub nullable: bool,
+    /// 列編集時の元カラム名。新規列は `None`。
+    pub orig_name: Option<String>,
+}
+
+/// 列編集の差分マイグレーション計画。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ColumnMigrationPlan {
+    pub renames: Vec<(String, String)>,
+    pub drops: Vec<String>,
+    pub adds: Vec<TableColumnInput>,
 }
 
 /// ユーザーテーブルのデータ一覧（1チャンク分）。
@@ -422,18 +432,151 @@ pub async fn update_user_table_from_columns(
         return Err(DomainError::NotFound);
     }
 
-    let definition = build_table_definition(columns)?;
-    let quoted = quote_sql_identifier(name);
-    let drop_ddl = format!("DROP TABLE {quoted}");
-    let create_ddl = format!("CREATE TABLE {quoted} ({definition})");
+    let current = load_user_table_columns(pool, name).await?;
+    let plan = plan_column_migration(&current, columns)?;
+    validate_column_migration_adds(pool, name, &plan).await?;
+    apply_column_migration(pool, name, &plan).await?;
+    Ok(())
+}
 
+/// 既存列定義と編集後の定義から差分マイグレーション計画を組み立てる。
+pub fn plan_column_migration(
+    current: &[TableColumnInput],
+    desired: &[TableColumnInput],
+) -> DomainResult<ColumnMigrationPlan> {
+    let mut normalized = Vec::new();
+    for column in desired {
+        if column.name.trim().is_empty() {
+            continue;
+        }
+        let name = validate_column_name(&column.name)?;
+        normalized.push(TableColumnInput {
+            name,
+            type_key: column.type_key.clone(),
+            nullable: column.nullable,
+            orig_name: column.orig_name.clone(),
+        });
+    }
+
+    build_table_definition(&normalized)?;
+
+    let current_by_name: std::collections::HashMap<&str, &TableColumnInput> = current
+        .iter()
+        .map(|column| (column.name.as_str(), column))
+        .collect();
+
+    let mut renames = Vec::new();
+    for column in &normalized {
+        let Some(orig_name) = column.orig_name.as_deref() else {
+            continue;
+        };
+        let Some(existing) = current_by_name.get(orig_name) else {
+            return Err(DomainError::Validation(format!(
+                "列 `{orig_name}` は存在しません"
+            )));
+        };
+        if existing.type_key != column.type_key {
+            return Err(DomainError::Validation(format!(
+                "列 `{orig_name}` の型は変更できません"
+            )));
+        }
+        if existing.nullable != column.nullable {
+            return Err(DomainError::Validation(format!(
+                "列 `{orig_name}` の NULL 設定は変更できません"
+            )));
+        }
+        if orig_name != column.name {
+            renames.push((orig_name.to_string(), column.name.clone()));
+        }
+    }
+
+    let retained_orig: std::collections::HashSet<String> = normalized
+        .iter()
+        .filter_map(|column| column.orig_name.clone())
+        .collect();
+    let drops = current
+        .iter()
+        .map(|column| column.name.clone())
+        .filter(|name| !retained_orig.contains(name))
+        .collect();
+
+    let adds = normalized
+        .iter()
+        .filter(|column| column.orig_name.is_none())
+        .cloned()
+        .collect();
+
+    Ok(ColumnMigrationPlan {
+        renames,
+        drops,
+        adds,
+    })
+}
+
+async fn validate_column_migration_adds(
+    pool: &SqlitePool,
+    name: &str,
+    plan: &ColumnMigrationPlan,
+) -> DomainResult<()> {
+    let has_not_null_add = plan.adds.iter().any(|column| !column.nullable);
+    if !has_not_null_add {
+        return Ok(());
+    }
+
+    let quoted = quote_sql_identifier(name);
+    let count_sql = format!("SELECT COUNT(*) FROM {quoted}");
+    let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(count_sql))
+        .fetch_one(pool)
+        .await?;
+    if count > 0 {
+        return Err(DomainError::Validation(
+            "既存データがあるテーブルには NOT NULL な列を追加できません".into(),
+        ));
+    }
+    Ok(())
+}
+
+async fn apply_column_migration(
+    pool: &SqlitePool,
+    name: &str,
+    plan: &ColumnMigrationPlan,
+) -> DomainResult<()> {
+    if plan.renames.is_empty() && plan.drops.is_empty() && plan.adds.is_empty() {
+        return Ok(());
+    }
+
+    let quoted_table = quote_sql_identifier(name);
     let mut tx = pool.begin().await?;
-    sqlx::query(sqlx::AssertSqlSafe(drop_ddl))
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query(sqlx::AssertSqlSafe(create_ddl))
-        .execute(&mut *tx)
-        .await?;
+
+    for (old_name, new_name) in &plan.renames {
+        let ddl = format!(
+            "ALTER TABLE {quoted_table} RENAME COLUMN {} TO {}",
+            quote_sql_identifier(old_name),
+            quote_sql_identifier(new_name)
+        );
+        sqlx::query(sqlx::AssertSqlSafe(ddl))
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    for column_name in &plan.drops {
+        let ddl = format!(
+            "ALTER TABLE {quoted_table} DROP COLUMN {}",
+            quote_sql_identifier(column_name)
+        );
+        sqlx::query(sqlx::AssertSqlSafe(ddl))
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    for column in &plan.adds {
+        let definition = column_definition_sql(&column.name, column)?;
+        let ddl = format!("ALTER TABLE {quoted_table} ADD COLUMN {definition}");
+        sqlx::query(sqlx::AssertSqlSafe(ddl))
+            .execute(&mut *tx)
+            .await?;
+    }
+
     tx.commit().await?;
     Ok(())
 }
@@ -1236,6 +1379,7 @@ fn parse_column_definition(definition: &str) -> DomainResult<TableColumnInput> {
         name: validate_column_name(&name)?,
         type_key: type_key.to_string(),
         nullable,
+        orig_name: None,
     })
 }
 
@@ -1391,6 +1535,7 @@ mod tests {
             name: "タイトル".to_string(),
             type_key: "text".to_string(),
             nullable: false,
+            orig_name: None,
         }])
         .unwrap();
 
@@ -1410,11 +1555,13 @@ mod tests {
                 name: "title".to_string(),
                 type_key: "text".to_string(),
                 nullable: false,
+                orig_name: None,
             },
             TableColumnInput {
                 name: "score".to_string(),
                 type_key: "real".to_string(),
                 nullable: true,
+                orig_name: None,
             },
         ])
         .unwrap();
@@ -1432,16 +1579,19 @@ mod tests {
                 name: "payload".to_string(),
                 type_key: "blob".to_string(),
                 nullable: true,
+                orig_name: None,
             },
             TableColumnInput {
                 name: "created_at".to_string(),
                 type_key: "timestamp".to_string(),
                 nullable: false,
+                orig_name: None,
             },
             TableColumnInput {
                 name: "active".to_string(),
                 type_key: "boolean".to_string(),
                 nullable: false,
+                orig_name: None,
             },
         ])
         .unwrap();
@@ -1454,9 +1604,69 @@ mod tests {
             name: "id".to_string(),
             type_key: "integer".to_string(),
             nullable: false,
+            orig_name: None,
         }])
         .unwrap_err();
         assert!(err.to_string().contains("id"));
+    }
+
+    fn sample_column(name: &str, type_key: &str, nullable: bool) -> TableColumnInput {
+        TableColumnInput {
+            name: name.to_string(),
+            type_key: type_key.to_string(),
+            nullable,
+            orig_name: None,
+        }
+    }
+
+    fn sample_column_with_orig(
+        orig_name: &str,
+        name: &str,
+        type_key: &str,
+        nullable: bool,
+    ) -> TableColumnInput {
+        TableColumnInput {
+            name: name.to_string(),
+            type_key: type_key.to_string(),
+            nullable,
+            orig_name: Some(orig_name.to_string()),
+        }
+    }
+
+    #[test]
+    fn plan_column_migration_detects_rename_add_and_drop() {
+        let current = vec![
+            sample_column("body", "text", false),
+            sample_column("score", "real", true),
+        ];
+        let desired = vec![
+            sample_column_with_orig("body", "title", "text", false),
+            sample_column("memo", "text", true),
+        ];
+
+        let plan = plan_column_migration(&current, &desired).unwrap();
+        assert_eq!(plan.renames, vec![("body".to_string(), "title".to_string())]);
+        assert_eq!(plan.drops, vec!["score".to_string()]);
+        assert_eq!(plan.adds.len(), 1);
+        assert_eq!(plan.adds[0].name, "memo");
+    }
+
+    #[test]
+    fn plan_column_migration_rejects_type_change() {
+        let current = vec![sample_column("body", "text", false)];
+        let desired = vec![sample_column_with_orig("body", "body", "integer", false)];
+
+        let err = plan_column_migration(&current, &desired).unwrap_err();
+        assert!(err.to_string().contains("型は変更できません"));
+    }
+
+    #[test]
+    fn plan_column_migration_rejects_nullable_change() {
+        let current = vec![sample_column("body", "text", false)];
+        let desired = vec![sample_column_with_orig("body", "body", "text", true)];
+
+        let err = plan_column_migration(&current, &desired).unwrap_err();
+        assert!(err.to_string().contains("NULL 設定は変更できません"));
     }
 
     #[test]
@@ -1557,6 +1767,7 @@ mod tests {
             name: "score".to_string(),
             type_key: "integer".to_string(),
             nullable: true,
+            orig_name: None,
         }];
         let form = TestDataSeedForm {
             count: "10".to_string(),

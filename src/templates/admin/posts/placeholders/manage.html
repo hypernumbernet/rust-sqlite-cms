@@ -59,6 +59,6 @@
 </div>
 
 {% if !error_message.is_empty() %}
-<script>alert("{{ error_message }}");</script>
+<div class="notice error">{{ error_message }}</div>
 {% endif %}
 {% endblock %}

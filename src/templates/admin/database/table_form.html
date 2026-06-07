@@ -27,15 +27,19 @@
 {% block content %}
 <p class="breadcrumb"><a href="/admin/database">DB管理</a></p>
 
+{% if !success_message.is_empty() %}
+<div class="notice success">{{ success_message }}</div>
+{% endif %}
+
 {% if !error_message.is_empty() %}
 <div class="error">{{ error_message }}</div>
 {% endif %}
 
 {% if is_edit %}
-<div class="notice">保存するとテーブル定義を再作成します。既存の行データは削除されます。</div>
+<div class="notice info">列の追加・改名は既存の行データを保持します。削除した列のデータのみ失われます。既存列の型と NULL 設定は変更できません。</div>
 {% endif %}
 
-<form method="post" action="{{ action }}" class="form-layout" id="table-create-form"{% if is_edit %} onsubmit="return confirm('テーブル定義を更新します。既存の行データは削除されます。続行しますか？');"{% endif %}>
+<form method="post" action="{{ action }}" class="form-layout" id="table-create-form">
   <section class="panel">
     <div class="field">
       <label for="name">テーブル名</label>
@@ -64,7 +68,10 @@
           <tbody id="column-rows">
             {% for column in columns %}
             <tr class="column-row">
-              <td><input name="col_name" type="text" maxlength="120" value="{{ column.name }}"></td>
+              <td>
+                {% if is_edit %}<input type="hidden" name="col_orig_name" value="{{ column.orig_name }}">{% endif %}
+                <input name="col_name" type="text" maxlength="120" value="{{ column.name }}">
+              </td>
               <td>
                 <select name="col_type">
                   <option value="integer"{% if column.type_key == "integer" %} selected{% endif %}>整数</option>
@@ -99,6 +106,9 @@
   <aside class="panel">
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
+      {% if !data_url.is_empty() %}
+      <a class="button secondary" href="{{ data_url }}">データ</a>
+      {% endif %}
       <a class="button secondary" href="{{ cancel_url }}">一覧に戻る</a>
     </div>
   </aside>
@@ -106,7 +116,10 @@
 
 <template id="column-row-template">
   <tr class="column-row">
-    <td><input name="col_name" type="text" maxlength="120" value=""></td>
+    <td>
+      {% if is_edit %}<input type="hidden" name="col_orig_name" value="">{% endif %}
+      <input name="col_name" type="text" maxlength="120" value="">
+    </td>
     <td>
       <select name="col_type">
         <option value="integer">整数</option>
@@ -129,27 +142,4 @@
   </tr>
 </template>
 
-<script>
-(function() {
-  const rowsEl = document.getElementById('column-rows');
-  const template = document.getElementById('column-row-template');
-  const addBtn = document.getElementById('add-column-btn');
-
-  function bindRow(row) {
-    const removeBtn = row.querySelector('.column-remove-btn');
-    removeBtn.addEventListener('click', function() {
-      row.remove();
-    });
-  }
-
-  function addRow() {
-    const fragment = template.content.cloneNode(true);
-    rowsEl.appendChild(fragment);
-    bindRow(rowsEl.lastElementChild);
-  }
-
-  rowsEl.querySelectorAll('.column-row').forEach(bindRow);
-  addBtn.addEventListener('click', addRow);
-})();
-</script>
 {% endblock %}

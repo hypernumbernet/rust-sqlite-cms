@@ -10,6 +10,8 @@ use axum::{
 
 const ADMIN_FAVICON: &[u8] =
     include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/admin-favicon.ico"));
+const ADMIN_CSS: &str =
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/admin.css"));
 
 use crate::error::AppResult;
 use crate::repos::options;
@@ -48,7 +50,8 @@ struct DashboardTemplate {
 
 pub fn router() -> Router<AppState> {
     let public = auth::router()
-        .route("/admin/favicon.ico", get(admin_favicon));
+        .route("/admin/favicon.ico", get(admin_favicon))
+        .route("/admin/admin.css", get(admin_css));
 
     let protected = Router::new()
         .route("/admin", get(dashboard))
@@ -98,4 +101,17 @@ async fn admin_favicon() -> impl IntoResponse {
         HeaderValue::from_static("public, max-age=86400"),
     );
     (headers, ADMIN_FAVICON)
+}
+
+async fn admin_css() -> impl IntoResponse {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/css; charset=utf-8"),
+    );
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=86400"),
+    );
+    (headers, ADMIN_CSS)
 }

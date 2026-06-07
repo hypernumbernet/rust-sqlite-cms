@@ -4,34 +4,12 @@
 {% block nav_database %}active{% endblock %}
 {% block heading %}DB管理{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
-  .db-name {
-    font-weight: 600;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-  }
-  .badge-system {
-    display: inline-block;
-    margin-left: 8px;
-    font-size: 11px;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1px 8px;
-    vertical-align: middle;
-    font-weight: normal;
-  }
   .row-count {
     font-variant-numeric: tabular-nums;
     text-align: right;
     white-space: nowrap;
-  }
-  .sql-preview {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px;
-    color: var(--muted);
-    word-break: break-all;
   }
   .db-path {
     margin: 0;
@@ -42,7 +20,9 @@
     word-break: break-all;
   }
 </style>
+{% endblock %}
 
+{% block content %}
 <div class="toolbar">
   <p class="db-path">データベース: <code>{{ database_path }}</code></p>
   <a class="button" href="{{ new_url }}">新規追加</a>
@@ -68,7 +48,7 @@
       <tbody>
         {% for item in tables %}
         <tr>
-          <td><span class="db-name">{{ item.name }}</span></td>
+          <td><span class="text-mono">{{ item.name }}</span></td>
           <td class="row-count">
             {% if let Some(count) = item.row_count %}{{ count }}{% else %}—{% endif %}
           </td>
@@ -113,12 +93,12 @@
         {% for item in views %}
         <tr>
           <td>
-            <span class="db-name">{{ item.name }}</span>
+            <span class="text-mono">{{ item.name }}</span>
             {% if item.is_system %}
-            <span class="badge-system">システム</span>
+            <span class="badge-pill">システム</span>
             {% endif %}
           </td>
-          <td class="sql-preview">{{ item.sql_preview }}</td>
+          <td class="text-mono-sm">{{ item.sql_preview }}</td>
         </tr>
         {% endfor %}
       </tbody>

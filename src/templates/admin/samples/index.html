@@ -5,45 +5,6 @@
 {% block heading %}サンプルデータ{% endblock %}
 
 {% block content %}
-<style>
-  .danger-zone {
-    border: 2px solid #b32d2e;
-    border-radius: 6px;
-    padding: 20px;
-    background: #fff5f5;
-    margin: 20px 0;
-  }
-  .danger-zone h3 {
-    color: #b32d2e;
-    margin-top: 0;
-  }
-  .warning {
-    background: #fff3cd;
-    border: 1px solid #ffeaa7;
-    padding: 12px 16px;
-    border-radius: 4px;
-    color: #856404;
-    font-size: 14px;
-    margin-bottom: 16px;
-  }
-  .info-box {
-    background: #e3f2fd;
-    border: 1px solid #90caf9;
-    padding: 12px 16px;
-    border-radius: 4px;
-    color: #1565c0;
-    font-size: 14px;
-    margin-bottom: 16px;
-  }
-  .result-box {
-    background: #e8f5e9;
-    border: 1px solid #81c784;
-    padding: 16px;
-    border-radius: 4px;
-    margin-top: 20px;
-  }
-</style>
-
 <div class="panel">
   <h2>開発用サンプルデータ</h2>
   <p>管理画面の動作確認や開発に便利なテストデータを投入できます。将来的には複数のサンプルセットを切り替えて適用できるようになります。</p>
@@ -51,7 +12,7 @@
 
 <div class="panel">
   <h3>基本テストデータを追加</h3>
-  <div class="info-box">
+  <div class="callout-info">
     既存のデータベースと work/ ディレクトリは<strong>そのまま保持</strong>し、基本テストデータを追加します。
     プレースホルダー名・投稿スラッグ・メディアファイル名のいずれかが既にある場合は、<strong>追加を中止</strong>します（上書きしません）。
     サーバーの再起動は不要です。
@@ -65,9 +26,9 @@
   </form>
 </div>
 
-<div class="danger-zone">
+<div class="panel-danger panel-danger--spaced">
   <h3>⚠️ 危険な操作</h3>
-  <div class="warning">
+  <div class="callout-warning">
     <strong>注意：</strong> この操作を実行すると、<strong>現在のデータベースと work/ ディレクトリの中身が完全に削除</strong>されます。
     公開ページや管理画面で作成したすべてのデータが失われます。サーバーの再起動は不要です。
   </div>
@@ -91,7 +52,7 @@
 {% endif %}
 
 {% if let Some(result) = last_result %}
-<div class="result-box">
+<div class="callout-success callout-success--mt-lg">
   <h3>{{ result_heading }}</h3>
   <p><strong>{{ result.message }}</strong></p>
   <ul>

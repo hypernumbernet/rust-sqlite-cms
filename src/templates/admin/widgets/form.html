@@ -5,18 +5,6 @@
 {% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
-<style>
-  /* widgets/form (only readonly display) */
-  .readonly {
-    margin: 0;
-    padding: 9px 10px;
-    background: #f6f7f7;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-weight: 600;
-  }
-</style>
-
 <form method="post" action="{{ action }}" class="form-layout">
   <section class="panel">
     <div class="field">

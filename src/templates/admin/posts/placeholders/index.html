@@ -4,10 +4,13 @@
 {% block nav_posts %}active{% endblock %}
 {% block heading %}投稿{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
   .placeholder-meta { color: var(--muted); font-size: 12px; margin-top: 4px; }
 </style>
+{% endblock %}
+
+{% block content %}
 
 <div class="toolbar">
   <p>テンプレートに差し込むプレースホルダーとウィジェットタイプを管理します。</p>

@@ -5,72 +5,37 @@
 {% block heading %}ダッシュボード{% endblock %}
 
 {% block content %}
-<style>
-  .welcome {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 20px 24px;
-    margin-bottom: 24px;
-  }
-  .welcome h2 { margin: 0 0 6px; font-size: 20px; }
-  .welcome p { margin: 0; color: var(--muted); }
-  .card-grid .card {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 18px 20px;
-    text-decoration: none;
-    color: var(--text);
-    display: block;
-    transition: border-color .15s, box-shadow .15s;
-  }
-  .card:hover { border-color: var(--accent); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
-  .card h3 { margin: 0 0 6px; font-size: 16px; }
-  .card p { margin: 0; color: var(--muted); font-size: 13px; }
-  .badge {
-    display: inline-block;
-    margin-left: 8px;
-    font-size: 11px;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1px 8px;
-    vertical-align: middle;
-  }
-</style>
-
 <section class="welcome">
   <h2>{{ blogname }} へようこそ</h2>
   <p>{{ blogdescription }}</p>
 </section>
 
 <div class="card-grid">
-  <a class="card" href="/admin/posts">
+  <a class="card--link" href="/admin/posts">
     <h3>投稿</h3>
     <p>プレースホルダーごとに投稿（お知らせなど）を作成・編集・公開します。</p>
   </a>
-  <a class="card" href="/admin/pages">
+  <a class="card--link" href="/admin/pages">
     <h3>ページ</h3>
     <p>MiniJinja テンプレートと静的 HTML を一元管理します。</p>
   </a>
-  <a class="card" href="/admin/widgets">
+  <a class="card--link" href="/admin/widgets">
     <h3>ウィジェット</h3>
     <p>ウィジェットタイプの共通設定（表示件数など）を管理します。</p>
   </a>
-  <a class="card" href="/admin/media">
+  <a class="card--link" href="/admin/media">
     <h3>メディア</h3>
     <p>画像やファイルのアップロードを管理します。</p>
   </a>
-  <a class="card" href="/admin/samples">
+  <a class="card--link" href="/admin/samples">
     <h3>サンプル</h3>
     <p>開発用テストデータを投入し、環境をリセットします。</p>
   </a>
-  <a class="card" href="/admin/users">
+  <a class="card--link" href="/admin/users">
     <h3>ユーザー</h3>
     <p>アカウントとロールを管理します。</p>
   </a>
-  <a class="card" href="/admin/settings">
+  <a class="card--link" href="/admin/settings">
     <h3>設定</h3>
     <p>サイト名・説明・サイト URL を管理します。</p>
   </a>

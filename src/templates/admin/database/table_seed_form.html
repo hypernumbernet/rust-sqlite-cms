@@ -4,18 +4,13 @@
 {% block nav_database %}active{% endblock %}
 {% block heading %}{{ table_name }} — テストデータ生成{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
   .seed-builder {
     margin-top: 8px;
   }
   .seed-builder table {
     width: 100%;
-  }
-  .seed-builder .db-name {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-    font-weight: 600;
   }
   .seed-builder .type-label {
     white-space: nowrap;
@@ -73,7 +68,9 @@
     color: var(--muted);
   }
 </style>
+{% endblock %}
 
+{% block content %}
 <p class="breadcrumb">
   <a href="/admin/database">DB管理</a> /
   <a href="{{ data_url }}"><code>{{ table_name }}</code> データ</a> /
@@ -111,7 +108,7 @@
             {% for column in columns %}
             <tr class="seed-row" data-type-key="{{ column.type_key }}">
               <td>
-                <span class="db-name">{{ column.name }}</span>
+                <span class="text-mono">{{ column.name }}</span>
                 <input type="hidden" name="col_name" value="{{ column.name }}">
                 <input type="hidden" name="col_type" value="{{ column.type_key }}">
               </td>

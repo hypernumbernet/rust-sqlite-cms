@@ -4,11 +4,13 @@
 {% block nav_posts %}active{% endblock %}
 {% block heading %}{{ heading }}{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
-  /* entries/form (post entry) */
   textarea { min-height: 180px; resize: vertical; }
 </style>
+{% endblock %}
+
+{% block content %}
 
 <p class="breadcrumb"><a href="/admin/posts">投稿</a> / <a href="{{ back_url }}"><code>{{ placeholder_name }}</code></a></p>
 

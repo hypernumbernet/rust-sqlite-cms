@@ -4,18 +4,8 @@
 {% block nav_database %}active{% endblock %}
 {% block heading %}{{ table_name }} — データ{% if read_only %}（閲覧専用）{% endif %}{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
-  .db-name {
-    font-weight: 600;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-  }
-  .cell-value {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-    word-break: break-all;
-  }
   .data-count {
     margin: 0;
     font-size: 13px;
@@ -27,7 +17,9 @@
     gap: 8px;
   }
 </style>
+{% endblock %}
 
+{% block content %}
 <p class="breadcrumb"><a href="/admin/database">DB管理</a> / <code>{{ table_name }}</code></p>
 
 {% if read_only %}
@@ -50,7 +42,7 @@
     <thead>
       <tr>
         {% for column in columns %}
-        <th><span class="db-name">{{ column }}</span></th>
+        <th><span class="text-mono">{{ column }}</span></th>
         {% endfor %}
       </tr>
     </thead>
@@ -58,7 +50,7 @@
       {% for row in rows %}
       <tr>
         {% for cell in row.cells %}
-        <td class="cell-value">{{ cell }}</td>
+        <td class="text-mono-cell">{{ cell }}</td>
         {% endfor %}
       </tr>
       {% endfor %}

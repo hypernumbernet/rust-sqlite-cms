@@ -5,21 +5,6 @@
 {% block heading %}ユーザー{% endblock %}
 
 {% block content %}
-<style>
-  .login { font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
-  .badge-default {
-    display: inline-block;
-    margin-left: 8px;
-    font-size: 11px;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 1px 8px;
-    vertical-align: middle;
-    font-weight: normal;
-  }
-</style>
-
 {% if !error_message.is_empty() %}
 <div class="error">{{ error_message }}</div>
 {% endif %}
@@ -45,9 +30,9 @@
       {% for user in users %}
       <tr>
         <td>
-          <span class="login">{{ user.login }}</span>
+          <span class="text-mono">{{ user.login }}</span>
           {% if user.is_protected %}
-          <span class="badge-default">既定</span>
+          <span class="badge-pill">既定</span>
           {% endif %}
         </td>
         <td>{{ user.display_name }}</td>

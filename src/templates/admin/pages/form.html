@@ -4,10 +4,13 @@
 {% block nav_pages %}active{% endblock %}
 {% block heading %}{{ heading }}{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
   input:disabled { background: #f6f7f7; color: var(--muted); }
 </style>
+{% endblock %}
+
+{% block content %}
 
 <form method="post" action="{{ action }}" class="form-layout code-editor-form"{% if !is_home %} onsubmit="return validatePageForm();"{% endif %}>
   <section class="panel">

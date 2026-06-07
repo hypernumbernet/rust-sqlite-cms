@@ -4,7 +4,7 @@
 {% block nav_database %}active{% endblock %}
 {% block heading %}{{ heading }}{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
   .column-builder {
     margin-top: 8px;
@@ -22,7 +22,9 @@
     margin-top: 12px;
   }
 </style>
+{% endblock %}
 
+{% block content %}
 <p class="breadcrumb"><a href="/admin/database">DB管理</a></p>
 
 {% if !error_message.is_empty() %}

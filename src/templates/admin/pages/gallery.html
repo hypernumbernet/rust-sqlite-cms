@@ -4,38 +4,27 @@
 {% block nav_pages %}active{% endblock %}
 {% block heading %}デザインを選ぶ{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
-  /* gallery preset chooser */
-  .card-grid .card {
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 18px 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .card h3 { margin: 0; font-size: 16px; }
-  .card p { margin: 0; color: var(--muted); font-size: 13px; flex: 1; }
-  .card.blank { border-style: dashed; }
   .back { margin-top: 18px; }
   .back a { font-size: 13px; }
 </style>
+{% endblock %}
 
+{% block content %}
 <div class="toolbar">
   <p>スターターデザインを選ぶと、その HTML を複製した状態で編集を始められます。</p>
 </div>
 
 <div class="card-grid card-grid--wide">
   {% for preset in presets %}
-  <div class="card">
+  <div class="card--pick">
     <h3>{{ preset.label }}</h3>
     <p>{{ preset.description }}</p>
     <a class="button" href="/admin/pages/new/{{ preset.key }}">このデザインで作成</a>
   </div>
   {% endfor %}
-  <div class="card blank">
+  <div class="card--pick blank">
     <h3>空から作成</h3>
     <p>テンプレートを使わず、空の状態から HTML を書き始めます。</p>
     <a class="button secondary" href="/admin/pages/new/blank">空のまま作成</a>

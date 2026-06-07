@@ -4,7 +4,7 @@
 {% block nav_layouts %}active{% endblock %}
 {% block heading %}{{ heading }}{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
   .favicon-picker-preview {
     display: flex;
@@ -147,7 +147,9 @@
   }
   .layout-files-empty { color: var(--muted); font-size: 13px; }
 </style>
+{% endblock %}
 
+{% block content %}
 <div class="form-layout">
   <section class="panel">
     {% if is_edit %}

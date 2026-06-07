@@ -4,7 +4,7 @@
 {% block nav_posts %}active{% endblock %}
 {% block heading %}{{ placeholder_name }} — 投稿{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
   .thumb {
     width: 72px;
@@ -27,6 +27,9 @@
     font-size: 11px;
   }
 </style>
+{% endblock %}
+
+{% block content %}
 
 <p class="breadcrumb"><a href="/admin/posts">投稿</a> / <code>{{ placeholder_name }}</code></p>
 <p class="meta-line">ウィジェットタイプ: {{ type_label }}{% if type_hint != "" %}（{{ type_hint }}）{% endif %}</p>

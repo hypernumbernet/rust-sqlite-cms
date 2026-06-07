@@ -5,15 +5,7 @@
 {% block heading %}{{ table_name }} — DB管理{% endblock %}
 
 {% block content %}
-<style>
-  .db-name {
-    font-weight: 600;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 13px;
-  }
-</style>
-
-<p class="breadcrumb"><a href="/admin/database">DB管理</a> / <code class="db-name">{{ table_name }}</code></p>
+<p class="breadcrumb"><a href="/admin/database">DB管理</a> / <code class="text-mono">{{ table_name }}</code></p>
 
 <div class="notice info">{{ message }}</div>
 

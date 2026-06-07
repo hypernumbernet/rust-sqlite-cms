@@ -4,11 +4,14 @@
 {% block nav_pages %}active{% endblock %}
 {% block heading %}ページ{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
   .name { font-weight: 600; }
   .url { color: var(--muted); font-size: 13px; }
 </style>
+{% endblock %}
+
+{% block content %}
 
 <div class="toolbar">
   <p>各ページはレイアウトに属し、MiniJinja で公開されます。トップ（<code>/</code>）は常に一覧に表示されます。</p>

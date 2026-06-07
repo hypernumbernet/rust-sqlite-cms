@@ -4,12 +4,14 @@
 {% block nav_widgets %}active{% endblock %}
 {% block heading %}ウィジェット{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
   .type-name { font-weight: 600; }
-  .type-key { color: var(--muted); font-size: 12px; margin-top: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .type-key { margin-top: 4px; }
 </style>
+{% endblock %}
 
+{% block content %}
 <div class="toolbar">
   <p>ウィジェットタイプのHTML構成を編集します。<code>html_template</code> が公開ページで <code>&#123;&#123; プレースホルダー名 &#125;&#125;_html</code> として利用可能になります。インスタンスごとの設定（表示件数など）はプレースホルダー側で管理します。</p>
   <a class="button" href="/admin/widgets/new">新規追加</a>
@@ -38,7 +40,7 @@
       <tr>
         <td>
           <div class="type-name">{{ widget_type.type_label }}</div>
-          <div class="type-key">{{ widget_type.type_key }}</div>
+          <div class="type-key text-mono-sm">{{ widget_type.type_key }}</div>
         </td>
         <td>{{ widget_type.config_summary }}</td>
         <td>{{ widget_type.updated_at }}</td>

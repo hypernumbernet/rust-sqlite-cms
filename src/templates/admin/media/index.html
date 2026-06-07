@@ -4,9 +4,8 @@
 {% block nav_media %}active{% endblock %}
 {% block heading %}メディア{% endblock %}
 
-{% block content %}
+{% block extra_styles %}
 <style>
-  /* media/index (upload + card browser) — only media-specific kept */
   .toolbar p { max-width: 560px; }
   .panel {
     padding: 16px;
@@ -72,7 +71,9 @@
   .ops { display: flex; gap: 8px; margin-top: auto; }
   .ops form { margin: 0; }
 </style>
+{% endblock %}
 
+{% block content %}
 <div class="toolbar">
   <p>画像や PDF をアップロードして管理します。公開 URL をコピーしてテンプレートやページから参照できます。</p>
 </div>

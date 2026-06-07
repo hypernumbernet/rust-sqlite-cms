@@ -1,12 +1,28 @@
+use std::convert::Infallible;
+use std::pin::Pin;
+use std::time::Instant;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
+use std::task::{Context, Poll};
+
 use askama::Template;
 use axum::{
     Form, Json, Router,
     body::Bytes,
     extract::{Path, Query, State},
-    response::{Html, IntoResponse, Redirect, Response},
+    response::{
+        Html, IntoResponse, Redirect, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::get,
 };
+use futures_util::stream::{self, Stream};
 use serde::Deserialize;
+use serde_json::json;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::error::{ApiResult, AppError, AppResult, DomainError};
 use crate::services::database::{
@@ -380,7 +396,7 @@ async fn table_seed_form(
 }
 
 async fn generate_table_seed(
-    auth: AuthUser,
+    _auth: AuthUser,
     State(state): State<AppState>,
     Path(name): Path<String>,
     body: Bytes,
@@ -388,69 +404,110 @@ async fn generate_table_seed(
     let columns = match database::load_user_table_columns(&state.pool(), &name).await {
         Ok(columns) => columns,
         Err(DomainError::SystemTable(message)) => {
-            return Ok(system_table_notice_response(&auth, &name, &message).await?);
+            return Ok(seed_sse_error(message).into_response());
         }
         Err(DomainError::NotFound) => return Err(AppError::NotFound),
-        Err(err) => {
-            let html = table_seed_form_template(
-                &auth,
-                &name,
-                &database::build_seed_form_rows(&[]),
-                DEFAULT_SEED_COUNT.to_string(),
-                &domain_error_message(&err),
-            )?;
-            return Ok(Html(html).into_response());
-        }
+        Err(err) => return Ok(seed_sse_error(domain_error_message(&err)).into_response()),
     };
 
     let form = match parse_seed_form_body(&body) {
         Ok(form) => form,
-        Err(message) => {
-            let html = table_seed_form_template(
-                &auth,
-                &name,
-                &seed_form_rows_from_submission(&columns, &TestDataSeedForm::default()),
-                DEFAULT_SEED_COUNT.to_string(),
-                &message,
-            )?;
-            return Ok(Html(html).into_response());
-        }
+        Err(message) => return Ok(seed_sse_error(message).into_response()),
     };
 
-    let count_display = form.count.clone();
     let (count, rules) = match database::parse_seed_form(&columns, &form) {
         Ok(parsed) => parsed,
-        Err(err) => {
-            let html = table_seed_form_template(
-                &auth,
-                &name,
-                &seed_form_rows_from_submission(&columns, &form),
-                count_display,
-                &domain_error_message(&err),
-            )?;
-            return Ok(Html(html).into_response());
-        }
+        Err(err) => return Ok(seed_sse_error(domain_error_message(&err)).into_response()),
     };
 
-    match database::generate_test_data(&state.pool(), &name, count, &rules).await {
-        Ok(_) => Ok(
-            Redirect::to(&table_url(&name, "/data")).into_response(),
-        ),
-        Err(DomainError::SystemTable(message)) => {
-            Ok(system_table_notice_response(&auth, &name, &message).await?)
-        }
-        Err(DomainError::NotFound) => Err(AppError::NotFound),
-        Err(err) => {
-            let html = table_seed_form_template(
-                &auth,
-                &name,
-                &seed_form_rows_from_submission(&columns, &form),
-                count_display,
-                &domain_error_message(&err),
-            )?;
-            Ok(Html(html).into_response())
-        }
+    let redirect = table_url(&name, "/data");
+    Ok(seed_sse_stream(state.pool().clone(), name, count, rules, redirect).into_response())
+}
+
+fn seed_sse_event(event_type: &str, data: serde_json::Value) -> Event {
+    Event::default().event(event_type).data(data.to_string())
+}
+
+fn seed_sse_error(message: impl Into<String>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let event = seed_sse_event("error", json!({ "message": message.into() }));
+    Sse::new(stream::once(async move { Ok(event) }))
+}
+
+struct CancelOnDrop<S> {
+    inner: S,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl<S> Drop for CancelOnDrop<S> {
+    fn drop(&mut self) {
+        self.cancelled.store(true, Ordering::Relaxed);
     }
+}
+
+impl<S: Stream + Unpin> Stream for CancelOnDrop<S> {
+    type Item = S::Item;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.as_mut().get_mut().inner).poll_next(cx)
+    }
+}
+
+fn seed_sse_stream(
+    pool: sqlx::SqlitePool,
+    table_name: String,
+    count: u32,
+    rules: Vec<(String, database::ColumnSeedRule)>,
+    redirect: String,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let cancelled_worker = Arc::clone(&cancelled);
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    tokio::spawn(async move {
+        let started = Instant::now();
+        let result = database::generate_test_data(
+            &pool,
+            &table_name,
+            count,
+            &rules,
+            Some(|done, total| {
+                let _ = tx.send(Ok(seed_sse_event(
+                    "progress",
+                    json!({ "done": done, "total": total }),
+                )));
+            }),
+            Some({
+                let cancelled = Arc::clone(&cancelled_worker);
+                move || cancelled.load(Ordering::Relaxed)
+            }),
+        )
+        .await;
+
+        match result {
+            Ok(generated) => {
+                let elapsed_ms = started.elapsed().as_millis() as u64;
+                let _ = tx.send(Ok(seed_sse_event(
+                    "done",
+                    json!({ "count": generated, "redirect": redirect, "elapsed_ms": elapsed_ms }),
+                )));
+            }
+            Err(err) => {
+                if err.to_string().contains("キャンセル") {
+                    return;
+                }
+                let _ = tx.send(Ok(seed_sse_event(
+                    "error",
+                    json!({ "message": domain_error_message(&err) }),
+                )));
+            }
+        }
+    });
+
+    let stream = CancelOnDrop {
+        inner: UnboundedReceiverStream::new(rx),
+        cancelled,
+    };
+    Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
 async fn create_table(
@@ -654,103 +711,6 @@ fn table_list_item(item: DbObjectItem) -> TableListItem {
 fn parse_seed_form_body(body: &Bytes) -> Result<TestDataSeedForm, String> {
     let body = std::str::from_utf8(body).map_err(|_| "フォームデータの形式が不正です".to_string())?;
     serde_html_form::from_str(body).map_err(|err| format!("フォームデータの解析に失敗しました: {err}"))
-}
-
-fn seed_form_rows_from_submission(
-    columns: &[TableColumnInput],
-    form: &TestDataSeedForm,
-) -> Vec<SeedFormRow> {
-    let defaults = database::build_seed_form_rows(columns);
-    columns
-        .iter()
-        .enumerate()
-        .map(|(index, column)| {
-            let default = defaults.get(index).cloned().unwrap_or_else(|| SeedFormRow {
-                name: column.name.clone(),
-                type_key: column.type_key.clone(),
-                type_label: column.type_key.clone(),
-                nullable: column.nullable,
-                int_min: "0".to_string(),
-                int_max: "1000".to_string(),
-                real_min: "0".to_string(),
-                real_max: "100".to_string(),
-                text_min: "8".to_string(),
-                text_max: "64".to_string(),
-                charset: "ascii_alnum".to_string(),
-                blob_min: "1".to_string(),
-                blob_max: "32".to_string(),
-                timestamp_from: String::new(),
-                timestamp_to: String::new(),
-                include_null: false,
-            });
-            SeedFormRow {
-                name: column.name.clone(),
-                type_key: column.type_key.clone(),
-                type_label: default.type_label,
-                nullable: column.nullable,
-                int_min: form
-                    .col_int_min
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.int_min),
-                int_max: form
-                    .col_int_max
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.int_max),
-                real_min: form
-                    .col_real_min
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.real_min),
-                real_max: form
-                    .col_real_max
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.real_max),
-                text_min: form
-                    .col_text_min
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.text_min),
-                text_max: form
-                    .col_text_max
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.text_max),
-                charset: form
-                    .col_charset
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.charset),
-                blob_min: form
-                    .col_blob_min
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.blob_min),
-                blob_max: form
-                    .col_blob_max
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.blob_max),
-                timestamp_from: form
-                    .col_timestamp_from
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.timestamp_from),
-                timestamp_to: form
-                    .col_timestamp_to
-                    .get(index)
-                    .cloned()
-                    .unwrap_or(default.timestamp_to),
-                include_null: form
-                    .col_include_null
-                    .get(index)
-                    .map(|value| value == "1")
-                    .unwrap_or(false),
-            }
-        })
-        .collect()
 }
 
 fn table_seed_form_template(

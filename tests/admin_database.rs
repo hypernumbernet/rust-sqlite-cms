@@ -5,6 +5,29 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
+fn parse_sse_events(body: &str) -> Vec<(String, serde_json::Value)> {
+    let mut events = Vec::new();
+    for block in body.split("\n\n") {
+        if block.trim().is_empty() {
+            continue;
+        }
+        let mut event_name = "message".to_string();
+        let mut data = String::new();
+        for line in block.lines() {
+            if let Some(value) = line.strip_prefix("event:") {
+                event_name = value.trim().to_string();
+            } else if let Some(value) = line.strip_prefix("data:") {
+                data = value.trim().to_string();
+            }
+        }
+        if !data.is_empty() {
+            let payload = serde_json::from_str(&data).unwrap_or(serde_json::Value::Null);
+            events.push((event_name, payload));
+        }
+    }
+    events
+}
+
 #[tokio::test]
 async fn database_index_lists_cms_tables() {
     let app = common::TestApp::new().await;
@@ -694,6 +717,8 @@ async fn database_table_seed_form_renders() {
     assert!(html.contains("note"));
     assert!(html.contains("ascii_alnum"));
     assert!(html.contains(r#"name="count""#));
+    assert!(html.contains("seed-progress"));
+    assert!(html.contains("seed-progress-bar"));
 }
 
 #[tokio::test]
@@ -720,13 +745,34 @@ async fn database_table_seed_generates_rows() {
             Some("application/x-www-form-urlencoded"),
         )
         .await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    let location = response
-        .headers()
-        .get("location")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    assert!(location.contains("/admin/database/tables/seed_rows/data"));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let sse = String::from_utf8(body.to_vec()).unwrap();
+    let events = parse_sse_events(&sse);
+    assert!(events.iter().any(|(name, _)| name == "progress"));
+    let done = events
+        .iter()
+        .find(|(name, _)| name == "done")
+        .expect("done event");
+    assert_eq!(done.1["count"], 5);
+    assert!(done.1["elapsed_ms"].as_u64().is_some());
+    assert!(done.1["redirect"]
+        .as_str()
+        .unwrap_or("")
+        .contains("/admin/database/tables/seed_rows/data"));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/seed_rows/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let rows = serde_json::from_slice::<serde_json::Value>(&body).unwrap();
+    assert_eq!(rows["total_count"], 5);
 
     let response = app
         .admin_request("GET", "/admin/database/tables/seed_rows/data", None, None)
@@ -769,9 +815,20 @@ async fn database_table_seed_system_table_shows_notice() {
             .await;
         assert_eq!(response.status(), StatusCode::OK);
         let body = response.into_body().collect().await.unwrap().to_bytes();
-        let html = String::from_utf8(body.to_vec()).unwrap();
-        assert!(html.contains("CMSのシステムテーブル"), "table: {table}");
-        assert!(html.contains("列編集・テストデータ生成はできません"));
+        let sse = String::from_utf8(body.to_vec()).unwrap();
+        let events = parse_sse_events(&sse);
+        let error = events
+            .iter()
+            .find(|(name, _)| name == "error")
+            .expect("error event");
+        assert!(error.1["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("CMSのシステムテーブル"));
+        assert!(error.1["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("列編集・テストデータ生成はできません"));
     }
 }
 
@@ -862,15 +919,23 @@ async fn database_table_seed_rejects_over_limit() {
             "POST",
             "/admin/database/tables/seed_limit/data/seed",
             Some(
-                "count=100001&col_name=body&col_type=text&col_text_min=1&col_text_max=8&col_charset=ascii_alnum&col_include_null=0",
+                "count=1000001&col_name=body&col_type=text&col_text_min=1&col_text_max=8&col_charset=ascii_alnum&col_include_null=0",
             ),
             Some("application/x-www-form-urlencoded"),
         )
         .await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let html = String::from_utf8(body.to_vec()).unwrap();
-    assert!(html.contains("100000"));
+    let sse = String::from_utf8(body.to_vec()).unwrap();
+    let events = parse_sse_events(&sse);
+    let error = events
+        .iter()
+        .find(|(name, _)| name == "error")
+        .expect("error event");
+    assert!(error.1["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("1000000"));
 }
 
 #[tokio::test]

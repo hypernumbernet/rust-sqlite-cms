@@ -121,9 +121,65 @@
     addBtn.addEventListener('click', addRow);
   }
 
+  function formatElapsedMs(ms) {
+    if (typeof ms !== 'number' || ms < 0 || !Number.isFinite(ms)) return '';
+    if (ms < 1000) {
+      return ms + ' ミリ秒';
+    }
+    const seconds = ms / 1000;
+    if (seconds < 60) {
+      const text = seconds >= 10 ? seconds.toFixed(1) : seconds.toFixed(2);
+      return text.replace(/\.?0+$/, '') + ' 秒';
+    }
+    const minutes = Math.floor(seconds / 60);
+    const rem = Math.round(seconds % 60);
+    return rem > 0 ? minutes + ' 分 ' + rem + ' 秒' : minutes + ' 分';
+  }
+
+  function parseSeedSseChunk(buffer, onEvent) {
+    const lines = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+    let eventName = 'message';
+    let dataLines = [];
+
+    function flushEvent() {
+      if (dataLines.length === 0) return;
+      const payload = dataLines.join('\n');
+      dataLines = [];
+      try {
+        onEvent(eventName, JSON.parse(payload));
+      } catch (err) {
+        onEvent('error', { message: '進捗データの解析に失敗しました' });
+      }
+      eventName = 'message';
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (line === '') {
+        flushEvent();
+        continue;
+      }
+      if (line.indexOf('event:') === 0) {
+        eventName = line.slice(6).trim();
+      } else if (line.indexOf('data:') === 0) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+
+    flushEvent();
+  }
+
   function initSeedForm() {
     const form = document.getElementById('seed-form');
     if (!form) return;
+
+    const progressEl = document.getElementById('seed-progress');
+    const progressTextEl = progressEl ? progressEl.querySelector('.seed-progress-text') : null;
+    const progressBarEl = document.getElementById('seed-progress-bar');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const streamUrl = form.getAttribute('action') || '';
+    let seedAbortController = null;
+    let seedRunId = 0;
 
     function syncRow(row) {
       const typeKey = row.dataset.typeKey;
@@ -137,9 +193,192 @@
       });
     }
 
+    function setFormDisabled(disabled) {
+      form.querySelectorAll('input, select, button, textarea').forEach(function (input) {
+        input.disabled = disabled;
+      });
+      if (!disabled) {
+        document.querySelectorAll('.seed-row').forEach(syncRow);
+      }
+    }
+
+    function showProgress() {
+      if (!progressEl) return;
+      progressEl.hidden = false;
+      progressEl.className = 'db-data-status is-loading';
+      if (progressTextEl) progressTextEl.textContent = '準備中…';
+      if (progressBarEl) {
+        progressBarEl.value = 0;
+        progressBarEl.max = 100;
+      }
+    }
+
+    function updateProgress(done, total) {
+      if (!progressEl) return;
+      progressEl.className = 'db-data-status is-loading';
+      const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+      if (progressTextEl) {
+        progressTextEl.textContent =
+          done.toLocaleString() + ' / ' + total.toLocaleString() + ' 件を生成中…';
+      }
+      if (progressBarEl) {
+        progressBarEl.max = 100;
+        progressBarEl.value = percent;
+      }
+    }
+
+    function showProgressError(message) {
+      if (!progressEl) return;
+      progressEl.className = 'db-data-status is-error';
+      if (progressTextEl) progressTextEl.textContent = message;
+      if (progressBarEl) progressBarEl.value = 0;
+    }
+
+    function hideProgress() {
+      if (!progressEl) return;
+      progressEl.hidden = true;
+      progressEl.className = 'db-data-status';
+    }
+
+    function resetFormState() {
+      hideProgress();
+      setFormDisabled(false);
+      if (submitBtn) submitBtn.disabled = false;
+    }
+
+    function buildUrlEncodedFormBody(targetForm) {
+      const params = new URLSearchParams();
+      targetForm.querySelectorAll('input, select, textarea').forEach(function (el) {
+        if (!el.name || el.disabled) return;
+        if (el.type === 'checkbox') {
+          if (el.checked) params.append(el.name, el.value || 'on');
+          return;
+        }
+        if (el.type === 'radio') {
+          if (el.checked) params.append(el.name, el.value);
+          return;
+        }
+        if (el.type === 'file') return;
+        params.append(el.name, el.value);
+      });
+      return params.toString();
+    }
+
+    async function runSeedStream() {
+      if (seedAbortController) {
+        seedAbortController.abort();
+      }
+
+      const runId = ++seedRunId;
+      const abortController = new AbortController();
+      seedAbortController = abortController;
+      const requestBody = buildUrlEncodedFormBody(form);
+
+      showProgress();
+      setFormDisabled(true);
+      const seedStartedAt = performance.now();
+
+      let pending = '';
+      let finished = false;
+
+      function handleSeedEvent(eventName, payload) {
+        if (eventName === 'progress') {
+          updateProgress(payload.done || 0, payload.total || 0);
+        } else if (eventName === 'done') {
+          finished = true;
+          const elapsedMs =
+            typeof payload.elapsed_ms === 'number'
+              ? payload.elapsed_ms
+              : Math.round(performance.now() - seedStartedAt);
+          const elapsedText = formatElapsedMs(elapsedMs);
+          if (progressEl) progressEl.className = 'db-data-status is-done';
+          if (progressTextEl) {
+            progressTextEl.textContent =
+              (payload.count || 0).toLocaleString() +
+              ' 件の生成が完了しました' +
+              (elapsedText ? '（' + elapsedText + '）' : '') +
+              '。';
+          }
+          if (progressBarEl) progressBarEl.value = 100;
+          setFormDisabled(false);
+        } else if (eventName === 'error') {
+          finished = true;
+          showProgressError(payload.message || '生成に失敗しました');
+          setFormDisabled(false);
+        }
+      }
+
+      try {
+        const response = await fetch(streamUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: requestBody,
+          credentials: 'same-origin',
+          signal: abortController.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error('生成リクエストに失敗しました');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          pending += decoder.decode(chunk.value, { stream: true }).replace(/\r\n/g, '\n');
+          const parts = pending.split('\n\n');
+          pending = parts.pop() || '';
+          for (let i = 0; i < parts.length; i++) {
+            parseSeedSseChunk(parts[i], handleSeedEvent);
+          }
+        }
+
+        if (pending.trim()) {
+          parseSeedSseChunk(pending, handleSeedEvent);
+        }
+
+        if (!finished) {
+          throw new Error('生成が完了する前に接続が終了しました');
+        }
+      } catch (err) {
+        if (abortController.signal.aborted || (err && err.name === 'AbortError')) {
+          return;
+        }
+        if (!finished && runId === seedRunId) {
+          showProgressError(err && err.message ? err.message : '生成に失敗しました');
+          setFormDisabled(false);
+        }
+      } finally {
+        if (runId === seedRunId) {
+          seedAbortController = null;
+          if (!abortController.signal.aborted && submitBtn) {
+            submitBtn.disabled = false;
+          }
+        }
+      }
+    }
+
+    resetFormState();
+
+    window.addEventListener('pagehide', function () {
+      if (seedAbortController) {
+        seedAbortController.abort();
+      }
+    });
+
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted) {
+        resetFormState();
+      }
+    });
+
     document.querySelectorAll('.seed-row').forEach(syncRow);
 
     form.addEventListener('submit', function (event) {
+      event.preventDefault();
+
       document.querySelectorAll('.seed-row').forEach(function (row) {
         const checkbox = row.querySelector('.null-checkbox');
         const hidden = row.querySelector('.null-value');
@@ -150,8 +389,10 @@
 
       const count = document.getElementById('count').value;
       if (!confirm(count + ' 件のテストデータを生成します。続行しますか？')) {
-        event.preventDefault();
+        return;
       }
+
+      runSeedStream();
     });
   }
 

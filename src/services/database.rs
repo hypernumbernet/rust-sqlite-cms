@@ -12,7 +12,7 @@ use crate::error::{AppError, AppResult, DomainError, DomainResult};
 pub const TABLE_DATA_CHUNK_SIZE: i64 = 1000;
 
 /// テストデータ生成の1回あたりの最大件数。
-pub const MAX_TEST_DATA_ROWS: u32 = 100_000;
+pub const MAX_TEST_DATA_ROWS: u32 = 1_000_000;
 
 /// テストデータ生成フォームの既定件数。
 pub const DEFAULT_SEED_COUNT: u32 = 100;
@@ -1127,12 +1127,35 @@ pub fn parse_seed_form(
     Ok((count, rules))
 }
 
-pub async fn generate_test_data(
+fn seed_progress_interval(count: u32) -> u32 {
+    (count / 100).max(1)
+}
+
+fn maybe_report_seed_progress<F: FnMut(u32, u32)>(
+    done: u32,
+    total: u32,
+    interval: u32,
+    on_progress: &mut Option<F>,
+) {
+    if done == 1 || done == total || done % interval == 0 {
+        if let Some(callback) = on_progress {
+            callback(done, total);
+        }
+    }
+}
+
+pub async fn generate_test_data<F, C>(
     pool: &SqlitePool,
     table_name: &str,
     count: u32,
     rules: &[(String, ColumnSeedRule)],
-) -> DomainResult<u32> {
+    mut on_progress: Option<F>,
+    mut should_cancel: Option<C>,
+) -> DomainResult<u32>
+where
+    F: FnMut(u32, u32),
+    C: FnMut() -> bool,
+{
     let table_name = ensure_editable_user_table(table_name)?;
     if !object_name_exists(pool, table_name, "table").await? {
         return Err(DomainError::NotFound);
@@ -1145,14 +1168,19 @@ pub async fn generate_test_data(
 
     let mut tx = pool.begin().await?;
     let mut rng = OsRng;
+    let progress_interval = seed_progress_interval(count);
 
     if rules.is_empty() {
         let quoted_table = quote_sql_identifier(table_name);
         let query = format!("INSERT INTO {quoted_table} DEFAULT VALUES");
-        for _ in 0..count {
+        for done in 1..=count {
+            if should_cancel.as_mut().map(|check| check()).unwrap_or(false) {
+                return Err(DomainError::Validation("生成がキャンセルされました".into()));
+            }
             sqlx::query(sqlx::AssertSqlSafe(query.clone()))
                 .execute(&mut *tx)
                 .await?;
+            maybe_report_seed_progress(done, count, progress_interval, &mut on_progress);
         }
     } else {
         let quoted_cols = rules
@@ -1167,7 +1195,10 @@ pub async fn generate_test_data(
         let quoted_table = quote_sql_identifier(table_name);
         let query = format!("INSERT INTO {quoted_table} ({quoted_cols}) VALUES ({placeholders})");
 
-        for _ in 0..count {
+        for done in 1..=count {
+            if should_cancel.as_mut().map(|check| check()).unwrap_or(false) {
+                return Err(DomainError::Validation("生成がキャンセルされました".into()));
+            }
             let mut sql_query = sqlx::query(sqlx::AssertSqlSafe(query.clone()));
             for (_, rule) in rules {
                 sql_query = match generate_cell_value(rule, &mut rng)? {
@@ -1179,6 +1210,7 @@ pub async fn generate_test_data(
                 };
             }
             sql_query.execute(&mut *tx).await?;
+            maybe_report_seed_progress(done, count, progress_interval, &mut on_progress);
         }
     }
 
@@ -1897,6 +1929,100 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn generate_test_data_reports_progress() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(r#"CREATE TABLE "progress" (id INTEGER PRIMARY KEY, "body" TEXT NOT NULL)"#)
+            .execute(&pool)
+            .await
+            .expect("create table");
+
+        let rules = vec![(
+            "body".to_string(),
+            ColumnSeedRule::Text {
+                min_len: 4,
+                max_len: 4,
+                charset: StringCharset::AsciiAlnum,
+                include_null: false,
+            },
+        )];
+        let mut progress = Vec::new();
+        generate_test_data(
+            &pool,
+            "progress",
+            250,
+            &rules,
+            Some(|done, total| {
+                progress.push((done, total));
+            }),
+            None::<fn() -> bool>,
+        )
+        .await
+        .expect("generate");
+
+        assert!(!progress.is_empty());
+        assert_eq!(progress.last().copied(), Some((250, 250)));
+        assert!(progress.iter().all(|(_, total)| *total == 250));
+        assert!(progress.windows(2).all(|window| window[0].0 < window[1].0));
+
+        let count: (i64,) = sqlx::query_as(r#"SELECT COUNT(*) FROM "progress""#)
+            .fetch_one(&pool)
+            .await
+            .expect("count rows");
+        assert_eq!(count.0, 250);
+    }
+
+    #[tokio::test]
+    async fn generate_test_data_can_be_cancelled() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(r#"CREATE TABLE "cancel" (id INTEGER PRIMARY KEY, "body" TEXT NOT NULL)"#)
+            .execute(&pool)
+            .await
+            .expect("create table");
+
+        let rules = vec![(
+            "body".to_string(),
+            ColumnSeedRule::Text {
+                min_len: 4,
+                max_len: 4,
+                charset: StringCharset::AsciiAlnum,
+                include_null: false,
+            },
+        )];
+        let cancel_after = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let cancel_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let cancel_after_worker = std::sync::Arc::clone(&cancel_after);
+        let cancel_flag_worker = std::sync::Arc::clone(&cancel_flag);
+
+        let err = generate_test_data(
+            &pool,
+            "cancel",
+            500,
+            &rules,
+            Some(move |done, _| {
+                if done >= 50 {
+                    cancel_flag_worker.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+                cancel_after_worker.store(done, std::sync::atomic::Ordering::Relaxed);
+            }),
+            Some(move || cancel_flag.load(std::sync::atomic::Ordering::Relaxed)),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("キャンセル"));
+
+        let count: (i64,) = sqlx::query_as(r#"SELECT COUNT(*) FROM "cancel""#)
+            .fetch_one(&pool)
+            .await
+            .expect("count rows");
+        assert_eq!(count.0, 0);
+        assert!(cancel_after.load(std::sync::atomic::Ordering::Relaxed) >= 50);
+    }
+
+    #[tokio::test]
     async fn generate_test_data_supports_blob_and_boolean() {
         let pool = SqlitePool::connect("sqlite::memory:")
             .await
@@ -1922,9 +2048,16 @@ mod tests {
                 ColumnSeedRule::Boolean { include_null: false },
             ),
         ];
-        generate_test_data(&pool, "mixed", 10, &rules)
-            .await
-            .expect("generate");
+        generate_test_data(
+            &pool,
+            "mixed",
+            10,
+            &rules,
+            None::<fn(u32, u32)>,
+            None::<fn() -> bool>,
+        )
+        .await
+        .expect("generate");
 
         let rows: Vec<(Vec<u8>, i64)> = sqlx::query_as(r#"SELECT "payload", "active" FROM "mixed""#)
             .fetch_all(&pool)

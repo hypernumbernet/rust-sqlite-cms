@@ -67,6 +67,10 @@
     font-size: 13px;
     color: var(--muted);
   }
+  #seed-progress progress {
+    width: 100%;
+    height: 8px;
+  }
 </style>
 {% endblock %}
 
@@ -81,7 +85,12 @@
 <div class="error">{{ error_message }}</div>
 {% endif %}
 
-<form method="post" action="{{ action }}" class="form-layout" id="seed-form">
+<div id="seed-progress" class="db-data-status" hidden role="status" aria-live="polite">
+  <span class="seed-progress-text">準備中…</span>
+  <progress id="seed-progress-bar" max="100" value="0"></progress>
+</div>
+
+<form method="post" action="{{ action }}" class="form-layout" id="seed-form" data-data-url="{{ data_url }}">
   <section class="panel">
     <div class="field">
       <label for="count">生成件数</label>

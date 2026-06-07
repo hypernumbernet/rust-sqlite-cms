@@ -19,6 +19,7 @@ use chrono::DateTime;
 
 pub mod auth;
 pub mod backup;
+pub mod database;
 pub mod layout;
 pub mod layouts;
 pub mod media;
@@ -60,6 +61,7 @@ pub fn router() -> Router<AppState> {
         .merge(users::router())
         .merge(samples::router())
         .merge(backup::router())
+        .merge(database::router())
         .route_layer(middleware::from_fn(auth::require_admin_auth));
 
     public.merge(protected)

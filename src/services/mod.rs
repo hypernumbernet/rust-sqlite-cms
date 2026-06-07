@@ -6,6 +6,7 @@
 
 pub mod backup;
 pub mod contact_form;
+pub mod database;
 pub mod layouts;
 pub mod media;
 pub mod users;

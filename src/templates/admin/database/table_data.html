@@ -1,0 +1,65 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ table_name }} — データ{% endblock %}
+{% block nav_database %}active{% endblock %}
+{% block heading %}{{ table_name }} — データ{% endblock %}
+
+{% block content %}
+<style>
+  .db-name {
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  .cell-value {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    word-break: break-all;
+  }
+  .data-count {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+</style>
+
+<p class="breadcrumb"><a href="/admin/database">DB管理</a> / <code>{{ table_name }}</code></p>
+
+<div class="toolbar">
+  <p class="data-count">表示 {{ shown_count }} / 全 {{ total_count }} 件</p>
+  <div class="toolbar-actions">
+    <a class="button secondary" href="{{ seed_url }}">テストデータ生成</a>
+    <a class="button secondary" href="{{ edit_url }}">列編集</a>
+  </div>
+</div>
+
+<section class="panel panel-table" data-has-more="{% if has_more %}1{% else %}0{% endif %}">
+  {% if has_rows %}
+  <table>
+    <thead>
+      <tr>
+        {% for column in columns %}
+        <th><span class="db-name">{{ column }}</span></th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        {% for cell in row.cells %}
+        <td class="cell-value">{{ cell }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">データがありません。</p>
+  {% endif %}
+</section>
+{% endblock %}

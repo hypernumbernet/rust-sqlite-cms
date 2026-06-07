@@ -1,0 +1,36 @@
+{% extends "admin/base.html" %}
+
+{% block title %}ビューを追加{% endblock %}
+{% block nav_database %}active{% endblock %}
+{% block heading %}ビューを追加{% endblock %}
+
+{% block content %}
+<p class="breadcrumb"><a href="/admin/database?tab=views">DB管理</a></p>
+
+{% if !error_message.is_empty() %}
+<div class="error">{{ error_message }}</div>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form-layout">
+  <section class="panel">
+    <div class="field">
+      <label for="name">ビュー名</label>
+      <input id="name" name="name" type="text" maxlength="120" value="{{ name }}" required>
+      <p class="help">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。CMS コアテーブル名は使用できません。</p>
+    </div>
+
+    <div class="field">
+      <label for="definition">SELECT 文</label>
+      <textarea id="definition" name="definition" rows="8" required>{{ definition }}</textarea>
+      <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="actions">
+      <button class="button" type="submit">追加する</button>
+      <a class="button secondary" href="{{ cancel_url }}">一覧に戻る</a>
+    </div>
+  </aside>
+</form>
+{% endblock %}

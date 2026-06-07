@@ -1,0 +1,153 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ heading }}{% endblock %}
+{% block nav_database %}active{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+
+{% block content %}
+<style>
+  .column-builder {
+    margin-top: 8px;
+    overflow-x: auto;
+  }
+  .column-builder table {
+    min-width: 640px;
+  }
+  .column-builder input[type="text"],
+  .column-builder select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+  .column-actions {
+    margin-top: 12px;
+  }
+</style>
+
+<p class="breadcrumb"><a href="/admin/database">DB管理</a></p>
+
+{% if !error_message.is_empty() %}
+<div class="error">{{ error_message }}</div>
+{% endif %}
+
+{% if is_edit %}
+<div class="notice">保存するとテーブル定義を再作成します。既存の行データは削除されます。</div>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form-layout" id="table-create-form"{% if is_edit %} onsubmit="return confirm('テーブル定義を更新します。既存の行データは削除されます。続行しますか？');"{% endif %}>
+  <section class="panel">
+    <div class="field">
+      <label for="name">テーブル名</label>
+      <input id="name" name="name" type="text" maxlength="120" value="{{ name }}"{% if name_readonly %} readonly{% else %} required{% endif %}>
+      {% if name_readonly %}
+      <p class="help">テーブル名は変更できません。</p>
+      {% else %}
+      <p class="help">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。CMS コアテーブル名は使用できません。</p>
+      {% endif %}
+    </div>
+
+    <div class="field">
+      <label>カラム</label>
+      <p class="help"><code>id INTEGER PRIMARY KEY</code> 列は自動で追加されます。ここでは追加カラムのみ定義してください。カラム名も Unicode 可（<code>id</code> および制御文字・<code>"</code>・<code>;</code> は不可）。</p>
+
+      <div class="column-builder panel panel-table">
+        <table>
+          <thead>
+            <tr>
+              <th>カラム名</th>
+              <th>型</th>
+              <th>NULL</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="column-rows">
+            {% for column in columns %}
+            <tr class="column-row">
+              <td><input name="col_name" type="text" maxlength="120" value="{{ column.name }}"></td>
+              <td>
+                <select name="col_type">
+                  <option value="integer"{% if column.type_key == "integer" %} selected{% endif %}>整数</option>
+                  <option value="real"{% if column.type_key == "real" %} selected{% endif %}>実数</option>
+                  <option value="text"{% if column.type_key == "text" %} selected{% endif %}>文字列</option>
+                  <option value="blob"{% if column.type_key == "blob" %} selected{% endif %}>バイナリ</option>
+                  <option value="timestamp"{% if column.type_key == "timestamp" %} selected{% endif %}>日時</option>
+                  <option value="boolean"{% if column.type_key == "boolean" %} selected{% endif %}>真偽値</option>
+                </select>
+              </td>
+              <td>
+                <select name="col_nullable">
+                  <option value="1"{% if column.nullable %} selected{% endif %}>NULL可</option>
+                  <option value="0"{% if !column.nullable %} selected{% endif %}>NOT NULL</option>
+                </select>
+              </td>
+              <td>
+                <button type="button" class="button secondary column-remove-btn">削除</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="column-actions">
+        <button type="button" class="button secondary" id="add-column-btn">カラムを追加</button>
+      </div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="actions">
+      <button class="button" type="submit">{{ submit_label }}</button>
+      <a class="button secondary" href="{{ cancel_url }}">一覧に戻る</a>
+    </div>
+  </aside>
+</form>
+
+<template id="column-row-template">
+  <tr class="column-row">
+    <td><input name="col_name" type="text" maxlength="120" value=""></td>
+    <td>
+      <select name="col_type">
+        <option value="integer">整数</option>
+        <option value="real">実数</option>
+        <option value="text" selected>文字列</option>
+        <option value="blob">バイナリ</option>
+        <option value="timestamp">日時</option>
+        <option value="boolean">真偽値</option>
+      </select>
+    </td>
+    <td>
+      <select name="col_nullable">
+        <option value="1" selected>NULL可</option>
+        <option value="0">NOT NULL</option>
+      </select>
+    </td>
+    <td>
+      <button type="button" class="button secondary column-remove-btn">削除</button>
+    </td>
+  </tr>
+</template>
+
+<script>
+(function() {
+  const rowsEl = document.getElementById('column-rows');
+  const template = document.getElementById('column-row-template');
+  const addBtn = document.getElementById('add-column-btn');
+
+  function bindRow(row) {
+    const removeBtn = row.querySelector('.column-remove-btn');
+    removeBtn.addEventListener('click', function() {
+      row.remove();
+    });
+  }
+
+  function addRow() {
+    const fragment = template.content.cloneNode(true);
+    rowsEl.appendChild(fragment);
+    bindRow(rowsEl.lastElementChild);
+  }
+
+  rowsEl.querySelectorAll('.column-row').forEach(bindRow);
+  addBtn.addEventListener('click', addRow);
+})();
+</script>
+{% endblock %}

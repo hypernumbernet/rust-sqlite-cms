@@ -1,0 +1,242 @@
+{% extends "admin/base.html" %}
+
+{% block title %}{{ table_name }} — テストデータ生成{% endblock %}
+{% block nav_database %}active{% endblock %}
+{% block heading %}{{ table_name }} — テストデータ生成{% endblock %}
+
+{% block content %}
+<style>
+  .seed-builder {
+    margin-top: 8px;
+  }
+  .seed-builder table {
+    width: 100%;
+  }
+  .seed-builder .db-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .seed-builder .type-label {
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .seed-params {
+    min-width: 280px;
+  }
+  .seed-param-group {
+    display: none;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 16px;
+  }
+  .seed-param-group.active {
+    display: flex;
+  }
+  .seed-param {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    flex: 0 0 auto;
+  }
+  .seed-param label {
+    margin: 0;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .seed-builder .seed-param input[type="number"] {
+    width: 15ch;
+    max-width: 200px;
+    min-width: 0;
+    flex: 0 0 auto;
+  }
+  .seed-builder .seed-param input[type="datetime-local"] {
+    width: 16em;
+    max-width: 220px;
+    min-width: 0;
+    flex: 0 0 auto;
+  }
+  .seed-builder .seed-param select {
+    width: auto;
+    max-width: 156px;
+    min-width: 0;
+    flex: 0 0 auto;
+  }
+  .seed-null-cell {
+    white-space: nowrap;
+    font-size: 13px;
+  }
+  .seed-param-note {
+    font-size: 13px;
+    color: var(--muted);
+  }
+</style>
+
+<p class="breadcrumb">
+  <a href="/admin/database">DB管理</a> /
+  <a href="{{ data_url }}"><code>{{ table_name }}</code> データ</a> /
+  テストデータ生成
+</p>
+
+{% if !error_message.is_empty() %}
+<div class="error">{{ error_message }}</div>
+{% endif %}
+
+<form method="post" action="{{ action }}" class="form-layout" id="seed-form">
+  <section class="panel">
+    <div class="field">
+      <label for="count">生成件数</label>
+      <input id="count" name="count" type="number" min="1" max="{{ max_count }}" value="{{ count }}" required>
+      <p class="help">1〜{{ max_count }} 件まで指定できます。<code>id</code> 列は自動採番されます。</p>
+    </div>
+
+    {% if has_columns %}
+    <div class="field">
+      <label>カラムごとの生成設定</label>
+      <p class="help">型に応じた範囲・文字数・文字種を指定してください。NULL可の列では NULL を含めることもできます。</p>
+
+      <div class="seed-builder panel panel-table">
+        <table>
+          <thead>
+            <tr>
+              <th>カラム名</th>
+              <th>型</th>
+              <th>生成設定</th>
+              <th>NULL</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for column in columns %}
+            <tr class="seed-row" data-type-key="{{ column.type_key }}">
+              <td>
+                <span class="db-name">{{ column.name }}</span>
+                <input type="hidden" name="col_name" value="{{ column.name }}">
+                <input type="hidden" name="col_type" value="{{ column.type_key }}">
+              </td>
+              <td><span class="type-label">{{ column.type_label }}</span></td>
+              <td class="seed-params">
+                <div class="seed-param-group" data-type="integer">
+                  <span class="seed-param">
+                    <label>最小</label>
+                    <input name="col_int_min" type="number" value="{{ column.int_min }}">
+                  </span>
+                  <span class="seed-param">
+                    <label>最大</label>
+                    <input name="col_int_max" type="number" value="{{ column.int_max }}">
+                  </span>
+                </div>
+                <div class="seed-param-group" data-type="real">
+                  <span class="seed-param">
+                    <label>最小</label>
+                    <input name="col_real_min" type="number" step="any" value="{{ column.real_min }}">
+                  </span>
+                  <span class="seed-param">
+                    <label>最大</label>
+                    <input name="col_real_max" type="number" step="any" value="{{ column.real_max }}">
+                  </span>
+                </div>
+                <div class="seed-param-group" data-type="text">
+                  <span class="seed-param">
+                    <label>最小文字数</label>
+                    <input name="col_text_min" type="number" min="1" value="{{ column.text_min }}">
+                  </span>
+                  <span class="seed-param">
+                    <label>最大文字数</label>
+                    <input name="col_text_max" type="number" min="1" value="{{ column.text_max }}">
+                  </span>
+                  <span class="seed-param">
+                    <label>文字種</label>
+                    <select name="col_charset">
+                      <option value="ascii_alnum"{% if column.charset == "ascii_alnum" %} selected{% endif %}>英数字</option>
+                      <option value="ascii_printable"{% if column.charset == "ascii_printable" %} selected{% endif %}>ASCII印字可能</option>
+                      <option value="japanese"{% if column.charset == "japanese" %} selected{% endif %}>日本語混在</option>
+                    </select>
+                  </span>
+                </div>
+                <div class="seed-param-group" data-type="blob">
+                  <span class="seed-param">
+                    <label>最小バイト数</label>
+                    <input name="col_blob_min" type="number" min="1" value="{{ column.blob_min }}">
+                  </span>
+                  <span class="seed-param">
+                    <label>最大バイト数</label>
+                    <input name="col_blob_max" type="number" min="1" value="{{ column.blob_max }}">
+                  </span>
+                </div>
+                <div class="seed-param-group" data-type="timestamp">
+                  <span class="seed-param">
+                    <label>開始日時</label>
+                    <input name="col_timestamp_from" type="datetime-local" value="{{ column.timestamp_from }}">
+                  </span>
+                  <span class="seed-param">
+                    <label>終了日時</label>
+                    <input name="col_timestamp_to" type="datetime-local" value="{{ column.timestamp_to }}">
+                  </span>
+                </div>
+                <div class="seed-param-group" data-type="boolean">
+                  <span class="seed-param-note">0 または 1 をランダムに生成します。</span>
+                </div>
+              </td>
+              <td class="seed-null-cell">
+                {% if column.nullable %}
+                <label><input type="checkbox" class="null-checkbox"{% if column.include_null %} checked{% endif %}> 含める</label>
+                <input type="hidden" name="col_include_null" class="null-value" value="{% if column.include_null %}1{% else %}0{% endif %}">
+                {% else %}
+                <input type="hidden" name="col_include_null" value="0">
+                <span class="muted">—</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <p class="help">ユーザー定義カラムがありません。<code>id</code> 列のみの行が生成されます。</p>
+    {% endif %}
+  </section>
+
+  <aside class="panel">
+    <div class="actions">
+      <button class="button" type="submit">生成する</button>
+      <a class="button secondary" href="{{ data_url }}">データ一覧に戻る</a>
+    </div>
+  </aside>
+</form>
+
+<script>
+(function() {
+  function syncRow(row) {
+    const typeKey = row.dataset.typeKey;
+    row.querySelectorAll('.seed-param-group').forEach(function(group) {
+      const active = group.dataset.type === typeKey;
+      group.classList.toggle('active', active);
+      group.querySelectorAll('input, select').forEach(function(input) {
+        input.disabled = !active;
+        input.required = active && input.type !== 'checkbox';
+      });
+    });
+  }
+
+  document.querySelectorAll('.seed-row').forEach(syncRow);
+
+  document.getElementById('seed-form').addEventListener('submit', function(event) {
+    document.querySelectorAll('.seed-row').forEach(function(row) {
+      const checkbox = row.querySelector('.null-checkbox');
+      const hidden = row.querySelector('.null-value');
+      if (checkbox && hidden) {
+        hidden.value = checkbox.checked ? '1' : '0';
+      }
+    });
+
+    const count = document.getElementById('count').value;
+    if (!confirm(count + ' 件のテストデータを生成します。続行しますか？')) {
+      event.preventDefault();
+    }
+  });
+})();
+</script>
+{% endblock %}

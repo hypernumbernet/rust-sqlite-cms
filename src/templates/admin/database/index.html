@@ -1,0 +1,127 @@
+{% extends "admin/base.html" %}
+
+{% block title %}DB管理{% endblock %}
+{% block nav_database %}active{% endblock %}
+{% block heading %}DB管理{% endblock %}
+
+{% block content %}
+<style>
+  .db-name {
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  .badge-system {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1px 8px;
+    vertical-align: middle;
+    font-weight: normal;
+  }
+  .row-count {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .sql-preview {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--muted);
+    word-break: break-all;
+  }
+  .db-path {
+    margin: 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .db-path code {
+    word-break: break-all;
+  }
+</style>
+
+<div class="toolbar">
+  <p class="db-path">データベース: <code>{{ database_path }}</code></p>
+  <a class="button" href="{{ new_url }}">新規追加</a>
+</div>
+
+<nav class="tab-nav" aria-label="DB管理">
+  <a href="{{ tables_tab_url }}"{% if is_tables_tab %} class="active"{% endif %}>テーブル</a>
+  <a href="{{ views_tab_url }}"{% if is_views_tab %} class="active"{% endif %}>ビュー</a>
+</nav>
+
+<div class="tab-panel"{% if !is_tables_tab %} hidden{% endif %}>
+  <section class="panel panel-table">
+    {% if has_tables %}
+    <table>
+      <thead>
+        <tr>
+          <th>名前</th>
+          <th class="row-count">行数</th>
+          <th>種別</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in tables %}
+        <tr>
+          <td><span class="db-name">{{ item.name }}</span></td>
+          <td class="row-count">
+            {% if let Some(count) = item.row_count %}{{ count }}{% else %}—{% endif %}
+          </td>
+          <td>
+            {% if item.is_system %}システム{% else %}ユーザー{% endif %}
+          </td>
+          <td>
+            {% if item.can_edit %}
+            <div class="op-actions">
+              <a class="button secondary" href="{{ item.edit_url }}">列編集</a>
+              <a class="button secondary" href="{{ item.data_url }}">データ</a>
+            </div>
+            {% else %}
+            —
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">テーブルがありません。</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="tab-panel"{% if !is_views_tab %} hidden{% endif %}>
+  <section class="panel panel-table">
+    {% if has_views %}
+    <table>
+      <thead>
+        <tr>
+          <th>名前</th>
+          <th>定義</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in views %}
+        <tr>
+          <td>
+            <span class="db-name">{{ item.name }}</span>
+            {% if item.is_system %}
+            <span class="badge-system">システム</span>
+            {% endif %}
+          </td>
+          <td class="sql-preview">{{ item.sql_preview }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">ビューがありません。</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

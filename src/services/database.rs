@@ -160,6 +160,7 @@ struct MasterRow {
 #[derive(sqlx::FromRow)]
 struct PragmaTableInfoRow {
     name: String,
+    pk: i32,
 }
 
 /// CMS コアテーブル（マイグレーション定義・リードオンリー扱い）。
@@ -558,7 +559,8 @@ pub async fn fetch_table_rows_chunk(
     }
 
     let quoted = quote_sql_identifier(name);
-    let query = format!("SELECT * FROM {quoted} ORDER BY id LIMIT {limit} OFFSET {offset}");
+    let order_by = table_order_columns(pool, name).await?;
+    let query = format!("SELECT * FROM {quoted} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}");
     let sql_rows = sqlx::query(sqlx::AssertSqlSafe(query))
         .fetch_all(pool)
         .await?;
@@ -569,14 +571,49 @@ pub async fn fetch_table_rows_chunk(
         .collect())
 }
 
-async fn table_column_names(pool: &SqlitePool, table_name: &str) -> DomainResult<Vec<String>> {
+async fn table_pragma_info(pool: &SqlitePool, table_name: &str) -> DomainResult<Vec<PragmaTableInfoRow>> {
     let quoted = quote_sql_identifier(table_name);
     let query = format!("PRAGMA table_info({quoted})");
     let rows = sqlx::query_as::<_, PragmaTableInfoRow>(sqlx::AssertSqlSafe(query))
         .fetch_all(pool)
         .await?;
+    Ok(rows)
+}
 
+async fn table_column_names(pool: &SqlitePool, table_name: &str) -> DomainResult<Vec<String>> {
+    let rows = table_pragma_info(pool, table_name).await?;
     Ok(rows.into_iter().map(|row| row.name).collect())
+}
+
+async fn table_order_columns(pool: &SqlitePool, table_name: &str) -> DomainResult<String> {
+    let rows = table_pragma_info(pool, table_name).await?;
+
+    let mut pk_columns: Vec<(i32, String)> = rows
+        .iter()
+        .filter(|row| row.pk > 0)
+        .map(|row| (row.pk, row.name.clone()))
+        .collect();
+    if !pk_columns.is_empty() {
+        pk_columns.sort_by_key(|(pk, _)| *pk);
+        return Ok(pk_columns
+            .into_iter()
+            .map(|(_, name)| quote_sql_identifier(&name))
+            .collect::<Vec<_>>()
+            .join(", "));
+    }
+
+    if rows
+        .iter()
+        .any(|row| row.name.eq_ignore_ascii_case("id"))
+    {
+        return Ok(quote_sql_identifier("id"));
+    }
+
+    if let Some(first) = rows.first() {
+        return Ok(quote_sql_identifier(&first.name));
+    }
+
+    Ok("rowid".to_string())
 }
 
 fn row_to_cells(row: &sqlx::sqlite::SqliteRow, column_count: usize) -> Vec<String> {
@@ -1322,6 +1359,55 @@ mod tests {
         assert_eq!(columns[2].type_key, "blob");
         assert_eq!(columns[3].type_key, "timestamp");
         assert_eq!(columns[4].type_key, "boolean");
+    }
+
+    #[tokio::test]
+    async fn list_user_table_rows_supports_non_id_primary_key() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(
+            r#"CREATE TABLE "_sqlx_test" (
+                version BIGINT PRIMARY KEY,
+                description TEXT NOT NULL,
+                installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                success BOOLEAN NOT NULL,
+                checksum BLOB NOT NULL,
+                execution_time BIGINT NOT NULL
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create table");
+
+        sqlx::query(
+            r#"INSERT INTO "_sqlx_test"
+               (version, description, success, checksum, execution_time)
+               VALUES (1, 'init', 1, X'0102', 42)"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert row");
+
+        let view = list_user_table_rows(&pool, "_sqlx_test", 0)
+            .await
+            .expect("list rows");
+        assert_eq!(
+            view.columns,
+            vec![
+                "version".to_string(),
+                "description".to_string(),
+                "installed_on".to_string(),
+                "success".to_string(),
+                "checksum".to_string(),
+                "execution_time".to_string(),
+            ]
+        );
+        assert_eq!(view.rows.len(), 1);
+        assert_eq!(view.rows[0][0], "1");
+        assert_eq!(view.rows[0][1], "init");
+        assert_eq!(view.rows[0][3], "1");
+        assert_eq!(view.rows[0][5], "42");
     }
 
     #[tokio::test]

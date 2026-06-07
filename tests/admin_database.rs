@@ -432,6 +432,47 @@ async fn database_table_seed_rejects_over_limit() {
 }
 
 #[tokio::test]
+async fn database_table_data_lists_rows_without_id_column() {
+    let app = common::TestApp::new().await;
+
+    sqlx::query(
+        r#"CREATE TABLE "_sqlx_test" (
+            version BIGINT PRIMARY KEY,
+            description TEXT NOT NULL,
+            installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            success BOOLEAN NOT NULL,
+            checksum BLOB NOT NULL,
+            execution_time BIGINT NOT NULL
+        )"#,
+    )
+    .execute(&app.state.pool())
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"INSERT INTO "_sqlx_test"
+           (version, description, success, checksum, execution_time)
+           VALUES (1, 'init', 1, X'0102', 42)"#,
+    )
+    .execute(&app.state.pool())
+    .await
+    .unwrap();
+
+    let response = app
+        .admin_request("GET", "/admin/database/tables/_sqlx_test/data", None, None)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+
+    assert!(html.contains("_sqlx_test"));
+    assert!(html.contains("version"));
+    assert!(html.contains("description"));
+    assert!(html.contains("init"));
+    assert!(html.contains("表示 1 / 全 1 件"));
+}
+
+#[tokio::test]
 async fn database_table_data_system_table_not_found() {
     let app = common::TestApp::new().await;
 

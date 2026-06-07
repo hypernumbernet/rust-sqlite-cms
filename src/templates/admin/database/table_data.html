@@ -45,12 +45,18 @@
   id="db-table-data-panel"
   data-api-url="{{ data_api_url }}"
   data-chunk-size="1000"
-  data-max-prefetch-chunks="10"
+  data-overscan="3"
 >
-  <table>
-    <thead id="db-table-head"></thead>
-    <tbody id="db-table-body"></tbody>
-  </table>
+  <div class="db-table-header">
+    <table class="db-table-head-table">
+      <thead id="db-table-head"></thead>
+    </table>
+  </div>
+  <div class="db-table-scroll" id="db-table-scroll">
+    <table class="db-table-body-table">
+      <tbody id="db-table-body"></tbody>
+    </table>
+  </div>
   <p class="empty" id="db-table-empty" hidden>データがありません。</p>
 </section>
 {% endblock %}

@@ -9,6 +9,28 @@
       .replace(/"/g, '&quot;');
   }
 
+  const CELL_DISPLAY_MAX = 20;
+
+  // 仮想スクロールのスペーサー高（および scrollTop の到達上限）をこの値でキャップ
+  // する。ブラウザは「最大要素高」（Chrome 約3,355万px / Firefox 約1,789万px）より
+  // 手前で、大きな y オフセット位置の罫線・背景の描画を打ち切る（実測で約5〜6Mpx
+  // 付近から行間罫線が消える）。この実描画限界を大きく下回る値にすることで、全行で
+  // 罫線が確実に描画され、scrollTop の暴走も起きない。これを超える総高はスクロール
+  // 位置を行インデックスへ比例マッピングして表示する。
+  const SAFE_MAX_SCROLL_HEIGHT = 1500000;
+
+  function formatCellDisplay(text) {
+    const raw = String(text);
+    const truncated = raw.length > CELL_DISPLAY_MAX;
+    const display = truncated
+      ? raw.slice(0, CELL_DISPLAY_MAX) + '...'
+      : raw;
+    const titleAttr = truncated
+      ? ' title="' + escapeHtml(raw) + '"'
+      : '';
+    return '<td class="text-mono-cell"' + titleAttr + '>' + escapeHtml(display) + '</td>';
+  }
+
   function normalizeUrlPath(raw) {
     const trimmed = raw.trim();
     if (!trimmed) return '';
@@ -205,6 +227,8 @@
     const panel = document.getElementById('db-table-data-panel');
     if (!panel) return;
 
+    const scrollEl = document.getElementById('db-table-scroll');
+    const headerEl = panel.querySelector('.db-table-header');
     const statusEl = document.getElementById('db-data-status');
     const statusTextEl = statusEl ? statusEl.querySelector('.db-data-status-text') : null;
     const countEl = document.querySelector('.data-count');
@@ -213,15 +237,23 @@
     const emptyEl = document.getElementById('db-table-empty');
     const apiUrl = panel.dataset.apiUrl || '';
     const chunkSize = parseInt(panel.dataset.chunkSize || '1000', 10);
-    const maxPrefetchChunks = parseInt(panel.dataset.maxPrefetchChunks || '10', 10);
+    const overscan = parseInt(panel.dataset.overscan || '3', 10);
 
     let generation = 0;
     let abortController = null;
     const cache = new Map();
-    const inFlight = new Set();
+    const inFlight = new Map();
     let columns = [];
     let totalCount = 0;
     let columnsRendered = false;
+    let chunkSizeActual = chunkSize;
+    let startIndex = 0;
+    let visibleCount = 0;
+    let rowHeight = 0;
+    let isSyncingScroll = false;
+    let scrollRaf = 0;
+    let renderPending = false;
+    let needsRefresh = false;
 
     function setStatus(state, text, showRetry) {
       if (!statusEl || !statusTextEl) return;
@@ -247,59 +279,212 @@
       countEl.textContent = '表示 ' + shown + ' / 全 ' + total + ' 件';
     }
 
-    function renderTable() {
-      if (!thead || !tbody) return;
+    function padStyle(height) {
+      return 'height:' + height + 'px;padding:0;border:0;line-height:0';
+    }
 
-      let rowCount = 0;
-      const offsets = Array.from(cache.keys()).sort(function (a, b) {
-        return a - b;
-      });
-      for (let i = 0; i < offsets.length; i++) {
-        rowCount += cache.get(offsets[i]).length;
+    function getRow(rowIndex) {
+      const chunkOffset = Math.floor(rowIndex / chunkSizeActual) * chunkSizeActual;
+      const chunk = cache.get(chunkOffset);
+      if (!chunk) return null;
+      return chunk[rowIndex - chunkOffset] || null;
+    }
+
+    function chunkOffsetsForRange(start, count) {
+      if (totalCount === 0 || count <= 0) return [];
+      const end = Math.min(start + count - 1, totalCount - 1);
+      const firstChunk = Math.floor(start / chunkSizeActual) * chunkSizeActual;
+      const lastChunk = Math.floor(end / chunkSizeActual) * chunkSizeActual;
+      const offsets = [];
+      for (let offset = firstChunk; offset <= lastChunk; offset += chunkSizeActual) {
+        offsets.push(offset);
       }
+      return offsets;
+    }
 
-      if (columns.length === 0 || rowCount === 0) {
+    function renderHeader() {
+      if (!thead || columnsRendered || columns.length === 0) return;
+      thead.innerHTML =
+        '<tr>' +
+        columns
+          .map(function (col) {
+            return '<th><span class="text-mono">' + escapeHtml(col) + '</span></th>';
+          })
+          .join('') +
+        '</tr>';
+      columnsRendered = true;
+    }
+
+    function syncColumnWidths() {
+      const headRow = thead ? thead.querySelector('tr') : null;
+      if (!tbody || !headRow) return;
+
+      const bodyRow = tbody.querySelector(
+        'tr:not(.db-virtual-pad-top):not(.db-virtual-pad-bottom):not(.db-virtual-empty)'
+      );
+      if (!bodyRow) return;
+
+      const bodyCells = bodyRow.querySelectorAll('td');
+      const headCells = headRow.querySelectorAll('th');
+      if (bodyCells.length !== headCells.length) return;
+
+      for (let i = 0; i < headCells.length; i++) {
+        const width = bodyCells[i].getBoundingClientRect().width;
+        const px = width + 'px';
+        headCells[i].style.width = px;
+        headCells[i].style.minWidth = px;
+        headCells[i].style.maxWidth = px;
+      }
+    }
+
+    function syncHorizontalScroll() {
+      if (!headerEl || !scrollEl) return;
+      headerEl.scrollLeft = scrollEl.scrollLeft;
+    }
+
+    function renderVisibleRows() {
+      if (!tbody) return;
+
+      if (columns.length === 0 || totalCount === 0) {
         tbody.innerHTML = '';
-        if (!columnsRendered) thead.innerHTML = '';
+        if (!columnsRendered && thead) thead.innerHTML = '';
         if (emptyEl) emptyEl.hidden = columns.length > 0;
         if (columns.length > 0) updateCount(0, totalCount);
         return;
       }
 
-      if (!columnsRendered) {
-        thead.innerHTML =
-          '<tr>' +
-          columns
-            .map(function (col) {
-              return '<th><span class="text-mono">' + escapeHtml(col) + '</span></th>';
-            })
-            .join('') +
-          '</tr>';
-        columnsRendered = true;
+      renderHeader();
+
+      const colCount = columns.length;
+      const dataRowCount = Math.min(visibleCount, Math.max(0, totalCount - startIndex));
+
+      let topPad;
+      let bottomPad;
+      if (isScaled()) {
+        // スケール時はスペーサ総高をキャップ済み高に保ちつつ、表示行を実スクロール
+        // 位置へ重ねる。topPad を現在の scrollTop に合わせることで罫線・内容が
+        // ビューポート内に正しく描画される。
+        const eff = effectiveScrollHeight();
+        const maxTopPad = Math.max(0, eff - visibleCount * rowHeight);
+        topPad = scrollEl ? Math.min(scrollEl.scrollTop, maxTopPad) : 0;
+        bottomPad = Math.max(0, eff - topPad - visibleCount * rowHeight);
+      } else {
+        topPad = startIndex * rowHeight;
+        bottomPad = Math.max(0, (totalCount - startIndex - visibleCount) * rowHeight);
       }
 
-      let html = '';
-      for (let i = 0; i < offsets.length; i++) {
-        const rows = cache.get(offsets[i]);
-        for (let j = 0; j < rows.length; j++) {
-          html += '<tr>';
-          for (let k = 0; k < rows[j].length; k++) {
-            html += '<td class="text-mono-cell">' + escapeHtml(rows[j][k]) + '</td>';
+      let html =
+        '<tr class="db-virtual-pad-top" aria-hidden="true"><td colspan="' +
+        colCount +
+        '" style="' +
+        padStyle(topPad) +
+        '"></td></tr>';
+
+      for (let i = 0; i < visibleCount; i++) {
+        const rowIndex = startIndex + i;
+        if (rowIndex >= totalCount) {
+          html +=
+            '<tr class="db-virtual-empty" aria-hidden="true"><td colspan="' +
+            colCount +
+            '" style="height:' +
+            rowHeight +
+            'px;padding:0;border:0"></td></tr>';
+          continue;
+        }
+        const row = getRow(rowIndex);
+        html += '<tr>';
+        if (row) {
+          for (let k = 0; k < row.length; k++) {
+            html += formatCellDisplay(row[k]);
           }
-          html += '</tr>';
+        } else {
+          for (let k = 0; k < colCount; k++) {
+            html += '<td class="text-mono-cell"></td>';
+          }
+        }
+        html += '</tr>';
+      }
+
+      html +=
+        '<tr class="db-virtual-pad-bottom" aria-hidden="true"><td colspan="' +
+        colCount +
+        '" style="' +
+        padStyle(bottomPad) +
+        '"></td></tr>';
+
+      const savedScrollTop = scrollEl ? scrollEl.scrollTop : 0;
+      tbody.innerHTML = html;
+      if (scrollEl) {
+        isSyncingScroll = true;
+        scrollEl.scrollTop = clampScrollOffset(savedScrollTop);
+        isSyncingScroll = false;
+      }
+      if (emptyEl) emptyEl.hidden = true;
+
+      if (dataRowCount > 0) {
+        const endIndex = startIndex + dataRowCount - 1;
+        updateCount(startIndex + 1 + '–' + (endIndex + 1), totalCount);
+      } else {
+        updateCount(0, totalCount);
+      }
+
+      syncColumnWidths();
+    }
+
+    function measureRowHeight() {
+      if (!tbody || columns.length === 0) return 35;
+
+      const sampleRow = getRow(0);
+      if (!sampleRow) return 35;
+
+      let html = '<tr class="db-virtual-measure">';
+      for (let k = 0; k < sampleRow.length; k++) {
+        html += formatCellDisplay(sampleRow[k]);
+      }
+      html += '</tr>';
+      tbody.innerHTML = html;
+
+      const measureTr = tbody.querySelector('.db-virtual-measure');
+      if (measureTr) {
+        const height = measureTr.getBoundingClientRect().height;
+        if (height > 0) {
+          rowHeight = height;
+          panel.style.setProperty('--db-row-height', rowHeight + 'px');
+          return rowHeight;
         }
       }
-      tbody.innerHTML = html;
-      if (emptyEl) emptyEl.hidden = true;
-      updateCount(rowCount, totalCount);
+      rowHeight = 35;
+      panel.style.setProperty('--db-row-height', '35px');
+      return rowHeight;
+    }
+
+    function calcVisibleCount() {
+      if (!scrollEl || rowHeight <= 0) return 10;
+      return Math.ceil(scrollEl.clientHeight / rowHeight) + overscan;
+    }
+
+    function maxStartIndex() {
+      return Math.max(0, totalCount - visibleCount);
+    }
+
+    function chunkResponse(offset) {
+      return {
+        rows: cache.get(offset) || [],
+        columns: columns,
+        total_count: totalCount,
+        chunk_size: chunkSizeActual,
+        offset: offset,
+      };
     }
 
     async function fetchChunk(offset, gen) {
-      if (cache.has(offset)) return cache.get(offset);
-      if (inFlight.has(offset)) return null;
+      if (cache.has(offset)) return chunkResponse(offset);
+      if (inFlight.has(offset)) {
+        await inFlight.get(offset);
+        return cache.has(offset) ? chunkResponse(offset) : null;
+      }
 
-      inFlight.add(offset);
-      try {
+      const promise = (async function () {
         const url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') + 'offset=' + offset;
         const response = await fetch(url, {
           signal: abortController ? abortController.signal : undefined,
@@ -323,15 +508,168 @@
         if (offset === 0) {
           columns = data.columns || [];
           totalCount = data.total_count || 0;
+          chunkSizeActual = data.chunk_size || chunkSize;
           columnsRendered = false;
         }
 
         cache.set(offset, data.rows || []);
-        renderTable();
         return data;
+      })();
+
+      inFlight.set(offset, promise);
+      try {
+        return await promise;
       } finally {
         inFlight.delete(offset);
       }
+    }
+
+    async function ensureRowsForRange(start, count, gen) {
+      const offsets = chunkOffsetsForRange(start, count);
+      for (let i = 0; i < offsets.length; i++) {
+        if (!cache.has(offsets[i])) {
+          await fetchChunk(offsets[i], gen);
+          if (gen !== generation) return false;
+        }
+      }
+      return true;
+    }
+
+    function isRangeCached(start, count) {
+      const offsets = chunkOffsetsForRange(start, count);
+      for (let i = 0; i < offsets.length; i++) {
+        if (!cache.has(offsets[i])) return false;
+      }
+      return true;
+    }
+
+    async function refreshView(gen, showLoading) {
+      if (renderPending) {
+        needsRefresh = true;
+        return;
+      }
+      renderPending = true;
+
+      try {
+        do {
+          needsRefresh = false;
+
+          const needsFetch = !isRangeCached(startIndex, visibleCount);
+          if (needsFetch && showLoading) {
+            setStatus('loading', '読み込み中…', false);
+          }
+
+          await ensureRowsForRange(startIndex, visibleCount, gen);
+          if (gen !== generation) return;
+
+          renderVisibleRows();
+
+          if (totalCount > 0) {
+            setStatus('done', totalCount.toLocaleString() + ' 件', false);
+          }
+        } while (needsRefresh && gen === generation);
+      } finally {
+        renderPending = false;
+      }
+    }
+
+    function totalScrollHeight() {
+      return totalCount * rowHeight;
+    }
+
+    // 実際にDOMへ与えるスクロール領域高。ブラウザ上限を超えないようキャップする。
+    function effectiveScrollHeight() {
+      return Math.min(totalScrollHeight(), SAFE_MAX_SCROLL_HEIGHT);
+    }
+
+    // 総高がキャップを超え、スクロール位置を比例マッピングする必要があるか。
+    function isScaled() {
+      return totalScrollHeight() > SAFE_MAX_SCROLL_HEIGHT;
+    }
+
+    function maxScrollOffset() {
+      if (rowHeight > 0 && totalCount > 0) {
+        return Math.max(0, effectiveScrollHeight() - scrollEl.clientHeight);
+      }
+      return Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight);
+    }
+
+    function clampScrollOffset(offset) {
+      return Math.max(0, Math.min(offset, maxScrollOffset()));
+    }
+
+    // 行インデックスから対応するスクロール位置を求める（リサイズ時の補正に使用）。
+    function offsetFromStartIndex(index) {
+      if (isScaled()) {
+        const maxStart = maxStartIndex();
+        const fraction = maxStart > 0 ? index / maxStart : 0;
+        return Math.round(fraction * maxScrollOffset());
+      }
+      return index * rowHeight;
+    }
+
+    function startIndexFromOffset(offset) {
+      const maxScroll = maxScrollOffset();
+      if (offset >= maxScroll - 1) {
+        return maxStartIndex();
+      }
+      if (isScaled()) {
+        const fraction = maxScroll > 0 ? offset / maxScroll : 0;
+        return Math.min(Math.round(fraction * maxStartIndex()), maxStartIndex());
+      }
+      return Math.min(Math.floor(offset / rowHeight), maxStartIndex());
+    }
+
+    function syncFromOffset(offset) {
+      if (rowHeight <= 0 || totalCount === 0) return;
+
+      const newStart = startIndexFromOffset(offset);
+      // スケール時は同一インデックスでも topPad が scrollTop に追従する必要が
+      // あるため、表示行がビューポートからずれないよう常に再描画する。
+      if (newStart === startIndex && !isScaled()) return;
+
+      startIndex = newStart;
+      refreshView(generation, true);
+    }
+
+    function syncFromScroll() {
+      if (isSyncingScroll || rowHeight <= 0 || totalCount === 0) return;
+      syncFromOffset(scrollEl.scrollTop);
+    }
+
+    function onResize() {
+      if (rowHeight <= 0 || totalCount === 0) return;
+
+      const dataTr = tbody.querySelector(
+        'tr:not(.db-virtual-pad-top):not(.db-virtual-pad-bottom):not(.db-virtual-empty)'
+      );
+      if (dataTr) {
+        const measured = dataTr.getBoundingClientRect().height;
+        if (measured > 0) {
+          rowHeight = measured;
+          panel.style.setProperty('--db-row-height', rowHeight + 'px');
+        }
+      }
+
+      const prevStart = startIndex;
+      visibleCount = calcVisibleCount();
+      startIndex = Math.min(prevStart, maxStartIndex());
+
+      isSyncingScroll = true;
+      scrollEl.scrollTop = offsetFromStartIndex(startIndex);
+      isSyncingScroll = false;
+
+      refreshView(generation, false);
+    }
+
+    function rafThrottle(fn) {
+      return function () {
+        if (scrollRaf) return;
+        scrollRaf = requestAnimationFrame(function () {
+          scrollRaf = 0;
+          fn();
+        });
+      };
     }
 
     async function load() {
@@ -344,9 +682,14 @@
       columns = [];
       totalCount = 0;
       columnsRendered = false;
+      chunkSizeActual = chunkSize;
+      startIndex = 0;
+      rowHeight = 0;
+      visibleCount = 0;
       if (tbody) tbody.innerHTML = '';
       if (thead) thead.innerHTML = '';
       if (emptyEl) emptyEl.hidden = true;
+      if (scrollEl) scrollEl.scrollTop = 0;
       updateCount('—', '—');
       setStatus('loading', '読み込み中…', false);
 
@@ -356,57 +699,35 @@
 
         if (first.total_count === 0) {
           setStatus('empty', 'データがありません', false);
-          renderTable();
+          renderVisibleRows();
           return;
         }
 
-        const chunkSizeActual = first.chunk_size || chunkSize;
-        const totalChunks = Math.ceil(first.total_count / chunkSizeActual);
-        const prefetchChunks = Math.min(totalChunks, maxPrefetchChunks);
+        rowHeight = measureRowHeight();
+        visibleCount = calcVisibleCount();
+        startIndex = 0;
 
-        for (let chunkIndex = 1; chunkIndex < prefetchChunks; chunkIndex += 1) {
-          if (gen !== generation) return;
-          const offset = chunkIndex * chunkSizeActual;
-          const loadedRows = Array.from(cache.values()).reduce(function (sum, rows) {
-            return sum + rows.length;
-          }, 0);
-          setStatus(
-            'loading',
-            '読み込み中…（' +
-              loadedRows.toLocaleString() +
-              ' / ' +
-              first.total_count.toLocaleString() +
-              ' 件・' +
-              chunkIndex +
-              ' / ' +
-              prefetchChunks +
-              ' チャンク）',
-            false
-          );
-          await fetchChunk(offset, gen);
-        }
-
+        await ensureRowsForRange(0, visibleCount, gen);
         if (gen !== generation) return;
 
-        const shownRows = Array.from(cache.values()).reduce(function (sum, rows) {
-          return sum + rows.length;
-        }, 0);
-        let doneText;
-        if (totalChunks > maxPrefetchChunks) {
-          doneText =
-            shownRows.toLocaleString() +
-            ' 件を表示（全 ' +
-            first.total_count.toLocaleString() +
-            ' 件中・先頭のみ）';
-        } else {
-          doneText = shownRows.toLocaleString() + ' 件を表示（完了）';
-        }
-        setStatus('done', doneText, false);
+        renderVisibleRows();
+        setStatus('done', totalCount.toLocaleString() + ' 件', false);
       } catch (err) {
         if (err && err.name === 'AbortError') return;
         if (gen !== generation) return;
         setStatus('error', err.message || '取得に失敗しました', true);
       }
+    }
+
+    if (scrollEl) {
+      scrollEl.addEventListener(
+        'scroll',
+        rafThrottle(function () {
+          syncHorizontalScroll();
+          syncFromScroll();
+        })
+      );
+      new ResizeObserver(rafThrottle(onResize)).observe(scrollEl);
     }
 
     load();

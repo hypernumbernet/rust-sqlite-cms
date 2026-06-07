@@ -13,8 +13,17 @@
       height: auto;
       overflow: visible;
     }
+    body.embed-mode .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) {
+      height: auto;
+      overflow: visible;
+    }
     body.embed-mode .content { padding: 16px; }
     body.embed-mode .layout:has(.code-editor-form) .content {
+      flex: none;
+      display: block;
+      overflow: visible;
+    }
+    body.embed-mode .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) .content {
       flex: none;
       display: block;
       overflow: visible;

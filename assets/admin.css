@@ -15,6 +15,7 @@
   --code-editor-min-height-tall: 320px;
   --code-editor-min-height-short: 180px;
   --code-editor-min-width: 300px;
+  --admin-table-panel-max-height: calc(100dvh - 11rem);
   --code-editor-font-family:
     ui-monospace,
     "Cascadia Mono", "Cascadia Code",
@@ -307,7 +308,7 @@ tr:last-child td { border-bottom: 0; }
 .panel-table th:last-child,
 .panel-table td:last-child { white-space: nowrap; }
 
-/* List table pages: fill viewport height, scroll rows inside panel */
+/* List table pages: content-sized height, scroll rows inside panel when tall */
 .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) {
   height: 100dvh;
   min-height: 100dvh;
@@ -320,18 +321,23 @@ tr:last-child td { border-bottom: 0; }
   flex: 1;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   min-height: 0;
   overflow: hidden;
 }
 .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) .content > .tab-panel:not([hidden]) {
-  flex: 1;
+  flex: 0 1 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
 }
 .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) .content > .panel.panel-table:not(.column-builder):not(.seed-builder),
 .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) .tab-panel:not([hidden]) > .panel.panel-table:not(.column-builder):not(.seed-builder) {
-  flex: 1;
+  flex: 0 1 auto;
+  width: 100%;
+  max-height: var(--admin-table-panel-max-height);
   min-height: 0;
   overflow: auto;
 }
@@ -508,8 +514,9 @@ tr:last-child td { border-bottom: 0; }
   .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) .content > .panel.panel-table:not(.column-builder):not(.seed-builder),
   .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) .tab-panel:not([hidden]) > .panel.panel-table:not(.column-builder):not(.seed-builder) {
     flex: none;
-    overflow-x: auto;
-    overflow-y: visible;
+    width: 100%;
+    max-height: var(--admin-table-panel-max-height);
+    overflow: auto;
   }
 }
 
@@ -863,6 +870,7 @@ tr:last-child td { border-bottom: 0; }
 #db-table-data-panel {
   display: flex;
   flex-direction: column;
+  max-height: var(--admin-table-panel-max-height);
   overflow: hidden;
 }
 #db-table-data-panel .db-table-header {
@@ -870,9 +878,8 @@ tr:last-child td { border-bottom: 0; }
   overflow: hidden;
 }
 #db-table-data-panel .db-table-scroll {
-  flex: 1;
-  min-height: 0;
   overflow: auto;
+  max-height: calc(var(--admin-table-panel-max-height) - 2.75rem);
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }

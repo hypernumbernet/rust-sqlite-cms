@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}{{ table_name }} — データ{% endblock %}
+{% block title %}{{ table_name }} — データ{% if read_only %}（閲覧専用）{% endif %}{% endblock %}
 {% block nav_database %}active{% endblock %}
-{% block heading %}{{ table_name }} — データ{% endblock %}
+{% block heading %}{{ table_name }} — データ{% if read_only %}（閲覧専用）{% endif %}{% endblock %}
 
 {% block content %}
 <style>
@@ -30,12 +30,18 @@
 
 <p class="breadcrumb"><a href="/admin/database">DB管理</a> / <code>{{ table_name }}</code></p>
 
+{% if read_only %}
+<div class="notice info">CMSシステムテーブル — 閲覧専用です。列編集・テストデータ生成はできません。</div>
+{% endif %}
+
 <div class="toolbar">
   <p class="data-count">表示 {{ shown_count }} / 全 {{ total_count }} 件</p>
+  {% if !read_only %}
   <div class="toolbar-actions">
     <a class="button secondary" href="{{ seed_url }}">テストデータ生成</a>
     <a class="button secondary" href="{{ edit_url }}">列編集</a>
   </div>
+  {% endif %}
 </div>
 
 <section class="panel panel-table" data-has-more="{% if has_more %}1{% else %}0{% endif %}">

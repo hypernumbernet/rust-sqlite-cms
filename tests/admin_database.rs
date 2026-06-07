@@ -27,13 +27,12 @@ async fn database_index_lists_cms_tables() {
         "layouts",
         "pages",
         "users",
-        "_sqlx_migrations",
     ] {
         assert!(html.contains(table), "missing table: {table}");
     }
     assert!(html.contains("システム"));
     assert!(!html.contains("リードオンリー"));
-    assert!(html.contains("_sqlx_migrations"));
+    assert!(!html.contains("_sqlx_migrations"));
     // CMS コアテーブルはすべて種別「システム」
     assert!(html.contains("posts</span>"));
     let posts_row = html.split("posts</span>").nth(1).unwrap_or("");
@@ -105,7 +104,13 @@ async fn database_create_user_table_and_view() {
     assert!(custom_row.contains("データ"));
     let posts_row = html.split("posts</span>").nth(1).unwrap_or("");
     assert!(!posts_row.contains(r#"/admin/database/tables/posts/edit"#));
-    assert!(!posts_row.contains(r#"/admin/database/tables/posts/data"#));
+    assert!(posts_row.contains(r#"/admin/database/tables/posts/data"#));
+    assert!(!posts_row.contains("列編集"));
+    assert!(posts_row.contains("データ"));
+    let users_row = html.split("users</span>").nth(1).unwrap_or("");
+    assert!(!users_row.contains(r#"/admin/database/tables/users/edit"#));
+    assert!(users_row.contains(r#"/admin/database/tables/users/data"#));
+    assert!(users_row.contains("システム"));
 
     let response = app
         .admin_request(
@@ -382,23 +387,107 @@ async fn database_table_seed_generates_rows() {
 }
 
 #[tokio::test]
-async fn database_table_seed_system_table_not_found() {
+async fn database_table_seed_system_table_shows_notice() {
+    let app = common::TestApp::new().await;
+
+    for table in ["posts", "users"] {
+        let response = app
+            .admin_request(
+                "GET",
+                &format!("/admin/database/tables/{table}/data/seed"),
+                None,
+                None,
+            )
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("CMSのシステムテーブル"), "table: {table}");
+        assert!(html.contains("列編集・テストデータ生成はできません"));
+        assert!(html.contains("DB管理に戻る"));
+
+        let response = app
+            .admin_request(
+                "POST",
+                &format!("/admin/database/tables/{table}/data/seed"),
+                Some("count=1"),
+                Some("application/x-www-form-urlencoded"),
+            )
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("CMSのシステムテーブル"), "table: {table}");
+        assert!(html.contains("列編集・テストデータ生成はできません"));
+    }
+}
+
+#[tokio::test]
+async fn database_cms_table_data_is_read_only() {
+    let app = common::TestApp::new().await;
+
+    for table in ["posts", "users"] {
+        let response = app
+            .admin_request(
+                "GET",
+                &format!("/admin/database/tables/{table}/data"),
+                None,
+                None,
+            )
+            .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains(table), "missing table name: {table}");
+        assert!(html.contains("閲覧専用"));
+        assert!(html.contains("CMSシステムテーブル"));
+        assert!(!html.contains(&format!("/admin/database/tables/{table}/data/seed")));
+        assert!(!html.contains(&format!("/admin/database/tables/{table}/edit")));
+    }
+}
+
+#[tokio::test]
+async fn database_edit_system_table_shows_notice() {
+    let app = common::TestApp::new().await;
+
+    for table in ["posts", "users"] {
+        let response = app
+            .admin_request(
+                "GET",
+                &format!("/admin/database/tables/{table}/edit"),
+                None,
+                None,
+            )
+            .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let html = String::from_utf8(body.to_vec()).unwrap();
+        assert!(html.contains("CMSのシステムテーブル"), "table: {table}");
+        assert!(html.contains("列編集・テストデータ生成はできません"));
+        assert!(html.contains("DB管理に戻る"));
+    }
+}
+
+#[tokio::test]
+async fn database_hidden_system_table_shows_infra_notice() {
     let app = common::TestApp::new().await;
 
     let response = app
-        .admin_request("GET", "/admin/database/tables/posts/data/seed", None, None)
-        .await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-
-    let response = app
         .admin_request(
-            "POST",
-            "/admin/database/tables/posts/data/seed",
-            Some("count=1"),
-            Some("application/x-www-form-urlencoded"),
+            "GET",
+            "/admin/database/tables/_sqlx_migrations/data",
+            None,
+            None,
         )
         .await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("インフラ用のシステムテーブル"));
+    assert!(!html.contains("CMSのシステムテーブル"));
 }
 
 #[tokio::test]
@@ -470,28 +559,6 @@ async fn database_table_data_lists_rows_without_id_column() {
     assert!(html.contains("description"));
     assert!(html.contains("init"));
     assert!(html.contains("表示 1 / 全 1 件"));
-}
-
-#[tokio::test]
-async fn database_table_data_system_table_not_found() {
-    let app = common::TestApp::new().await;
-
-    let response = app
-        .admin_request("GET", "/admin/database/tables/posts/data", None, None)
-        .await;
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
-async fn database_edit_system_table_returns_not_found() {
-    let app = common::TestApp::new().await;
-
-    let response = app
-        .admin_request("GET", "/admin/database/tables/posts/edit", None, None)
-        .await;
-
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

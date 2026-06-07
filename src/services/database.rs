@@ -175,11 +175,61 @@ const CMS_TABLES: &[&str] = &[
     "users",
 ];
 
-/// システム系オブジェクト（リードオンリー扱い）かどうか。
+/// 管理画面 DB 一覧に表示しないインフラ用テーブル。
+const HIDDEN_ADMIN_TABLES: &[&str] = &["_sqlx_migrations"];
+
+/// 管理画面 DB 一覧に表示しないインフラ用テーブルかどうか。
+pub fn is_hidden_admin_table(name: &str) -> bool {
+    HIDDEN_ADMIN_TABLES.contains(&name)
+}
+
+/// インフラ用テーブル（`_sqlx_migrations` や `sqlite_*`）かどうか。
+pub fn is_infra_table(name: &str) -> bool {
+    is_hidden_admin_table(name) || name.starts_with("sqlite_")
+}
+
+/// CMS コアテーブル（`users` 含む 8 表）かどうか。
+pub fn is_cms_core_table(name: &str) -> bool {
+    CMS_TABLES.contains(&name)
+}
+
+/// DB 管理でデータ閲覧のみ可能な CMS コアテーブルかどうか。
+pub fn is_cms_readonly_table(name: &str) -> bool {
+    is_cms_core_table(name)
+}
+
+/// DB 管理で列編集・テストデータ生成が可能かどうか（ユーザー定義テーブルのみ）。
+pub fn is_db_admin_editable(name: &str) -> bool {
+    !is_infra_table(name) && !is_cms_core_table(name)
+}
+
+/// DB 管理でデータ閲覧が可能かどうか。
+pub fn is_db_admin_data_viewable(name: &str) -> bool {
+    !is_infra_table(name)
+}
+
+/// インフラ用テーブルへの操作拒否メッセージ。
+pub fn infra_table_denied_message(name: &str) -> String {
+    format!("`{name}` はインフラ用のシステムテーブルです。編集・データ閲覧はできません。")
+}
+
+/// CMS コアテーブルへの列編集・シード拒否メッセージ。
+pub fn cms_table_edit_denied_message(name: &str) -> String {
+    format!("`{name}` はCMSのシステムテーブルです。列編集・テストデータ生成はできません。")
+}
+
+/// システムテーブルへの編集・データ閲覧拒否メッセージ（後方互換）。
+pub fn system_table_denied_message(name: &str) -> String {
+    if is_infra_table(name) {
+        infra_table_denied_message(name)
+    } else {
+        cms_table_edit_denied_message(name)
+    }
+}
+
+/// システム系オブジェクト（一覧の種別バッジ・予約名チェック用）かどうか。
 pub fn is_system_table(name: &str) -> bool {
-    name == "_sqlx_migrations"
-        || name.starts_with("sqlite_")
-        || CMS_TABLES.contains(&name)
+    is_infra_table(name) || is_cms_core_table(name)
 }
 
 pub fn truncate_sql(sql: &str, max_len: usize) -> String {
@@ -206,6 +256,9 @@ pub async fn list_tables(pool: &SqlitePool) -> AppResult<Vec<DbObjectItem>> {
 
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
+        if is_hidden_admin_table(&row.name) {
+            continue;
+        }
         let sql = row.sql.unwrap_or_default();
         let row_count = table_row_count(pool, &row.name).await?;
         items.push(DbObjectItem {
@@ -518,7 +571,7 @@ pub async fn list_user_table_rows(
     name: &str,
     offset: i64,
 ) -> DomainResult<TableDataView> {
-    let name = ensure_editable_user_table(name)?;
+    let name = ensure_viewable_table(name)?;
     if !object_name_exists(pool, name, "table").await? {
         return Err(DomainError::NotFound);
     }
@@ -551,7 +604,7 @@ pub async fn fetch_table_rows_chunk(
     limit: i64,
     column_count: usize,
 ) -> DomainResult<Vec<Vec<String>>> {
-    let name = ensure_editable_user_table(name)?;
+    let name = ensure_viewable_table(name)?;
     if offset < 0 || limit < 0 {
         return Err(DomainError::Validation(
             "offset と limit は 0 以上で指定してください".into(),
@@ -1048,7 +1101,7 @@ fn parse_form_datetime(value: &str, label: &str) -> DomainResult<NaiveDateTime> 
         .map_err(|_| DomainError::Validation(format!("{label}は YYYY-MM-DDTHH:MM 形式で指定してください")))
 }
 
-fn ensure_editable_user_table(name: &str) -> DomainResult<&str> {
+fn sanitize_table_name_input(name: &str) -> DomainResult<&str> {
     let name = sanitize_identifier_input(name);
     if name.is_empty() {
         return Err(DomainError::NotFound);
@@ -1059,8 +1112,24 @@ fn ensure_editable_user_table(name: &str) -> DomainResult<&str> {
     {
         return Err(DomainError::NotFound);
     }
-    if is_system_table(name) {
-        return Err(DomainError::NotFound);
+    Ok(name)
+}
+
+fn ensure_viewable_table(name: &str) -> DomainResult<&str> {
+    let name = sanitize_table_name_input(name)?;
+    if is_infra_table(name) {
+        return Err(DomainError::SystemTable(infra_table_denied_message(name)));
+    }
+    Ok(name)
+}
+
+fn ensure_editable_user_table(name: &str) -> DomainResult<&str> {
+    let name = sanitize_table_name_input(name)?;
+    if is_infra_table(name) {
+        return Err(DomainError::SystemTable(infra_table_denied_message(name)));
+    }
+    if is_cms_core_table(name) {
+        return Err(DomainError::SystemTable(cms_table_edit_denied_message(name)));
     }
     Ok(name)
 }
@@ -1248,6 +1317,51 @@ mod tests {
         assert!(is_system_table("posts"));
         assert!(is_system_table("users"));
         assert!(!is_system_table("my_custom_table"));
+    }
+
+    #[test]
+    fn is_cms_core_table_includes_users() {
+        assert!(is_cms_core_table("posts"));
+        assert!(is_cms_core_table("users"));
+        assert!(!is_cms_core_table("my_custom_table"));
+    }
+
+    #[test]
+    fn is_cms_readonly_table_covers_all_cms_core_tables() {
+        assert!(is_cms_readonly_table("posts"));
+        assert!(is_cms_readonly_table("users"));
+        assert!(!is_cms_readonly_table("my_custom_table"));
+    }
+
+    #[test]
+    fn is_db_admin_editable_allows_only_user_defined_tables() {
+        assert!(!is_db_admin_editable("posts"));
+        assert!(!is_db_admin_editable("users"));
+        assert!(!is_db_admin_editable("_sqlx_migrations"));
+        assert!(is_db_admin_editable("my_custom_table"));
+    }
+
+    #[test]
+    fn is_db_admin_data_viewable_blocks_infra_only() {
+        assert!(!is_db_admin_data_viewable("_sqlx_migrations"));
+        assert!(!is_db_admin_data_viewable("sqlite_sequence"));
+        assert!(is_db_admin_data_viewable("posts"));
+        assert!(is_db_admin_data_viewable("users"));
+        assert!(is_db_admin_data_viewable("my_custom_table"));
+    }
+
+    #[test]
+    fn is_hidden_admin_table_detects_infra_tables() {
+        assert!(is_hidden_admin_table("_sqlx_migrations"));
+        assert!(!is_hidden_admin_table("posts"));
+    }
+
+    #[test]
+    fn system_table_denied_message_describes_table_kind() {
+        assert!(cms_table_edit_denied_message("posts").contains("列編集・テストデータ生成はできません"));
+        assert!(infra_table_denied_message("_sqlx_migrations").contains("インフラ用"));
+        assert!(system_table_denied_message("posts").contains("CMSのシステムテーブル"));
+        assert!(system_table_denied_message("_sqlx_migrations").contains("インフラ用"));
     }
 
     #[test]

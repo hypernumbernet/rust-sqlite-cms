@@ -22,6 +22,7 @@ struct TableListItem {
     row_count: Option<i64>,
     is_system: bool,
     can_edit: bool,
+    can_view_data: bool,
     edit_url: String,
     data_url: String,
 }
@@ -42,8 +43,17 @@ struct TableDataTemplate {
     total_count: i64,
     shown_count: i64,
     has_more: bool,
+    read_only: bool,
     edit_url: String,
     seed_url: String,
+}
+
+#[derive(Template)]
+#[template(path = "admin/database/table_notice.html")]
+struct TableNoticeTemplate {
+    layout: layout::AdminLayoutCtx,
+    table_name: String,
+    message: String,
 }
 
 #[derive(Template)]
@@ -217,6 +227,9 @@ async fn edit_table_form(
 ) -> AppResult<Response> {
     let columns = match database::load_user_table_columns(&state.pool(), &name).await {
         Ok(columns) => columns,
+        Err(DomainError::SystemTable(message)) => {
+            return Ok(system_table_notice_response(&auth, &name, &message).await?);
+        }
         Err(DomainError::NotFound) => return Err(AppError::NotFound),
         Err(err) => {
             let message = domain_error_message(&err);
@@ -261,6 +274,9 @@ async fn table_data(
 ) -> AppResult<Response> {
     let data = match database::list_user_table_rows(&state.pool(), &name, 0).await {
         Ok(data) => data,
+        Err(DomainError::SystemTable(message)) => {
+            return Ok(system_table_notice_response(&auth, &name, &message).await?);
+        }
         Err(DomainError::NotFound) => return Err(AppError::NotFound),
         Err(err) => return Err(err.into()),
     };
@@ -272,6 +288,7 @@ async fn table_data(
         .collect::<Vec<_>>();
     let shown_count = rows.len() as i64;
 
+    let read_only = database::is_cms_readonly_table(&name);
     let html = TableDataTemplate {
         layout: layout::AdminLayoutCtx::new(&auth),
         table_name: name.clone(),
@@ -281,8 +298,17 @@ async fn table_data(
         total_count: data.total_count,
         shown_count,
         has_more: data.has_more,
-        edit_url: table_url(&name, "/edit"),
-        seed_url: table_url(&name, "/data/seed"),
+        read_only,
+        edit_url: if read_only {
+            String::new()
+        } else {
+            table_url(&name, "/edit")
+        },
+        seed_url: if read_only {
+            String::new()
+        } else {
+            table_url(&name, "/data/seed")
+        },
     }
     .render()?;
 
@@ -296,6 +322,9 @@ async fn table_seed_form(
 ) -> AppResult<Response> {
     let columns = match database::load_user_table_columns(&state.pool(), &name).await {
         Ok(columns) => columns,
+        Err(DomainError::SystemTable(message)) => {
+            return Ok(system_table_notice_response(&auth, &name, &message).await?);
+        }
         Err(DomainError::NotFound) => return Err(AppError::NotFound),
         Err(err) => {
             return Ok(Html(
@@ -332,6 +361,9 @@ async fn generate_table_seed(
 ) -> AppResult<Response> {
     let columns = match database::load_user_table_columns(&state.pool(), &name).await {
         Ok(columns) => columns,
+        Err(DomainError::SystemTable(message)) => {
+            return Ok(system_table_notice_response(&auth, &name, &message).await?);
+        }
         Err(DomainError::NotFound) => return Err(AppError::NotFound),
         Err(err) => {
             let html = table_seed_form_template(
@@ -378,6 +410,9 @@ async fn generate_table_seed(
         Ok(_) => Ok(
             Redirect::to(&table_url(&name, "/data")).into_response(),
         ),
+        Err(DomainError::SystemTable(message)) => {
+            Ok(system_table_notice_response(&auth, &name, &message).await?)
+        }
         Err(DomainError::NotFound) => Err(AppError::NotFound),
         Err(err) => {
             let html = table_seed_form_template(
@@ -486,6 +521,9 @@ async fn update_table(
     let columns = table_form_to_columns(&form);
     match database::update_user_table_from_columns(&state.pool(), &name, &columns).await {
         Ok(()) => Ok(Redirect::to("/admin/database").into_response()),
+        Err(DomainError::SystemTable(message)) => {
+            Ok(system_table_notice_response(&auth, &name, &message).await?)
+        }
         Err(DomainError::NotFound) => Err(AppError::NotFound),
         Err(err) => {
             let rows = columns_to_form_rows(&columns);
@@ -540,13 +578,14 @@ fn table_url(name: &str, suffix: &str) -> String {
 }
 
 fn table_list_item(item: DbObjectItem) -> TableListItem {
-    let can_edit = !item.is_system;
+    let can_edit = database::is_db_admin_editable(&item.name);
+    let can_view_data = database::is_db_admin_data_viewable(&item.name);
     let edit_url = if can_edit {
         table_url(&item.name, "/edit")
     } else {
         String::new()
     };
-    let data_url = if can_edit {
+    let data_url = if can_view_data {
         table_url(&item.name, "/data")
     } else {
         String::new()
@@ -557,6 +596,7 @@ fn table_list_item(item: DbObjectItem) -> TableListItem {
         row_count: item.row_count,
         is_system: item.is_system,
         can_edit,
+        can_view_data,
         edit_url,
         data_url,
     }
@@ -780,7 +820,22 @@ fn domain_error_message(err: &DomainError) -> String {
         DomainError::Validation(msg) | DomainError::Conflict(msg) | DomainError::BadRequest(msg) => {
             msg.clone()
         }
+        DomainError::SystemTable(msg) => msg.clone(),
         DomainError::NotFound => "オブジェクトが見つかりません".to_string(),
         DomainError::Internal(e) => e.to_string(),
     }
+}
+
+async fn system_table_notice_response(
+    auth: &AuthUser,
+    table_name: &str,
+    message: &str,
+) -> AppResult<Response> {
+    let html = TableNoticeTemplate {
+        layout: layout::AdminLayoutCtx::new(auth),
+        table_name: table_name.to_string(),
+        message: message.to_string(),
+    }
+    .render()?;
+    Ok(Html(html).into_response())
 }

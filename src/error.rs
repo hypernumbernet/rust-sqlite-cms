@@ -19,6 +19,9 @@ pub enum DomainError {
     #[error("bad request: {0}")]
     BadRequest(String),
 
+    #[error("system table: {0}")]
+    SystemTable(String),
+
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -70,6 +73,7 @@ impl From<DomainError> for AppError {
             DomainError::Validation(msg) | DomainError::BadRequest(msg) => {
                 AppError::Conflict(msg) // HTML側では Conflict として扱う（既存挙動維持）
             }
+            DomainError::SystemTable(msg) => AppError::Conflict(msg),
             DomainError::Internal(inner) => AppError::Other(inner),
         }
     }
@@ -158,6 +162,7 @@ impl From<DomainError> for ApiError {
             DomainError::Conflict(msg) => ApiError::Conflict(msg),
             DomainError::Validation(msg) => ApiError::Validation(msg),
             DomainError::BadRequest(msg) => ApiError::BadRequest(msg),
+            DomainError::SystemTable(msg) => ApiError::Validation(msg),
             DomainError::Internal(inner) => ApiError::Internal(inner),
         }
     }

@@ -242,7 +242,8 @@ fn domain_error_message(err: &crate::error::DomainError) -> String {
     match err {
         crate::error::DomainError::Validation(msg)
         | crate::error::DomainError::Conflict(msg)
-        | crate::error::DomainError::BadRequest(msg) => msg.clone(),
+        | crate::error::DomainError::BadRequest(msg)
+        | crate::error::DomainError::SystemTable(msg) => msg.clone(),
         crate::error::DomainError::NotFound => "ユーザーが見つかりません".to_string(),
         crate::error::DomainError::Internal(e) => e.to_string(),
     }

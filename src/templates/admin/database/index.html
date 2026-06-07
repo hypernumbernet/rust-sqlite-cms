@@ -76,10 +76,14 @@
             {% if item.is_system %}システム{% else %}ユーザー{% endif %}
           </td>
           <td>
-            {% if item.can_edit %}
+            {% if item.can_edit || item.can_view_data %}
             <div class="op-actions">
+              {% if item.can_edit %}
               <a class="button secondary" href="{{ item.edit_url }}">列編集</a>
+              {% endif %}
+              {% if item.can_view_data %}
               <a class="button secondary" href="{{ item.data_url }}">データ</a>
+              {% endif %}
             </div>
             {% else %}
             —

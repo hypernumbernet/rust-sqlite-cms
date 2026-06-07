@@ -201,6 +201,217 @@
     });
   }
 
+  function initTableData() {
+    const panel = document.getElementById('db-table-data-panel');
+    if (!panel) return;
+
+    const statusEl = document.getElementById('db-data-status');
+    const statusTextEl = statusEl ? statusEl.querySelector('.db-data-status-text') : null;
+    const countEl = document.querySelector('.data-count');
+    const thead = document.getElementById('db-table-head');
+    const tbody = document.getElementById('db-table-body');
+    const emptyEl = document.getElementById('db-table-empty');
+    const apiUrl = panel.dataset.apiUrl || '';
+    const chunkSize = parseInt(panel.dataset.chunkSize || '1000', 10);
+    const maxPrefetchChunks = parseInt(panel.dataset.maxPrefetchChunks || '10', 10);
+
+    let generation = 0;
+    let abortController = null;
+    const cache = new Map();
+    const inFlight = new Set();
+    let columns = [];
+    let totalCount = 0;
+    let columnsRendered = false;
+
+    function setStatus(state, text, showRetry) {
+      if (!statusEl || !statusTextEl) return;
+      statusEl.className = 'db-data-status';
+      if (state) statusEl.classList.add('is-' + state);
+      statusTextEl.textContent = text;
+      const existingRetry = statusEl.querySelector('.db-data-status-retry');
+      if (existingRetry) existingRetry.remove();
+      if (showRetry) {
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.className = 'db-data-status-retry button secondary';
+        retryBtn.textContent = '再試行';
+        retryBtn.addEventListener('click', function () {
+          load();
+        });
+        statusEl.appendChild(retryBtn);
+      }
+    }
+
+    function updateCount(shown, total) {
+      if (!countEl) return;
+      countEl.textContent = '表示 ' + shown + ' / 全 ' + total + ' 件';
+    }
+
+    function renderTable() {
+      if (!thead || !tbody) return;
+
+      let rowCount = 0;
+      const offsets = Array.from(cache.keys()).sort(function (a, b) {
+        return a - b;
+      });
+      for (let i = 0; i < offsets.length; i++) {
+        rowCount += cache.get(offsets[i]).length;
+      }
+
+      if (columns.length === 0 || rowCount === 0) {
+        tbody.innerHTML = '';
+        if (!columnsRendered) thead.innerHTML = '';
+        if (emptyEl) emptyEl.hidden = columns.length > 0;
+        if (columns.length > 0) updateCount(0, totalCount);
+        return;
+      }
+
+      if (!columnsRendered) {
+        thead.innerHTML =
+          '<tr>' +
+          columns
+            .map(function (col) {
+              return '<th><span class="text-mono">' + escapeHtml(col) + '</span></th>';
+            })
+            .join('') +
+          '</tr>';
+        columnsRendered = true;
+      }
+
+      let html = '';
+      for (let i = 0; i < offsets.length; i++) {
+        const rows = cache.get(offsets[i]);
+        for (let j = 0; j < rows.length; j++) {
+          html += '<tr>';
+          for (let k = 0; k < rows[j].length; k++) {
+            html += '<td class="text-mono-cell">' + escapeHtml(rows[j][k]) + '</td>';
+          }
+          html += '</tr>';
+        }
+      }
+      tbody.innerHTML = html;
+      if (emptyEl) emptyEl.hidden = true;
+      updateCount(rowCount, totalCount);
+    }
+
+    async function fetchChunk(offset, gen) {
+      if (cache.has(offset)) return cache.get(offset);
+      if (inFlight.has(offset)) return null;
+
+      inFlight.add(offset);
+      try {
+        const url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') + 'offset=' + offset;
+        const response = await fetch(url, {
+          signal: abortController ? abortController.signal : undefined,
+          credentials: 'same-origin',
+        });
+
+        if (gen !== generation) return null;
+
+        if (!response.ok) {
+          let message = '取得に失敗しました';
+          try {
+            const err = await response.json();
+            if (err.error && err.error.message) message = err.error.message;
+          } catch (e) {}
+          throw new Error(message);
+        }
+
+        const data = await response.json();
+        if (gen !== generation) return null;
+
+        if (offset === 0) {
+          columns = data.columns || [];
+          totalCount = data.total_count || 0;
+          columnsRendered = false;
+        }
+
+        cache.set(offset, data.rows || []);
+        renderTable();
+        return data;
+      } finally {
+        inFlight.delete(offset);
+      }
+    }
+
+    async function load() {
+      generation += 1;
+      const gen = generation;
+      if (abortController) abortController.abort();
+      abortController = new AbortController();
+      cache.clear();
+      inFlight.clear();
+      columns = [];
+      totalCount = 0;
+      columnsRendered = false;
+      if (tbody) tbody.innerHTML = '';
+      if (thead) thead.innerHTML = '';
+      if (emptyEl) emptyEl.hidden = true;
+      updateCount('—', '—');
+      setStatus('loading', '読み込み中…', false);
+
+      try {
+        const first = await fetchChunk(0, gen);
+        if (!first || gen !== generation) return;
+
+        if (first.total_count === 0) {
+          setStatus('empty', 'データがありません', false);
+          renderTable();
+          return;
+        }
+
+        const chunkSizeActual = first.chunk_size || chunkSize;
+        const totalChunks = Math.ceil(first.total_count / chunkSizeActual);
+        const prefetchChunks = Math.min(totalChunks, maxPrefetchChunks);
+
+        for (let chunkIndex = 1; chunkIndex < prefetchChunks; chunkIndex += 1) {
+          if (gen !== generation) return;
+          const offset = chunkIndex * chunkSizeActual;
+          const loadedRows = Array.from(cache.values()).reduce(function (sum, rows) {
+            return sum + rows.length;
+          }, 0);
+          setStatus(
+            'loading',
+            '読み込み中…（' +
+              loadedRows.toLocaleString() +
+              ' / ' +
+              first.total_count.toLocaleString() +
+              ' 件・' +
+              chunkIndex +
+              ' / ' +
+              prefetchChunks +
+              ' チャンク）',
+            false
+          );
+          await fetchChunk(offset, gen);
+        }
+
+        if (gen !== generation) return;
+
+        const shownRows = Array.from(cache.values()).reduce(function (sum, rows) {
+          return sum + rows.length;
+        }, 0);
+        let doneText;
+        if (totalChunks > maxPrefetchChunks) {
+          doneText =
+            shownRows.toLocaleString() +
+            ' 件を表示（全 ' +
+            first.total_count.toLocaleString() +
+            ' 件中・先頭のみ）';
+        } else {
+          doneText = shownRows.toLocaleString() + ' 件を表示（完了）';
+        }
+        setStatus('done', doneText, false);
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+        if (gen !== generation) return;
+        setStatus('error', err.message || '取得に失敗しました', true);
+      }
+    }
+
+    load();
+  }
+
   function initWidgetConfig() {
     const schemaEl = document.getElementById('dynamic-config-fields');
     const hiddenConfig = document.getElementById('config');
@@ -318,6 +529,7 @@
     initTemplateRepeater();
     initSeedForm();
     initMediaPicker();
+    initTableData();
     initWidgetConfig();
   }
 

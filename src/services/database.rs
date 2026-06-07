@@ -142,7 +142,7 @@ pub struct ColumnMigrationPlan {
 }
 
 /// ユーザーテーブルのデータ一覧（1チャンク分）。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct TableDataView {
     pub columns: Vec<String>,
     pub rows: Vec<Vec<String>>,
@@ -420,6 +420,15 @@ pub async fn load_user_table_columns(
 
     let sql = sql.ok_or(DomainError::NotFound)?;
     parse_user_columns_from_create_sql(&sql)
+}
+
+/// データ一覧画面向けに、テーブルが閲覧可能か検証する。
+pub async fn ensure_user_table_viewable(pool: &SqlitePool, name: &str) -> DomainResult<()> {
+    let name = ensure_viewable_table(name)?;
+    if !object_name_exists(pool, name, "table").await? {
+        return Err(DomainError::NotFound);
+    }
+    Ok(())
 }
 
 pub async fn update_user_table_from_columns(

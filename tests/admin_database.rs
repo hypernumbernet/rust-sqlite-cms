@@ -451,12 +451,138 @@ async fn database_table_data_lists_rows() {
     let html = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(html.contains("data_rows"));
-    assert!(html.contains("body"));
-    assert!(html.contains("hello"));
-    assert!(html.contains("表示 1 / 全 1 件"));
+    assert!(html.contains(r#"data-api-url="/admin/database/tables/data_rows/data/rows""#));
+    assert!(html.contains("db-data-status"));
+    assert!(html.contains("db-table-data-panel"));
+    assert!(html.contains("表示 — / 全 — 件"));
     assert!(html.contains("列編集"));
     assert!(html.contains("テストデータ生成"));
     assert!(html.contains(r#"/admin/database/tables/data_rows/data/seed"#));
+    assert!(!html.contains("hello"));
+}
+
+#[tokio::test]
+async fn database_table_data_rows_api_lists_rows() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=data_rows_api&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "data_rows_api" ("body") VALUES ('hello')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/data_rows_api/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["columns"], serde_json::json!(["id", "body"]));
+    assert_eq!(json["rows"], serde_json::json!([["1", "hello"]]));
+    assert_eq!(json["total_count"], 1);
+    assert_eq!(json["offset"], 0);
+    assert_eq!(json["shown_count"], 1);
+    assert_eq!(json["has_more"], false);
+    assert_eq!(json["chunk_size"], 1000);
+}
+
+#[tokio::test]
+async fn database_table_data_rows_api_paginates() {
+    let app = common::TestApp::new().await;
+
+    sqlx::query(r#"CREATE TABLE "paginate_rows" (id INTEGER PRIMARY KEY, "n" INTEGER NOT NULL)"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    for index in 1..=1001 {
+        sqlx::query(r#"INSERT INTO "paginate_rows" ("n") VALUES (?)"#)
+            .bind(index)
+            .execute(&app.state.pool())
+            .await
+            .unwrap();
+    }
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/paginate_rows/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["total_count"], 1001);
+    assert_eq!(json["shown_count"], 1000);
+    assert_eq!(json["has_more"], true);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/paginate_rows/data/rows?offset=1000",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["shown_count"], 1);
+    assert_eq!(json["has_more"], false);
+    assert_eq!(json["rows"][0][1], "1001");
+}
+
+#[tokio::test]
+async fn database_table_data_rows_api_rejects_missing_table() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/missing_table/data/rows",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn database_table_data_rows_api_rejects_system_table() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/_sqlx_migrations/data/rows",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("システムテーブル"));
 }
 
 #[tokio::test]
@@ -532,7 +658,9 @@ async fn database_table_seed_generates_rows() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
-    assert!(html.contains("表示 5 / 全 5 件"));
+    assert!(html.contains("seed_rows"));
+    assert!(html.contains(r#"data-api-url="/admin/database/tables/seed_rows/data/rows""#));
+    assert!(html.contains("db-data-status"));
 }
 
 #[tokio::test]
@@ -704,10 +832,9 @@ async fn database_table_data_lists_rows_without_id_column() {
     let html = String::from_utf8(body.to_vec()).unwrap();
 
     assert!(html.contains("_sqlx_test"));
-    assert!(html.contains("version"));
-    assert!(html.contains("description"));
-    assert!(html.contains("init"));
-    assert!(html.contains("表示 1 / 全 1 件"));
+    assert!(html.contains(r#"data-api-url="/admin/database/tables/_sqlx_test/data/rows""#));
+    assert!(html.contains("db-table-data-panel"));
+    assert!(!html.contains("text-mono-cell"));
 }
 
 #[tokio::test]

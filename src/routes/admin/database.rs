@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::{
-    Form, Router,
+    Form, Json, Router,
     body::Bytes,
     extract::{Path, Query, State},
     response::{Html, IntoResponse, Redirect, Response},
@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::error::{AppError, AppResult, DomainError};
+use crate::error::{ApiResult, AppError, AppResult, DomainError};
 use crate::services::database::{
     self, DbObjectItem, SeedFormRow, TableColumnInput, TestDataSeedForm, DEFAULT_SEED_COUNT,
 };
@@ -27,25 +27,32 @@ struct TableListItem {
     data_url: String,
 }
 
-#[derive(Debug, Clone)]
-struct TableDataRow {
-    cells: Vec<String>,
-}
-
 #[derive(Template)]
 #[template(path = "admin/database/table_data.html")]
 struct TableDataTemplate {
     layout: layout::AdminLayoutCtx,
     table_name: String,
-    columns: Vec<String>,
-    rows: Vec<TableDataRow>,
-    has_rows: bool,
-    total_count: i64,
-    shown_count: i64,
-    has_more: bool,
+    data_api_url: String,
     read_only: bool,
     edit_url: String,
     seed_url: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct TableDataRowsQuery {
+    #[serde(default)]
+    offset: i64,
+}
+
+#[derive(serde::Serialize)]
+struct TableDataRowsResponse {
+    columns: Vec<String>,
+    rows: Vec<Vec<String>>,
+    total_count: i64,
+    offset: i64,
+    shown_count: i64,
+    has_more: bool,
+    chunk_size: i64,
 }
 
 #[derive(Template)]
@@ -162,6 +169,10 @@ pub fn router() -> Router<AppState> {
             get(edit_table_form).post(update_table),
         )
         .route("/admin/database/tables/{name}/data", get(table_data))
+        .route(
+            "/admin/database/tables/{name}/data/rows",
+            get(table_data_rows),
+        )
         .route(
             "/admin/database/tables/{name}/data/seed",
             get(table_seed_form).post(generate_table_seed),
@@ -280,32 +291,20 @@ async fn table_data(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> AppResult<Response> {
-    let data = match database::list_user_table_rows(&state.pool(), &name, 0).await {
-        Ok(data) => data,
+    match database::ensure_user_table_viewable(&state.pool(), &name).await {
+        Ok(()) => {}
         Err(DomainError::SystemTable(message)) => {
             return Ok(system_table_notice_response(&auth, &name, &message).await?);
         }
         Err(DomainError::NotFound) => return Err(AppError::NotFound),
         Err(err) => return Err(err.into()),
-    };
-
-    let rows = data
-        .rows
-        .into_iter()
-        .map(|cells| TableDataRow { cells })
-        .collect::<Vec<_>>();
-    let shown_count = rows.len() as i64;
+    }
 
     let read_only = database::is_cms_readonly_table(&name);
     let html = TableDataTemplate {
         layout: layout::AdminLayoutCtx::new(&auth),
         table_name: name.clone(),
-        has_rows: !rows.is_empty(),
-        columns: data.columns,
-        rows,
-        total_count: data.total_count,
-        shown_count,
-        has_more: data.has_more,
+        data_api_url: table_url(&name, "/data/rows"),
         read_only,
         edit_url: if read_only {
             String::new()
@@ -321,6 +320,25 @@ async fn table_data(
     .render()?;
 
     Ok(Html(html).into_response())
+}
+
+async fn table_data_rows(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Query(query): Query<TableDataRowsQuery>,
+) -> ApiResult<Json<TableDataRowsResponse>> {
+    let data = database::list_user_table_rows(&state.pool(), &name, query.offset).await?;
+    let shown_count = data.rows.len() as i64;
+    Ok(Json(TableDataRowsResponse {
+        columns: data.columns,
+        rows: data.rows,
+        total_count: data.total_count,
+        offset: data.offset,
+        shown_count,
+        has_more: data.has_more,
+        chunk_size: database::TABLE_DATA_CHUNK_SIZE,
+    }))
 }
 
 async fn table_seed_form(

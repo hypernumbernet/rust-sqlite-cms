@@ -26,8 +26,12 @@
 <div class="notice info">CMSシステムテーブル — 閲覧専用です。列編集・テストデータ生成はできません。</div>
 {% endif %}
 
+<div id="db-data-status" class="db-data-status" role="status" aria-live="polite">
+  <span class="db-data-status-text">準備中…</span>
+</div>
+
 <div class="toolbar">
-  <p class="data-count">表示 {{ shown_count }} / 全 {{ total_count }} 件</p>
+  <p class="data-count">表示 — / 全 — 件</p>
   {% if !read_only %}
   <div class="toolbar-actions">
     <a class="button secondary" href="{{ seed_url }}">テストデータ生成</a>
@@ -36,28 +40,17 @@
   {% endif %}
 </div>
 
-<section class="panel panel-table" data-has-more="{% if has_more %}1{% else %}0{% endif %}">
-  {% if has_rows %}
+<section
+  class="panel panel-table"
+  id="db-table-data-panel"
+  data-api-url="{{ data_api_url }}"
+  data-chunk-size="1000"
+  data-max-prefetch-chunks="10"
+>
   <table>
-    <thead>
-      <tr>
-        {% for column in columns %}
-        <th><span class="text-mono">{{ column }}</span></th>
-        {% endfor %}
-      </tr>
-    </thead>
-    <tbody>
-      {% for row in rows %}
-      <tr>
-        {% for cell in row.cells %}
-        <td class="text-mono-cell">{{ cell }}</td>
-        {% endfor %}
-      </tr>
-      {% endfor %}
-    </tbody>
+    <thead id="db-table-head"></thead>
+    <tbody id="db-table-body"></tbody>
   </table>
-  {% else %}
-  <p class="empty">データがありません。</p>
-  {% endif %}
+  <p class="empty" id="db-table-empty" hidden>データがありません。</p>
 </section>
 {% endblock %}

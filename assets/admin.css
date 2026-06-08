@@ -928,19 +928,17 @@ tr:last-child td { border-bottom: 0; }
 }
 #db-table-data-panel .db-table-head-table,
 #db-table-data-panel .db-table-body-table {
-  width: 100%;
-  min-width: 640px;
-  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
   border-collapse: collapse;
 }
 #db-table-data-panel th,
 #db-table-data-panel td {
   padding: 8px 10px;
+  white-space: nowrap;
 }
 #db-table-data-panel .text-mono-cell {
-  max-width: 11rem;
-  white-space: nowrap;
-  overflow: hidden;
   word-break: normal;
 }
 #db-table-data-panel .db-virtual-pad-top td,

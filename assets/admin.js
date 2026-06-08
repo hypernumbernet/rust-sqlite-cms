@@ -562,23 +562,62 @@
 
     function syncColumnWidths() {
       const headRow = thead ? thead.querySelector('tr') : null;
-      if (!tbody || !headRow) return;
+      const headTable = panel.querySelector('.db-table-head-table');
+      const bodyTable = panel.querySelector('.db-table-body-table');
+      if (!tbody || !headRow || !headTable || !bodyTable) return;
 
-      const bodyRow = tbody.querySelector(
+      const headCells = headRow.querySelectorAll('th');
+      const colCount = headCells.length;
+      if (colCount === 0) return;
+
+      const dataRows = tbody.querySelectorAll(
         'tr:not(.db-virtual-pad-top):not(.db-virtual-pad-bottom):not(.db-virtual-empty)'
       );
-      if (!bodyRow) return;
 
-      const bodyCells = bodyRow.querySelectorAll('td');
-      const headCells = headRow.querySelectorAll('th');
-      if (bodyCells.length !== headCells.length) return;
+      function clearInlineWidths(cells) {
+        for (let i = 0; i < cells.length; i++) {
+          cells[i].style.width = '';
+          cells[i].style.minWidth = '';
+          cells[i].style.maxWidth = '';
+        }
+      }
 
-      for (let i = 0; i < headCells.length; i++) {
-        const width = bodyCells[i].getBoundingClientRect().width;
-        const px = width + 'px';
-        headCells[i].style.width = px;
-        headCells[i].style.minWidth = px;
-        headCells[i].style.maxWidth = px;
+      clearInlineWidths(headCells);
+      for (let r = 0; r < dataRows.length; r++) {
+        clearInlineWidths(dataRows[r].querySelectorAll('td'));
+      }
+
+      const widths = new Array(colCount).fill(0);
+
+      function measureCell(cell, index) {
+        if (!cell || index >= colCount) return;
+        const w = cell.getBoundingClientRect().width;
+        if (w > widths[index]) widths[index] = w;
+      }
+
+      for (let i = 0; i < colCount; i++) {
+        measureCell(headCells[i], i);
+      }
+      for (let r = 0; r < dataRows.length; r++) {
+        const cells = dataRows[r].querySelectorAll('td');
+        for (let i = 0; i < cells.length && i < colCount; i++) {
+          measureCell(cells[i], i);
+        }
+      }
+
+      function applyWidths(cells) {
+        for (let i = 0; i < cells.length && i < colCount; i++) {
+          if (widths[i] <= 0) continue;
+          const px = widths[i] + 'px';
+          cells[i].style.width = px;
+          cells[i].style.minWidth = px;
+          cells[i].style.maxWidth = px;
+        }
+      }
+
+      applyWidths(headCells);
+      for (let r = 0; r < dataRows.length; r++) {
+        applyWidths(dataRows[r].querySelectorAll('td'));
       }
     }
 

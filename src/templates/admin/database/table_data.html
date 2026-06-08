@@ -15,13 +15,13 @@
 {% block content %}
 <div class="db-data-toolbar">
   <div class="toolbar-info">
-    {% if read_only %}
-    <span class="toolbar-notice notice info">CMSシステムテーブル — 閲覧専用です。列編集・テストデータ生成はできません。</span>
-    {% endif %}
     <div id="db-data-status" class="db-data-status" role="status" aria-live="polite">
       <span class="db-data-status-text">準備中…</span>
     </div>
     <p class="data-count">行 —</p>
+    {% if read_only %}
+    <span class="toolbar-notice notice info">CMSシステムテーブル — 閲覧専用です。列編集・テストデータ生成はできません。</span>
+    {% endif %}
   </div>
   {% if !read_only %}
   <div class="toolbar-actions">

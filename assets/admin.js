@@ -19,6 +19,78 @@
   // 位置を行インデックスへ比例マッピングして表示する。
   const SAFE_MAX_SCROLL_HEIGHT = 1500000;
 
+  const DB_COL_WIDTH = {
+    MIN: 40,
+    MAX: 2000,
+    AUTO_MAX: 500,
+    HANDLE: 12,
+  };
+
+  function clampDbColumnWidth(width, maxWidth) {
+    const max = maxWidth == null ? DB_COL_WIDTH.MAX : maxWidth;
+    return Math.max(DB_COL_WIDTH.MIN, Math.min(max, Math.round(width)));
+  }
+
+  function dbHorizontalBoxExtra(cell) {
+    const style = getComputedStyle(cell);
+    return (
+      parseFloat(style.paddingLeft) +
+      parseFloat(style.paddingRight) +
+      parseFloat(style.borderLeftWidth) +
+      parseFloat(style.borderRightWidth)
+    );
+  }
+
+  /** 非表示テーブル上でセル全体幅（padding・border・ヘッダーハンドル込み）を計測する。 */
+  function dbTableCellWidth(panel, text, isHeader) {
+    const tableClass = isHeader ? 'db-table-head-table' : 'db-table-body-table';
+    const rowHtml = isHeader
+      ? '<tr><th><span class="text-mono">' +
+        escapeHtml(String(text)) +
+        '</span><span class="db-col-resize-handle" aria-hidden="true"></span></th></tr>'
+      : '<tr><td class="text-mono-cell">' +
+        escapeHtml(String(text)) +
+        '</td></tr>';
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'db-table-measure-root';
+    wrapper.innerHTML =
+      '<table class="' +
+      tableClass +
+      ' db-table-measure-table">' +
+      (isHeader ? '<thead>' : '<tbody>') +
+      rowHtml +
+      (isHeader ? '</thead>' : '</tbody>') +
+      '</table>';
+    panel.appendChild(wrapper);
+
+    const cell = wrapper.querySelector(isHeader ? 'th' : 'td');
+    if (!cell) {
+      wrapper.remove();
+      return 0;
+    }
+
+    const inner = cell.querySelector('.text-mono, .text-mono-cell');
+    const contentWidth = inner ? inner.scrollWidth : cell.scrollWidth;
+    const width = Math.ceil(
+      contentWidth +
+        dbHorizontalBoxExtra(cell) +
+        (isHeader ? DB_COL_WIDTH.HANDLE : 0)
+    );
+    wrapper.remove();
+    return width;
+  }
+
+  function dbHeaderCellHtml(columnName) {
+    return (
+      '<th><span class="text-mono">' +
+      escapeHtml(columnName) +
+      '</span><span class="db-col-resize-handle" role="separator" aria-orientation="vertical" aria-label="' +
+      escapeHtml(columnName) +
+      ' 列幅変更"></span></th>'
+    );
+  }
+
   function formatCellDisplay(text) {
     const raw = String(text);
     const truncated = raw.length > CELL_DISPLAY_MAX;

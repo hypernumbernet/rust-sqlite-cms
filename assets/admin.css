@@ -1038,9 +1038,9 @@ tr:last-child td { border-bottom: 0; }
   font-size: 13px;
   color: var(--muted);
 }
-.toolbar-notice {
-  margin: 0;
-  padding: 4px 10px;
+.toolbar-notice.notice.info {
+  margin: 0 0 0 auto;
+  padding: 2px 8px;
   font-size: 12px;
   white-space: nowrap;
 }

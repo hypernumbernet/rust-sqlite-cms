@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::pin::Pin;
 use std::time::Instant;
@@ -16,7 +17,7 @@ use axum::{
         Html, IntoResponse, Redirect, Response,
         sse::{Event, KeepAlive, Sse},
     },
-    routing::get,
+    routing::{get, post},
 };
 use futures_util::stream::{self, Stream};
 use serde::Deserialize;
@@ -69,6 +70,13 @@ struct TableDataRowsResponse {
     shown_count: i64,
     has_more: bool,
     chunk_size: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    column_widths: Option<HashMap<String, i32>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ColumnWidthsSaveRequest {
+    widths: HashMap<String, i32>,
 }
 
 #[derive(Template)]
@@ -187,6 +195,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/admin/database/tables/{name}/data/rows",
             get(table_data_rows),
+        )
+        .route(
+            "/admin/database/tables/{name}/data/column-widths",
+            post(save_table_column_widths),
         )
         .route(
             "/admin/database/tables/{name}/data/seed",
@@ -352,7 +364,18 @@ async fn table_data_rows(
         shown_count,
         has_more: data.has_more,
         chunk_size: database::TABLE_DATA_CHUNK_SIZE,
+        column_widths: data.column_widths,
     }))
+}
+
+async fn save_table_column_widths(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(body): Json<ColumnWidthsSaveRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    database::save_table_column_widths(&state.pool(), &name, &body.widths).await?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 async fn table_seed_form(

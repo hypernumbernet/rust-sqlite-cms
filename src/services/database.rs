@@ -151,6 +151,9 @@ pub struct TableDataView {
     pub total_count: i64,
     pub offset: i64,
     pub has_more: bool,
+    /// offset=0 のときのみ。保存済み列幅（カラム名 → ピクセル幅）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column_widths: Option<std::collections::HashMap<String, i32>>,
 }
 
 /// `sqlite_master` から取得したテーブルまたはビューの一覧項目。
@@ -188,7 +191,14 @@ const CMS_TABLES: &[&str] = &[
 ];
 
 /// 管理画面 DB 一覧に表示しないインフラ用テーブル。
-const HIDDEN_ADMIN_TABLES: &[&str] = &["_sqlx_migrations"];
+const HIDDEN_ADMIN_TABLES: &[&str] = &["_sqlx_migrations", "_user_table_meta"];
+
+/// DB 管理 UI メタデータ（列幅など）を保持するシステムテーブル名。
+pub const USER_TABLE_META_TABLE: &str = "_user_table_meta";
+
+/// 列幅の最小・最大ピクセル値。
+const COLUMN_WIDTH_MIN_PX: i32 = 40;
+const COLUMN_WIDTH_MAX_PX: i32 = 2000;
 
 /// 管理画面 DB 一覧に表示しないインフラ用テーブルかどうか。
 pub fn is_hidden_admin_table(name: &str) -> bool {
@@ -796,6 +806,84 @@ async fn object_name_exists(
     Ok(exists)
 }
 
+/// 保存済みの列幅を取得する。未保存の場合は `None`。
+pub async fn get_table_column_widths(
+    pool: &SqlitePool,
+    name: &str,
+) -> DomainResult<Option<std::collections::HashMap<String, i32>>> {
+    let name = ensure_viewable_table(name)?;
+    let json: Option<String> = sqlx::query_scalar(
+        "SELECT column_widths_json FROM _user_table_meta WHERE table_name = ?",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some(json) = json else {
+        return Ok(None);
+    };
+
+    let parsed: std::collections::HashMap<String, i32> =
+        serde_json::from_str(&json).map_err(|e| {
+            DomainError::Internal(anyhow::anyhow!("列幅 JSON の解析に失敗: {e}"))
+        })?;
+
+    if parsed.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(parsed))
+}
+
+/// 列幅を保存する（UPSERT）。
+pub async fn save_table_column_widths(
+    pool: &SqlitePool,
+    name: &str,
+    widths: &std::collections::HashMap<String, i32>,
+) -> DomainResult<()> {
+    let name = ensure_viewable_table(name)?;
+    if !object_name_exists(pool, name, "table").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    let column_names = table_column_names(pool, name).await?;
+    let column_set: std::collections::HashSet<&str> =
+        column_names.iter().map(String::as_str).collect();
+
+    for (col, width) in widths {
+        if !column_set.contains(col.as_str()) {
+            return Err(DomainError::Validation(format!(
+                "カラム `{col}` はテーブル `{name}` に存在しません"
+            )));
+        }
+        if *width < COLUMN_WIDTH_MIN_PX || *width > COLUMN_WIDTH_MAX_PX {
+            return Err(DomainError::Validation(format!(
+                "列幅は {COLUMN_WIDTH_MIN_PX}〜{COLUMN_WIDTH_MAX_PX} px で指定してください"
+            )));
+        }
+    }
+
+    let json = serde_json::to_string(widths).map_err(|e| {
+        DomainError::Internal(anyhow::anyhow!("列幅 JSON のシリアライズに失敗: {e}"))
+    })?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO _user_table_meta (table_name, column_widths_json, updated_at)
+        VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        ON CONFLICT(table_name) DO UPDATE SET
+            column_widths_json = excluded.column_widths_json,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(name)
+    .bind(json)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 pub async fn list_user_table_rows(
     pool: &SqlitePool,
     name: &str,
@@ -818,12 +906,19 @@ pub async fn list_user_table_rows(
     let fetched = rows.len() as i64;
     let has_more = offset + fetched < total_count;
 
+    let column_widths = if offset == 0 {
+        get_table_column_widths(pool, name).await?
+    } else {
+        None
+    };
+
     Ok(TableDataView {
         columns,
         rows,
         total_count,
         offset,
         has_more,
+        column_widths,
     })
 }
 

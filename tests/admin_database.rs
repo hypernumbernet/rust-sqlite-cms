@@ -601,6 +601,141 @@ async fn database_table_data_rows_api_lists_rows() {
 }
 
 #[tokio::test]
+async fn database_table_data_rows_includes_column_widths() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=col_widths&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let save_body = r#"{"widths":{"id":80,"body":200}}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/col_widths/data/column-widths",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/col_widths/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["column_widths"]["id"], 80);
+    assert_eq!(json["column_widths"]["body"], 200);
+}
+
+#[tokio::test]
+async fn database_table_data_column_widths_save_and_load() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=col_widths_save&col_name=title&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let save_body = r#"{"widths":{"id":72,"title":240}}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/col_widths_save/data/column-widths",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["ok"], true);
+
+    let stored: Option<String> = sqlx::query_scalar(
+        "SELECT column_widths_json FROM _user_table_meta WHERE table_name = 'col_widths_save'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(stored.is_some());
+    let parsed: serde_json::Value = serde_json::from_str(stored.unwrap().as_str()).unwrap();
+    assert_eq!(parsed["id"], 72);
+    assert_eq!(parsed["title"], 240);
+}
+
+#[tokio::test]
+async fn database_table_data_column_widths_rejects_invalid_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=col_widths_bad&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let save_body = r#"{"widths":{"missing_col":100}}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/col_widths_bad/data/column-widths",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("missing_col"));
+}
+
+#[tokio::test]
+async fn database_table_data_column_widths_rejects_infra_table() {
+    let app = common::TestApp::new().await;
+
+    let save_body = r#"{"widths":{"table_name":100}}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/_user_table_meta/data/column-widths",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("システムテーブル"));
+}
+
+#[tokio::test]
 async fn database_table_data_rows_api_paginates() {
     let app = common::TestApp::new().await;
 

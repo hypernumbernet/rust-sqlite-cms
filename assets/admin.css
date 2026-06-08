@@ -945,7 +945,6 @@ tr:last-child td { border-bottom: 0; }
 #db-table-data-panel .db-table-body-table td {
   background: #fff;
   overflow: hidden;
-  text-overflow: ellipsis;
   max-width: 0;
 }
 #db-table-data-panel th {

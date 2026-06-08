@@ -9,7 +9,9 @@
       .replace(/"/g, '&quot;');
   }
 
-  const CELL_DISPLAY_MAX = 20;
+  function formatCellDisplay(text) {
+    return '<td class="text-mono-cell">' + escapeHtml(String(text)) + '</td>';
+  }
 
   // 仮想スクロールのスペーサー高（および scrollTop の到達上限）をこの値でキャップ
   // する。ブラウザは「最大要素高」（Chrome 約3,355万px / Firefox 約1,789万px）より
@@ -89,18 +91,6 @@
       escapeHtml(columnName) +
       ' 列幅変更"></span></th>'
     );
-  }
-
-  function formatCellDisplay(text) {
-    const raw = String(text);
-    const truncated = raw.length > CELL_DISPLAY_MAX;
-    const display = truncated
-      ? raw.slice(0, CELL_DISPLAY_MAX) + '...'
-      : raw;
-    const titleAttr = truncated
-      ? ' title="' + escapeHtml(raw) + '"'
-      : '';
-    return '<td class="text-mono-cell"' + titleAttr + '>' + escapeHtml(display) + '</td>';
   }
 
   function normalizeUrlPath(raw) {

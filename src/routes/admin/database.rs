@@ -106,7 +106,6 @@ struct DatabaseTemplate {
     tables_tab_url: &'static str,
     views_tab_url: &'static str,
     new_url: String,
-    database_path: String,
 }
 
 #[derive(Debug, Clone)]
@@ -228,7 +227,6 @@ async fn index(
         tables_tab_url: "/admin/database",
         views_tab_url: "/admin/database?tab=views",
         new_url,
-        database_path: state.config.database.path.clone(),
     }
     .render()?;
 

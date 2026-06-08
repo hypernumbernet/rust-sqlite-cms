@@ -11,27 +11,19 @@
     text-align: right;
     white-space: nowrap;
   }
-  .db-path {
-    margin: 0;
-    font-size: 13px;
-    color: var(--muted);
-  }
-  .db-path code {
-    word-break: break-all;
-  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="toolbar">
-  <p class="db-path">データベース: <code>{{ database_path }}</code></p>
-  <a class="button" href="{{ new_url }}">新規追加</a>
+<div class="db-tab-bar">
+  <nav class="tab-nav" aria-label="DB管理">
+    <a href="{{ tables_tab_url }}"{% if is_tables_tab %} class="active"{% endif %}>テーブル</a>
+    <a href="{{ views_tab_url }}"{% if is_views_tab %} class="active"{% endif %}>ビュー</a>
+  </nav>
+  <div class="toolbar-actions">
+    <a class="button" href="{{ new_url }}">新規追加</a>
+  </div>
 </div>
-
-<nav class="tab-nav" aria-label="DB管理">
-  <a href="{{ tables_tab_url }}"{% if is_tables_tab %} class="active"{% endif %}>テーブル</a>
-  <a href="{{ views_tab_url }}"{% if is_views_tab %} class="active"{% endif %}>ビュー</a>
-</nav>
 
 <div class="tab-panel"{% if !is_tables_tab %} hidden{% endif %}>
   <section class="panel panel-table">
@@ -58,11 +50,11 @@
           <td>
             {% if item.can_edit || item.can_view_data %}
             <div class="op-actions">
-              {% if item.can_edit %}
-              <a class="button secondary" href="{{ item.edit_url }}">列編集</a>
-              {% endif %}
               {% if item.can_view_data %}
               <a class="button secondary" href="{{ item.data_url }}">データ</a>
+              {% endif %}
+              {% if item.can_edit %}
+              <a class="button secondary" href="{{ item.edit_url }}">列編集</a>
               {% endif %}
             </div>
             {% else %}

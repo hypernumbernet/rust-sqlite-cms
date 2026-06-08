@@ -253,9 +253,37 @@ textarea::placeholder {
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
   margin-bottom: 16px;
 }
 .toolbar p { margin: 0; color: var(--muted); flex: 1 1 200px; }
+
+/* Shared horizontal toolbar row (DB data page, tab bar, etc.) */
+.toolbar-row,
+.db-tab-bar,
+.db-data-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.toolbar-info {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.toolbar-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
 
 .tab-nav {
   display: flex;
@@ -279,6 +307,21 @@ textarea::placeholder {
   border-bottom-color: var(--accent);
 }
 .tab-panel[hidden] { display: none; }
+
+.db-tab-bar {
+  align-items: flex-end;
+  margin: 0 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+.db-tab-bar .tab-nav {
+  margin: 0;
+  border-bottom: none;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.db-tab-bar .toolbar-actions {
+  padding-bottom: 6px;
+}
 
 table { width: 100%; border-collapse: collapse; }
 th, td {
@@ -913,58 +956,30 @@ tr:last-child td { border-bottom: 0; }
 
 /* DB table data toolbar (table data page) */
 .db-data-toolbar {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  width: 100%;
-  box-sizing: border-box;
   margin-bottom: 16px;
-}
-.db-data-toolbar-info {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px 16px;
-  min-width: 0;
-  flex: 1 1 auto;
 }
 .db-data-toolbar .data-count {
   margin: 0;
   font-size: 13px;
   color: var(--muted);
 }
-.db-data-toolbar .toolbar-actions {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-.db-data-toolbar-notice {
+.toolbar-notice {
   margin: 0;
   padding: 4px 10px;
   font-size: 12px;
   white-space: nowrap;
 }
-.db-data-toolbar .db-data-status {
+.toolbar-info .db-data-status,
+.toolbar-info .db-data-status.is-loading,
+.toolbar-info .db-data-status.is-done,
+.toolbar-info .db-data-status.is-empty,
+.toolbar-info .db-data-status.is-error {
   margin: 0;
   padding: 0;
   background: none;
   border: none;
   border-radius: 0;
-}
-.db-data-toolbar .db-data-status.is-loading {
-  background: none;
-  border: none;
-}
-.db-data-toolbar .db-data-status.is-done,
-.db-data-toolbar .db-data-status.is-empty {
-  background: none;
-}
-.db-data-toolbar .db-data-status.is-error {
-  background: none;
-  border: none;
 }
 
 /* DB table data loader status bar */

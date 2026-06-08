@@ -25,7 +25,15 @@
 {% endblock %}
 
 {% block content %}
+{% if is_edit %}
+<p class="breadcrumb">
+  <a href="/admin/database">DB管理</a> /
+  <a href="{{ data_url }}"><code>{{ name }}</code> データ</a> /
+  列を編集
+</p>
+{% else %}
 <p class="breadcrumb"><a href="/admin/database">DB管理</a></p>
+{% endif %}
 
 {% if !success_message.is_empty() %}
 <div class="notice success">{{ success_message }}</div>

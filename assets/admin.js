@@ -495,6 +495,7 @@
     let renderPending = false;
     let needsRefresh = false;
     let wheelAccumPx = 0;
+    let lastSyncedScrollTop = -1;
 
     function setStatus(state, text, showRetry) {
       if (!statusEl || !statusTextEl) return;
@@ -626,6 +627,12 @@
       headerEl.scrollLeft = scrollEl.scrollLeft;
     }
 
+    function scrollHorizontally(deltaPx) {
+      if (!scrollEl || deltaPx === 0) return;
+      scrollEl.scrollLeft += deltaPx;
+      syncHorizontalScroll();
+    }
+
     function renderVisibleRows() {
       if (!tbody) return;
 
@@ -697,11 +704,15 @@
         '"></td></tr>';
 
       const savedScrollTop = scrollEl ? scrollEl.scrollTop : 0;
+      const savedScrollLeft = scrollEl ? scrollEl.scrollLeft : 0;
       tbody.innerHTML = html;
       if (scrollEl) {
         isSyncingScroll = true;
         scrollEl.scrollTop = clampScrollOffset(savedScrollTop);
+        scrollEl.scrollLeft = savedScrollLeft;
+        lastSyncedScrollTop = scrollEl.scrollTop;
         isSyncingScroll = false;
+        syncHorizontalScroll();
       }
       if (emptyEl) emptyEl.hidden = true;
 
@@ -929,6 +940,7 @@
       if (!scrollEl) return;
       isSyncingScroll = true;
       scrollEl.scrollTop = offsetFromStartIndex(startIndex);
+      lastSyncedScrollTop = scrollEl.scrollTop;
       isSyncingScroll = false;
     }
 
@@ -961,8 +973,25 @@
       scrollToStartIndex(startIndex + deltaRows);
     }
 
+    function isHorizontalWheel(e) {
+      return e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY);
+    }
+
+    function horizontalWheelDelta(e) {
+      // Shift+ホイールは deltaY のみを使う（一部ブラウザは deltaX も送り方向が逆になる）
+      if (e.shiftKey) return e.deltaY;
+      return e.deltaX;
+    }
+
     function onWheel(e) {
+      if (isHorizontalWheel(e)) {
+        e.preventDefault();
+        scrollHorizontally(horizontalWheelDelta(e));
+        return;
+      }
+
       if (!canUseRowScrollInput()) return;
+
       e.preventDefault();
       wheelAccumPx += wheelDeltaToPixels(e, rowHeight, scrollEl.clientHeight);
       const rows = Math.trunc(wheelAccumPx / rowHeight);
@@ -972,6 +1001,13 @@
     }
 
     function onKeyDown(e) {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const step = Math.max(40, Math.floor(scrollEl.clientWidth * 0.1));
+        scrollHorizontally(e.key === 'ArrowRight' ? step : -step);
+        return;
+      }
+
       if (!canUseRowScrollInput()) return;
 
       if (e.key === 'Home') {
@@ -1042,10 +1078,15 @@
       rowHeight = 0;
       visibleCount = 0;
       wheelAccumPx = 0;
+      lastSyncedScrollTop = -1;
       if (tbody) tbody.innerHTML = '';
       if (thead) thead.innerHTML = '';
       if (emptyEl) emptyEl.hidden = true;
-      if (scrollEl) scrollEl.scrollTop = 0;
+      if (scrollEl) {
+        scrollEl.scrollTop = 0;
+        scrollEl.scrollLeft = 0;
+      }
+      syncHorizontalScroll();
       updateCount('—');
       setStatus('loading', '読み込み中…', false);
 
@@ -1080,7 +1121,11 @@
         'scroll',
         rafThrottle(function () {
           syncHorizontalScroll();
-          syncFromScroll();
+          const top = scrollEl.scrollTop;
+          if (top !== lastSyncedScrollTop) {
+            lastSyncedScrollTop = top;
+            syncFromScroll();
+          }
         })
       );
       scrollEl.addEventListener('wheel', onWheel, { passive: false });

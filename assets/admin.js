@@ -187,7 +187,6 @@
         const active = group.dataset.type === typeKey;
         group.classList.toggle('active', active);
         group.querySelectorAll('input, select').forEach(function (input) {
-          input.disabled = !active;
           input.required = active && input.type !== 'checkbox';
         });
       });

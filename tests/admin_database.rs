@@ -786,6 +786,67 @@ async fn database_table_seed_generates_rows() {
 }
 
 #[tokio::test]
+async fn database_table_seed_mixed_column_types() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some(
+                "name=seed_mixed&col_name=score&col_type=integer&col_nullable=0&col_name=%E3%81%82%E3%81%84%E3%81%86%E3%81%88&col_type=text&col_nullable=0",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/seed_mixed/data/seed",
+            Some(
+                "count=3\
+                &col_name=score&col_name=%E3%81%82%E3%81%84%E3%81%86%E3%81%88\
+                &col_type=integer&col_type=text\
+                &col_int_min=0&col_int_min=0\
+                &col_int_max=1000&col_int_max=1000\
+                &col_real_min=0&col_real_min=0\
+                &col_real_max=100&col_real_max=100\
+                &col_text_min=8&col_text_min=4\
+                &col_text_max=64&col_text_max=8\
+                &col_charset=ascii_alnum&col_charset=ascii_alnum\
+                &col_blob_min=1&col_blob_min=1\
+                &col_blob_max=32&col_blob_max=32\
+                &col_timestamp_from=2024-06-01T00:00&col_timestamp_from=2024-06-01T00:00\
+                &col_timestamp_to=2025-06-01T00:00&col_timestamp_to=2025-06-01T00:00\
+                &col_include_null=0&col_include_null=0",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let sse = String::from_utf8(body.to_vec()).unwrap();
+    let events = parse_sse_events(&sse);
+    assert!(
+        !events.iter().any(|(name, payload)| {
+            name == "error"
+                && payload["message"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("最小文字数")
+        }),
+        "unexpected validation error: {sse}"
+    );
+    let done = events
+        .iter()
+        .find(|(name, _)| name == "done")
+        .expect("done event");
+    assert_eq!(done.1["count"], 3);
+}
+
+#[tokio::test]
 async fn database_table_seed_system_table_shows_notice() {
     let app = common::TestApp::new().await;
 

@@ -495,6 +495,7 @@
     let scrollRaf = 0;
     let renderPending = false;
     let needsRefresh = false;
+    let wheelAccumPx = 0;
 
     function setStatus(state, text, showRetry) {
       if (!statusEl || !statusTextEl) return;
@@ -515,9 +516,13 @@
       }
     }
 
-    function updateCount(shown, total) {
+    function updateCount(startRow) {
       if (!countEl) return;
-      countEl.textContent = '表示 ' + shown + ' / 全 ' + total + ' 件';
+      if (startRow === '—') {
+        countEl.textContent = '行 —';
+        return;
+      }
+      countEl.textContent = '行 ' + startRow;
     }
 
     function padStyle(height) {
@@ -590,7 +595,7 @@
         tbody.innerHTML = '';
         if (!columnsRendered && thead) thead.innerHTML = '';
         if (emptyEl) emptyEl.hidden = columns.length > 0;
-        if (columns.length > 0) updateCount(0, totalCount);
+        if (columns.length > 0) updateCount(0);
         return;
       }
 
@@ -663,10 +668,9 @@
       if (emptyEl) emptyEl.hidden = true;
 
       if (dataRowCount > 0) {
-        const endIndex = startIndex + dataRowCount - 1;
-        updateCount(startIndex + 1 + '–' + (endIndex + 1), totalCount);
+        updateCount(startIndex + 1);
       } else {
-        updateCount(0, totalCount);
+        updateCount(0);
       }
 
       syncColumnWidths();
@@ -878,6 +882,82 @@
       syncFromOffset(scrollEl.scrollTop);
     }
 
+    // isScaled() 時のホイール・キー入力は圧縮スクロール空間ではなく行単位で処理する。
+    function canUseRowScrollInput() {
+      return isScaled() && rowHeight > 0 && totalCount > 0;
+    }
+
+    function syncScrollTopFromStartIndex() {
+      if (!scrollEl) return;
+      isSyncingScroll = true;
+      scrollEl.scrollTop = offsetFromStartIndex(startIndex);
+      isSyncingScroll = false;
+    }
+
+    function wheelDeltaToPixels(e, rowH, clientHeight) {
+      switch (e.deltaMode) {
+        case WheelEvent.DOM_DELTA_LINE:
+          return e.deltaY * rowH;
+        case WheelEvent.DOM_DELTA_PAGE:
+          return e.deltaY * clientHeight;
+        default:
+          return e.deltaY;
+      }
+    }
+
+    function pageRowCount() {
+      return Math.max(1, Math.floor(scrollEl.clientHeight / rowHeight));
+    }
+
+    function scrollToStartIndex(newStart) {
+      if (!scrollEl || rowHeight <= 0 || totalCount === 0) return;
+      newStart = Math.max(0, Math.min(newStart, maxStartIndex()));
+      if (newStart === startIndex) return;
+      startIndex = newStart;
+      syncScrollTopFromStartIndex();
+      refreshView(generation, true);
+    }
+
+    function scrollByRows(deltaRows) {
+      if (deltaRows === 0) return;
+      scrollToStartIndex(startIndex + deltaRows);
+    }
+
+    function onWheel(e) {
+      if (!canUseRowScrollInput()) return;
+      e.preventDefault();
+      wheelAccumPx += wheelDeltaToPixels(e, rowHeight, scrollEl.clientHeight);
+      const rows = Math.trunc(wheelAccumPx / rowHeight);
+      if (rows === 0) return;
+      wheelAccumPx -= rows * rowHeight;
+      scrollByRows(rows);
+    }
+
+    function onKeyDown(e) {
+      if (!canUseRowScrollInput()) return;
+
+      if (e.key === 'Home') {
+        e.preventDefault();
+        scrollToStartIndex(0);
+        return;
+      }
+      if (e.key === 'End') {
+        e.preventDefault();
+        scrollToStartIndex(maxStartIndex());
+        return;
+      }
+
+      let rows;
+      if (e.key === 'ArrowUp') rows = -1;
+      else if (e.key === 'ArrowDown') rows = 1;
+      else if (e.key === 'PageUp') rows = -pageRowCount();
+      else if (e.key === 'PageDown') rows = pageRowCount();
+      else return;
+
+      e.preventDefault();
+      scrollByRows(rows);
+    }
+
     function onResize() {
       if (rowHeight <= 0 || totalCount === 0) return;
 
@@ -895,11 +975,7 @@
       const prevStart = startIndex;
       visibleCount = calcVisibleCount();
       startIndex = Math.min(prevStart, maxStartIndex());
-
-      isSyncingScroll = true;
-      scrollEl.scrollTop = offsetFromStartIndex(startIndex);
-      isSyncingScroll = false;
-
+      syncScrollTopFromStartIndex();
       refreshView(generation, false);
     }
 
@@ -927,11 +1003,12 @@
       startIndex = 0;
       rowHeight = 0;
       visibleCount = 0;
+      wheelAccumPx = 0;
       if (tbody) tbody.innerHTML = '';
       if (thead) thead.innerHTML = '';
       if (emptyEl) emptyEl.hidden = true;
       if (scrollEl) scrollEl.scrollTop = 0;
-      updateCount('—', '—');
+      updateCount('—');
       setStatus('loading', '読み込み中…', false);
 
       try {
@@ -968,6 +1045,8 @@
           syncFromScroll();
         })
       );
+      scrollEl.addEventListener('wheel', onWheel, { passive: false });
+      scrollEl.addEventListener('keydown', onKeyDown);
       new ResizeObserver(rafThrottle(onResize)).observe(scrollEl);
     }
 

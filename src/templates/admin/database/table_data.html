@@ -7,34 +7,22 @@
 {% block extra_styles %}
 <style>
   :root {
-    --admin-table-panel-max-height: calc(100dvh - 15rem);
-  }
-  .data-count {
-    margin: 0;
-    font-size: 13px;
-    color: var(--muted);
-  }
-  .toolbar-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    --admin-table-panel-max-height: calc(100dvh - 12rem);
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<p class="breadcrumb"><a href="/admin/database">DB管理</a> / <code>{{ table_name }}</code></p>
-
-{% if read_only %}
-<div class="notice info">CMSシステムテーブル — 閲覧専用です。列編集・テストデータ生成はできません。</div>
-{% endif %}
-
-<div id="db-data-status" class="db-data-status" role="status" aria-live="polite">
-  <span class="db-data-status-text">準備中…</span>
-</div>
-
-<div class="toolbar">
-  <p class="data-count">表示 — / 全 — 件</p>
+<div class="db-data-toolbar">
+  <div class="db-data-toolbar-info">
+    {% if read_only %}
+    <span class="db-data-toolbar-notice notice info">CMSシステムテーブル — 閲覧専用です。列編集・テストデータ生成はできません。</span>
+    {% endif %}
+    <div id="db-data-status" class="db-data-status" role="status" aria-live="polite">
+      <span class="db-data-status-text">準備中…</span>
+    </div>
+    <p class="data-count">行 —</p>
+  </div>
   {% if !read_only %}
   <div class="toolbar-actions">
     <a class="button secondary" href="{{ seed_url }}">テストデータ生成</a>
@@ -55,7 +43,7 @@
       <thead id="db-table-head"></thead>
     </table>
   </div>
-  <div class="db-table-scroll" id="db-table-scroll">
+  <div class="db-table-scroll" id="db-table-scroll" tabindex="0">
     <table class="db-table-body-table">
       <tbody id="db-table-body"></tbody>
     </table>

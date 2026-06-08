@@ -543,7 +543,12 @@
     const headerEl = panel.querySelector('.db-table-header');
     const statusEl = document.getElementById('db-data-status');
     const statusTextEl = statusEl ? statusEl.querySelector('.db-data-status-text') : null;
-    const countEl = document.querySelector('.data-count');
+    const countEl = document.getElementById('db-data-row-goto');
+    const rowGotoDialog = document.getElementById('db-row-goto-dialog');
+    const rowGotoForm = document.getElementById('db-row-goto-form');
+    const rowGotoInput = document.getElementById('db-row-goto-input');
+    const rowGotoRange = document.getElementById('db-row-goto-range');
+    const rowGotoCancel = document.getElementById('db-row-goto-cancel');
     const thead = document.getElementById('db-table-head');
     const tbody = document.getElementById('db-table-body');
     const emptyEl = document.getElementById('db-table-empty');
@@ -597,9 +602,47 @@
       if (!countEl) return;
       if (startRow === '—') {
         countEl.textContent = '行 —';
+        countEl.disabled = true;
         return;
       }
       countEl.textContent = '行 ' + startRow;
+      countEl.disabled = totalCount === 0 || rowHeight <= 0;
+    }
+
+    function currentRowNumber() {
+      if (totalCount === 0 || rowHeight <= 0) return 1;
+      return startIndex + 1;
+    }
+
+    function openRowGotoDialog() {
+      if (!rowGotoDialog || !rowGotoInput || totalCount === 0 || rowHeight <= 0) return;
+      if (rowGotoRange) {
+        rowGotoRange.textContent = '(1 〜 ' + totalCount.toLocaleString() + ')';
+      }
+      rowGotoInput.min = '1';
+      rowGotoInput.max = String(totalCount);
+      rowGotoInput.value = String(currentRowNumber());
+      rowGotoInput.setCustomValidity('');
+      rowGotoDialog.showModal();
+      rowGotoInput.select();
+    }
+
+    function closeRowGotoDialog() {
+      if (rowGotoDialog) rowGotoDialog.close();
+    }
+
+    function submitRowGoto(e) {
+      e.preventDefault();
+      if (!rowGotoInput) return;
+      const rowNum = parseInt(rowGotoInput.value, 10);
+      if (!Number.isFinite(rowNum) || rowNum < 1 || rowNum > totalCount) {
+        rowGotoInput.setCustomValidity('1 〜 ' + totalCount + ' の整数を入力してください');
+        rowGotoInput.reportValidity();
+        return;
+      }
+      rowGotoInput.setCustomValidity('');
+      scrollToStartIndex(Math.min(rowNum - 1, maxStartIndex()));
+      closeRowGotoDialog();
     }
 
     function padStyle(height) {
@@ -1440,6 +1483,21 @@
 
     if (thead) {
       thead.addEventListener('mousedown', onResizeMouseDown);
+    }
+
+    if (countEl) {
+      countEl.addEventListener('click', openRowGotoDialog);
+    }
+    if (rowGotoForm) {
+      rowGotoForm.addEventListener('submit', submitRowGoto);
+    }
+    if (rowGotoCancel) {
+      rowGotoCancel.addEventListener('click', closeRowGotoDialog);
+    }
+    if (rowGotoDialog) {
+      rowGotoDialog.addEventListener('click', function (e) {
+        if (e.target === rowGotoDialog) closeRowGotoDialog();
+      });
     }
 
     load();

@@ -553,6 +553,8 @@ async fn database_table_data_lists_rows() {
     assert!(html.contains(r#"data-api-url="/admin/database/tables/data_rows/data/rows""#));
     assert!(html.contains("db-data-status"));
     assert!(html.contains("db-table-data-panel"));
+    assert!(html.contains("db-data-row-goto"));
+    assert!(html.contains("db-row-goto-dialog"));
     assert!(html.contains("行 —"));
     assert!(html.contains("列編集"));
     assert!(html.contains("テストデータ生成"));

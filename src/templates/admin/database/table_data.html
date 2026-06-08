@@ -18,7 +18,7 @@
     <div id="db-data-status" class="db-data-status" role="status" aria-live="polite">
       <span class="db-data-status-text">準備中…</span>
     </div>
-    <p class="data-count">行 —</p>
+    <button type="button" id="db-data-row-goto" class="data-count" disabled aria-label="行番号指定">行 —</button>
     {% if read_only %}
     <span class="toolbar-notice notice info">CMSシステムテーブル — 閲覧専用です。列編集・テストデータ生成はできません。</span>
     {% endif %}
@@ -50,4 +50,22 @@
   </div>
   <p class="empty" id="db-table-empty" hidden>データがありません。</p>
 </section>
+
+<dialog id="db-row-goto-dialog" class="db-row-goto-dialog">
+  <div class="db-row-goto-dialog-inner">
+    <div class="db-row-goto-dialog-header">
+      <h2>行番号指定</h2>
+    </div>
+    <form id="db-row-goto-form" class="db-row-goto-dialog-body">
+      <div class="field">
+        <label for="db-row-goto-input">行番号 <span id="db-row-goto-range" class="field-label-muted"></span></label>
+        <input type="number" id="db-row-goto-input" name="row" min="1" required inputmode="numeric">
+      </div>
+      <div class="db-row-goto-dialog-actions">
+        <button type="submit" class="button">移動</button>
+        <button type="button" class="button secondary" id="db-row-goto-cancel">キャンセル</button>
+      </div>
+    </form>
+  </div>
+</dialog>
 {% endblock %}

@@ -143,6 +143,21 @@ pub struct ColumnMigrationPlan {
     pub nullable_relaxations: Vec<String>,
 }
 
+/// 列ソートの方向。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TableSortDirection {
+    Asc,
+    Desc,
+}
+
+/// 列ソートの1エントリ（配列の先頭が最優先）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TableSortEntry {
+    pub column: String,
+    pub direction: TableSortDirection,
+}
+
 /// ユーザーテーブルのデータ一覧（1チャンク分）。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TableDataView {
@@ -154,6 +169,9 @@ pub struct TableDataView {
     /// offset=0 のときのみ。保存済み列幅（カラム名 → ピクセル幅）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub column_widths: Option<std::collections::HashMap<String, i32>>,
+    /// offset=0 のときのみ。適用中のソート（空ならデフォルト順）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sort: Option<Vec<TableSortEntry>>,
 }
 
 /// `sqlite_master` から取得したテーブルまたはビューの一覧項目。
@@ -811,28 +829,7 @@ pub async fn get_table_column_widths(
     pool: &SqlitePool,
     name: &str,
 ) -> DomainResult<Option<std::collections::HashMap<String, i32>>> {
-    let name = ensure_viewable_table(name)?;
-    let json: Option<String> = sqlx::query_scalar(
-        "SELECT column_widths_json FROM _user_table_meta WHERE table_name = ?",
-    )
-    .bind(name)
-    .fetch_optional(pool)
-    .await?;
-
-    let Some(json) = json else {
-        return Ok(None);
-    };
-
-    let parsed: std::collections::HashMap<String, i32> =
-        serde_json::from_str(&json).map_err(|e| {
-            DomainError::Internal(anyhow::anyhow!("列幅 JSON の解析に失敗: {e}"))
-        })?;
-
-    if parsed.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(parsed))
+    Ok(get_table_ui_meta(pool, name).await?.column_widths)
 }
 
 /// 列幅を保存する（UPSERT）。
@@ -884,10 +881,258 @@ pub async fn save_table_column_widths(
     Ok(())
 }
 
+/// クエリ文字列 `name:asc,age:desc` をパースする。
+pub fn parse_sort_query_param(raw: &str) -> DomainResult<Vec<TableSortEntry>> {
+    if raw.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut entries = Vec::new();
+    for part in raw.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        let (column, direction) = part.split_once(':').ok_or_else(|| {
+            DomainError::Validation(format!("ソート指定の形式が不正です: `{part}`"))
+        })?;
+        let column = column.trim();
+        if column.is_empty() {
+            return Err(DomainError::Validation(
+                "ソート指定に列名が含まれていません".into(),
+            ));
+        }
+        let direction = match direction.trim().to_ascii_lowercase().as_str() {
+            "asc" => TableSortDirection::Asc,
+            "desc" => TableSortDirection::Desc,
+            other => {
+                return Err(DomainError::Validation(format!(
+                    "ソート方向は asc または desc で指定してください: `{other}`"
+                )));
+            }
+        };
+        entries.push(TableSortEntry {
+            column: column.to_string(),
+            direction,
+        });
+    }
+
+    Ok(entries)
+}
+
+fn is_missing_user_table_meta_error(err: &sqlx::Error) -> bool {
+    matches!(
+        err,
+        sqlx::Error::Database(db_err)
+            if db_err.message().contains("no such table: _user_table_meta")
+    )
+}
+
+/// 保存済みの列ソートを取得する。未保存の場合は `None`。
+pub async fn get_table_sort(
+    pool: &SqlitePool,
+    name: &str,
+) -> DomainResult<Option<Vec<TableSortEntry>>> {
+    Ok(get_table_ui_meta(pool, name).await?.sort)
+}
+
+/// 列ソートを保存する（UPSERT）。
+pub async fn save_table_sort(
+    pool: &SqlitePool,
+    name: &str,
+    sort: &[TableSortEntry],
+) -> DomainResult<()> {
+    let name = ensure_viewable_table(name)?;
+    if !object_name_exists(pool, name, "table").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    validate_sort_columns(pool, name, sort).await?;
+
+    let json = serde_json::to_string(sort).map_err(|e| {
+        DomainError::Internal(anyhow::anyhow!("ソート JSON のシリアライズに失敗: {e}"))
+    })?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO _user_table_meta (table_name, sort_json, updated_at)
+        VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        ON CONFLICT(table_name) DO UPDATE SET
+            sort_json = excluded.sort_json,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(name)
+    .bind(json)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+fn validate_sort_against_columns(
+    column_names: &[String],
+    table_name: &str,
+    entries: &[TableSortEntry],
+) -> DomainResult<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+
+    let column_set: std::collections::HashSet<&str> =
+        column_names.iter().map(String::as_str).collect();
+
+    for entry in entries {
+        if !column_set.contains(entry.column.as_str()) {
+            return Err(DomainError::Validation(format!(
+                "カラム `{}` はテーブル `{table_name}` に存在しません",
+                entry.column
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn build_order_by_from_sort(
+    column_names: &[String],
+    table_name: &str,
+    sort_entries: &[TableSortEntry],
+) -> DomainResult<String> {
+    validate_sort_against_columns(column_names, table_name, sort_entries)?;
+
+    let parts: Vec<String> = sort_entries
+        .iter()
+        .map(|entry| {
+            let direction = match entry.direction {
+                TableSortDirection::Asc => "ASC",
+                TableSortDirection::Desc => "DESC",
+            };
+            format!("{} {direction}", quote_sql_identifier(&entry.column))
+        })
+        .collect();
+
+    Ok(parts.join(", "))
+}
+
+fn order_columns_from_pragma(rows: &[PragmaTableInfoRow]) -> String {
+    let mut pk_columns: Vec<(i32, String)> = rows
+        .iter()
+        .filter(|row| row.pk > 0)
+        .map(|row| (row.pk, row.name.clone()))
+        .collect();
+    if !pk_columns.is_empty() {
+        pk_columns.sort_by_key(|(pk, _)| *pk);
+        return pk_columns
+            .into_iter()
+            .map(|(_, name)| quote_sql_identifier(&name))
+            .collect::<Vec<_>>()
+            .join(", ");
+    }
+
+    if rows
+        .iter()
+        .any(|row| row.name.eq_ignore_ascii_case("id"))
+    {
+        return quote_sql_identifier("id");
+    }
+
+    if let Some(first) = rows.first() {
+        return quote_sql_identifier(&first.name);
+    }
+
+    "rowid".to_string()
+}
+
+/// ソート指定から ORDER BY 句を組み立てる。空のときはデフォルト順。
+pub async fn build_order_by_clause(
+    pool: &SqlitePool,
+    table_name: &str,
+    sort_entries: &[TableSortEntry],
+) -> DomainResult<String> {
+    let pragma_rows = table_pragma_info(pool, table_name).await?;
+    if sort_entries.is_empty() {
+        return Ok(order_columns_from_pragma(&pragma_rows));
+    }
+
+    let column_names: Vec<String> = pragma_rows.into_iter().map(|row| row.name).collect();
+    build_order_by_from_sort(&column_names, table_name, sort_entries)
+}
+
+#[derive(Debug, Default)]
+struct TableUiMeta {
+    sort: Option<Vec<TableSortEntry>>,
+    column_widths: Option<std::collections::HashMap<String, i32>>,
+}
+
+async fn get_table_ui_meta(pool: &SqlitePool, name: &str) -> DomainResult<TableUiMeta> {
+    let name = ensure_viewable_table(name)?;
+    let row: Option<(String, String)> = match sqlx::query_as::<_, (String, String)>(
+        "SELECT column_widths_json, sort_json FROM _user_table_meta WHERE table_name = ?",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(row) => row,
+        Err(err) if is_missing_user_table_meta_error(&err) => return Ok(TableUiMeta::default()),
+        Err(err) => return Err(err.into()),
+    };
+
+    let Some((widths_json, sort_json)) = row else {
+        return Ok(TableUiMeta::default());
+    };
+
+    let column_widths = if widths_json.is_empty() || widths_json == "{}" {
+        None
+    } else {
+        let parsed: std::collections::HashMap<String, i32> =
+            serde_json::from_str(&widths_json).map_err(|e| {
+                DomainError::Internal(anyhow::anyhow!("列幅 JSON の解析に失敗: {e}"))
+            })?;
+        if parsed.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
+    };
+
+    let sort = if sort_json.is_empty() || sort_json == "[]" {
+        None
+    } else {
+        let parsed: Vec<TableSortEntry> = serde_json::from_str(&sort_json).map_err(|e| {
+            DomainError::Internal(anyhow::anyhow!("ソート JSON の解析に失敗: {e}"))
+        })?;
+        if parsed.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
+    };
+
+    Ok(TableUiMeta {
+        sort,
+        column_widths,
+    })
+}
+
+async fn validate_sort_columns(
+    pool: &SqlitePool,
+    table_name: &str,
+    entries: &[TableSortEntry],
+) -> DomainResult<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    let column_names = table_column_names(pool, table_name).await?;
+    validate_sort_against_columns(&column_names, table_name, entries)
+}
+
 pub async fn list_user_table_rows(
     pool: &SqlitePool,
     name: &str,
     offset: i64,
+    sort_override: Option<&[TableSortEntry]>,
 ) -> DomainResult<TableDataView> {
     let name = ensure_viewable_table(name)?;
     if !object_name_exists(pool, name, "table").await? {
@@ -899,15 +1144,53 @@ pub async fn list_user_table_rows(
         ));
     }
 
-    let columns = table_column_names(pool, name).await?;
+    let pragma_rows = table_pragma_info(pool, name).await?;
+    let columns: Vec<String> = pragma_rows.iter().map(|row| row.name.clone()).collect();
     let total_count = table_row_count(pool, name).await.map_err(DomainError::from)?;
-    let rows =
-        fetch_table_rows_chunk(pool, name, offset, TABLE_DATA_CHUNK_SIZE, columns.len()).await?;
+
+    let ui_meta = if sort_override.is_none() {
+        Some(get_table_ui_meta(pool, name).await?)
+    } else {
+        None
+    };
+
+    let effective_sort: Vec<TableSortEntry> = match sort_override {
+        Some(entries) => entries.to_vec(),
+        None => ui_meta
+            .as_ref()
+            .and_then(|meta| meta.sort.clone())
+            .unwrap_or_default(),
+    };
+
+    let order_by = if effective_sort.is_empty() {
+        order_columns_from_pragma(&pragma_rows)
+    } else {
+        build_order_by_from_sort(&columns, name, &effective_sort)?
+    };
+
+    let rows = fetch_table_rows_chunk(
+        pool,
+        name,
+        offset,
+        TABLE_DATA_CHUNK_SIZE,
+        columns.len(),
+        &order_by,
+    )
+    .await?;
     let fetched = rows.len() as i64;
     let has_more = offset + fetched < total_count;
 
     let column_widths = if offset == 0 {
-        get_table_column_widths(pool, name).await?
+        match &ui_meta {
+            Some(meta) => meta.column_widths.clone(),
+            None => get_table_column_widths(pool, name).await?,
+        }
+    } else {
+        None
+    };
+
+    let sort = if offset == 0 {
+        Some(effective_sort)
     } else {
         None
     };
@@ -919,6 +1202,7 @@ pub async fn list_user_table_rows(
         offset,
         has_more,
         column_widths,
+        sort,
     })
 }
 
@@ -928,6 +1212,7 @@ pub async fn fetch_table_rows_chunk(
     offset: i64,
     limit: i64,
     column_count: usize,
+    order_by: &str,
 ) -> DomainResult<Vec<Vec<String>>> {
     let name = ensure_viewable_table(name)?;
     if offset < 0 || limit < 0 {
@@ -937,7 +1222,6 @@ pub async fn fetch_table_rows_chunk(
     }
 
     let quoted = quote_sql_identifier(name);
-    let order_by = table_order_columns(pool, name).await?;
     let query = format!("SELECT * FROM {quoted} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}");
     let sql_rows = sqlx::query(sqlx::AssertSqlSafe(query))
         .fetch_all(pool)
@@ -961,37 +1245,6 @@ async fn table_pragma_info(pool: &SqlitePool, table_name: &str) -> DomainResult<
 async fn table_column_names(pool: &SqlitePool, table_name: &str) -> DomainResult<Vec<String>> {
     let rows = table_pragma_info(pool, table_name).await?;
     Ok(rows.into_iter().map(|row| row.name).collect())
-}
-
-async fn table_order_columns(pool: &SqlitePool, table_name: &str) -> DomainResult<String> {
-    let rows = table_pragma_info(pool, table_name).await?;
-
-    let mut pk_columns: Vec<(i32, String)> = rows
-        .iter()
-        .filter(|row| row.pk > 0)
-        .map(|row| (row.pk, row.name.clone()))
-        .collect();
-    if !pk_columns.is_empty() {
-        pk_columns.sort_by_key(|(pk, _)| *pk);
-        return Ok(pk_columns
-            .into_iter()
-            .map(|(_, name)| quote_sql_identifier(&name))
-            .collect::<Vec<_>>()
-            .join(", "));
-    }
-
-    if rows
-        .iter()
-        .any(|row| row.name.eq_ignore_ascii_case("id"))
-    {
-        return Ok(quote_sql_identifier("id"));
-    }
-
-    if let Some(first) = rows.first() {
-        return Ok(quote_sql_identifier(&first.name));
-    }
-
-    Ok("rowid".to_string())
 }
 
 fn row_to_cells(row: &sqlx::sqlite::SqliteRow, column_count: usize) -> Vec<String> {
@@ -1939,7 +2192,7 @@ mod tests {
         .await
         .expect("insert row");
 
-        let view = list_user_table_rows(&pool, "_sqlx_test", 0)
+        let view = list_user_table_rows(&pool, "_sqlx_test", 0, None)
             .await
             .expect("list rows");
         assert_eq!(
@@ -1978,13 +2231,86 @@ mod tests {
                 .expect("insert row");
         }
 
-        let view = list_user_table_rows(&pool, "big", 0)
+        let view = list_user_table_rows(&pool, "big", 0, None)
             .await
             .expect("list rows");
         assert_eq!(view.columns, vec!["id".to_string(), "n".to_string()]);
         assert_eq!(view.rows.len(), 1000);
         assert_eq!(view.total_count, 1001);
         assert!(view.has_more);
+    }
+
+    #[test]
+    fn parse_sort_query_param_parses_entries() {
+        let entries = parse_sort_query_param("name:asc,age:desc").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].column, "name");
+        assert_eq!(entries[0].direction, TableSortDirection::Asc);
+        assert_eq!(entries[1].column, "age");
+        assert_eq!(entries[1].direction, TableSortDirection::Desc);
+    }
+
+    #[test]
+    fn parse_sort_query_param_empty_returns_empty_vec() {
+        assert!(parse_sort_query_param("").unwrap().is_empty());
+    }
+
+    #[test]
+    fn parse_sort_query_param_rejects_invalid_direction() {
+        let err = parse_sort_query_param("name:up").unwrap_err();
+        assert!(err.to_string().contains("asc または desc"));
+    }
+
+    #[tokio::test]
+    async fn build_order_by_clause_uses_custom_sort() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(r#"CREATE TABLE "items" (id INTEGER PRIMARY KEY, "title" TEXT NOT NULL)"#)
+            .execute(&pool)
+            .await
+            .expect("create table");
+
+        let entries = vec![TableSortEntry {
+            column: "title".to_string(),
+            direction: TableSortDirection::Desc,
+        }];
+        let order_by = build_order_by_clause(&pool, "items", &entries)
+            .await
+            .expect("order by");
+        assert_eq!(order_by, r#""title" DESC"#);
+    }
+
+    #[tokio::test]
+    async fn list_user_table_rows_sorts_rows() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(r#"CREATE TABLE "sorted" (id INTEGER PRIMARY KEY, "label" TEXT NOT NULL)"#)
+            .execute(&pool)
+            .await
+            .expect("create table");
+
+        for label in ["c", "a", "b"] {
+            sqlx::query(r#"INSERT INTO "sorted" ("label") VALUES (?)"#)
+                .bind(label)
+                .execute(&pool)
+                .await
+                .expect("insert row");
+        }
+
+        let sort = vec![TableSortEntry {
+            column: "label".to_string(),
+            direction: TableSortDirection::Asc,
+        }];
+        let view = list_user_table_rows(&pool, "sorted", 0, Some(&sort))
+            .await
+            .expect("list rows");
+        assert_eq!(
+            view.rows.iter().map(|row| row[1].as_str()).collect::<Vec<_>>(),
+            vec!["a", "b", "c"]
+        );
+        assert_eq!(view.sort, Some(sort));
     }
 
     #[test]

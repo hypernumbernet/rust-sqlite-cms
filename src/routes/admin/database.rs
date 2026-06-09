@@ -27,7 +27,8 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::error::{ApiResult, AppError, AppResult, DomainError};
 use crate::services::database::{
-    self, DbObjectItem, SeedFormRow, TableColumnInput, TestDataSeedForm, DEFAULT_SEED_COUNT,
+    self, DbObjectItem, SeedFormRow, TableColumnInput, TableSortEntry, TestDataSeedForm,
+    DEFAULT_SEED_COUNT,
 };
 use crate::state::AppState;
 
@@ -59,6 +60,7 @@ struct TableDataTemplate {
 struct TableDataRowsQuery {
     #[serde(default)]
     offset: i64,
+    sort: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -72,11 +74,18 @@ struct TableDataRowsResponse {
     chunk_size: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     column_widths: Option<HashMap<String, i32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sort: Option<Vec<TableSortEntry>>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ColumnWidthsSaveRequest {
     widths: HashMap<String, i32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SortSaveRequest {
+    sort: Vec<TableSortEntry>,
 }
 
 #[derive(Template)]
@@ -199,6 +208,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/admin/database/tables/{name}/data/column-widths",
             post(save_table_column_widths),
+        )
+        .route(
+            "/admin/database/tables/{name}/data/sort",
+            post(save_table_sort),
         )
         .route(
             "/admin/database/tables/{name}/data/seed",
@@ -354,7 +367,14 @@ async fn table_data_rows(
     Path(name): Path<String>,
     Query(query): Query<TableDataRowsQuery>,
 ) -> ApiResult<Json<TableDataRowsResponse>> {
-    let data = database::list_user_table_rows(&state.pool(), &name, query.offset).await?;
+    let sort_override = if let Some(raw) = &query.sort {
+        Some(database::parse_sort_query_param(raw)?)
+    } else {
+        None
+    };
+    let sort_ref = sort_override.as_deref();
+    let data =
+        database::list_user_table_rows(&state.pool(), &name, query.offset, sort_ref).await?;
     let shown_count = data.rows.len() as i64;
     Ok(Json(TableDataRowsResponse {
         columns: data.columns,
@@ -365,7 +385,18 @@ async fn table_data_rows(
         has_more: data.has_more,
         chunk_size: database::TABLE_DATA_CHUNK_SIZE,
         column_widths: data.column_widths,
+        sort: data.sort,
     }))
+}
+
+async fn save_table_sort(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(body): Json<SortSaveRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    database::save_table_sort(&state.pool(), &name, &body.sort).await?;
+    Ok(Json(json!({ "ok": true })))
 }
 
 async fn save_table_column_widths(

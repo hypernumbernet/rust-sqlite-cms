@@ -26,6 +26,7 @@
     MAX: 2000,
     AUTO_MAX: 500,
     HANDLE: 12,
+    SORT: 28,
   };
 
   function clampDbColumnWidth(width, maxWidth) {
@@ -49,7 +50,7 @@
     const rowHtml = isHeader
       ? '<tr><th><span class="text-mono">' +
         escapeHtml(String(text)) +
-        '</span><span class="db-col-resize-handle" aria-hidden="true"></span></th></tr>'
+        '</span><span class="db-col-sort-trigger" aria-hidden="true"><span class="db-col-sort-icon"></span></span><span class="db-col-resize-handle" aria-hidden="true"></span></th></tr>'
       : '<tr><td class="text-mono-cell">' +
         escapeHtml(String(text)) +
         '</td></tr>';
@@ -77,17 +78,47 @@
     const width = Math.ceil(
       contentWidth +
         dbHorizontalBoxExtra(cell) +
-        (isHeader ? DB_COL_WIDTH.HANDLE : 0)
+        (isHeader ? DB_COL_WIDTH.HANDLE + DB_COL_WIDTH.SORT : 0)
     );
     wrapper.remove();
     return width;
   }
 
-  function dbHeaderCellHtml(columnName) {
+  function dbHeaderCellHtml(columnName, sortEntry, sortPriority, showPriority) {
+    let thClass = '';
+    let sortIndicatorHtml = '';
+    let triggerClass = 'db-col-sort-trigger';
+    let ariaSort = 'none';
+
+    if (sortEntry) {
+      thClass =
+        sortEntry.direction === 'asc' ? ' is-sorted-asc' : ' is-sorted-desc';
+      ariaSort = sortEntry.direction === 'asc' ? 'ascending' : 'descending';
+      triggerClass += ' has-sort-state';
+      sortIndicatorHtml =
+        '<span class="db-col-sort-arrow" aria-hidden="true">' +
+        (sortEntry.direction === 'asc' ? '▲' : '▼') +
+        '</span>';
+      if (showPriority && sortPriority > 0) {
+        sortIndicatorHtml +=
+          '<span class="db-col-sort-priority">' + sortPriority + '</span>';
+      }
+    }
+
     return (
-      '<th><span class="text-mono">' +
+      '<th class="' +
+      thClass.trim() +
+      '" aria-sort="' +
+      ariaSort +
+      '"><span class="text-mono">' +
       escapeHtml(columnName) +
-      '</span><span class="db-col-resize-handle" role="separator" aria-orientation="vertical" aria-label="' +
+      '</span><span class="' +
+      triggerClass +
+      '" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-label="' +
+      escapeHtml(columnName) +
+      ' のソート">' +
+      sortIndicatorHtml +
+      '<span class="db-col-sort-icon" aria-hidden="true"></span></span><span class="db-col-resize-handle" role="separator" aria-orientation="vertical" aria-label="' +
       escapeHtml(columnName) +
       ' 列幅変更"></span></th>'
     );
@@ -534,6 +565,9 @@
     const statusEl = document.getElementById('db-data-status');
     const statusTextEl = statusEl ? statusEl.querySelector('.db-data-status-text') : null;
     const countEl = document.getElementById('db-data-row-goto');
+    const sortIndicatorEl = document.getElementById('db-data-sort-indicator');
+    const sortIndicatorLabelEl = document.getElementById('db-data-sort-indicator-label');
+    const sortClearBtn = document.getElementById('db-data-sort-clear');
     const rowGotoDialog = document.getElementById('db-row-goto-dialog');
     const rowGotoForm = document.getElementById('db-row-goto-form');
     const rowGotoInput = document.getElementById('db-row-goto-input');
@@ -543,7 +577,11 @@
     const tbody = document.getElementById('db-table-body');
     const emptyEl = document.getElementById('db-table-empty');
     const apiUrl = panel.dataset.apiUrl || '';
-    const columnWidthsUrl = apiUrl.replace(/\/rows$/, '/column-widths');
+    function dataApiPath(suffix) {
+      return apiUrl.replace(/\/rows$/, suffix);
+    }
+    const columnWidthsUrl = dataApiPath('/column-widths');
+    const sortUrl = dataApiPath('/sort');
     const chunkSize = parseInt(panel.dataset.chunkSize || '1000', 10);
     const overscan = parseInt(panel.dataset.overscan || '3', 10);
     const COLUMN_WIDTH_MIN = 40;
@@ -952,6 +990,46 @@
       document.addEventListener('mouseup', onResizeMouseUp);
     }
 
+    function onResizeDoubleClick(e) {
+      const handle = e.target.closest('.db-col-resize-handle');
+      if (!handle || !thead || e.button !== 0) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      cancelActiveColumnResize();
+
+      const index = columnIndexFromCell(handle.closest('th'));
+      if (index < 0) return;
+
+      autoFitColumnWidth(index);
+    }
+
+    function getRow(rowIndex) {
+      const chunkOffset = chunkOffsetForIndex(rowIndex);
+      const chunk = cache.get(chunkOffset);
+      if (!chunk) return null;
+      return chunk[rowIndex - chunkOffset] || null;
+    }
+
+    function chunkOffsetsForRange(start, count) {
+      if (totalCount === 0 || count <= 0) return [];
+      const end = Math.min(start + count - 1, totalCount - 1);
+      const firstChunk = chunkOffsetForIndex(start);
+      const lastChunk = chunkOffsetForIndex(end);
+      const offsets = [];
+      for (let offset = firstChunk; offset <= lastChunk; offset += chunkSizeActual) {
+        offsets.push(offset);
+      }
+      return offsets;
+    }
+
+    function renderHeader() {
+      if (!thead || columnsRendered || columns.length === 0) return;
+      thead.innerHTML =
+        '<tr>' + columns.map(dbHeaderCellHtml).join('') + '</tr>';
+      columnsRendered = true;
+    }
+
     function syncHorizontalScroll() {
       if (!headerEl || !scrollEl) return;
       headerEl.scrollLeft = scrollEl.scrollLeft;
@@ -1085,9 +1163,24 @@
       return rowHeight;
     }
 
-    function calcVisibleCount() {
+    function scrollViewportHeight() {
+      if (!scrollEl) return 0;
+      let height = scrollEl.clientHeight;
+      if (height > 0) return height;
+      if (!panel) return 0;
+      const panelHeight = panel.getBoundingClientRect().height;
+      const headerHeight = headerEl ? headerEl.getBoundingClientRect().height : 0;
+      return Math.max(0, panelHeight - headerHeight);
+    }
+
+    function calcVisibleCount(viewportOverride) {
       if (!scrollEl || rowHeight <= 0) return 10;
-      return Math.ceil(scrollEl.clientHeight / rowHeight) + overscan;
+      let viewportHeight =
+        typeof viewportOverride === 'number' && viewportOverride > 0
+          ? viewportOverride
+          : scrollViewportHeight();
+      if (viewportHeight <= 0) return 10;
+      return Math.ceil(viewportHeight / rowHeight) + overscan;
     }
 
     function maxStartIndex() {
@@ -1112,7 +1205,12 @@
       }
 
       const promise = (async function () {
-        const url = apiUrl + (apiUrl.indexOf('?') >= 0 ? '&' : '?') + 'offset=' + offset;
+        const url =
+          apiUrl +
+          (apiUrl.indexOf('?') >= 0 ? '&' : '?') +
+          'offset=' +
+          offset +
+          sortQueryString();
         const response = await fetch(url, {
           signal: abortController ? abortController.signal : undefined,
           credentials: 'same-origin',
@@ -1138,7 +1236,11 @@
           chunkSizeActual = data.chunk_size || chunkSize;
           savedColumnWidths = data.column_widths || null;
           columnWidths = [];
-          columnsRendered = false;
+          invalidateHeader();
+          if (Array.isArray(data.sort)) {
+            sortStack = data.sort;
+          }
+          updateSortIndicator();
         }
 
         cache.set(offset, data.rows || []);
@@ -1398,60 +1500,101 @@
       };
     }
 
-    async function load() {
+    async function fetchAndRenderFromStart(gen) {
+      const first = await fetchChunk(0, gen);
+      if (!first || gen !== generation) return false;
+
+      if (first.total_count === 0) {
+        setStatus('empty', 'データがありません', false);
+        renderVisibleRows();
+        return true;
+      }
+
+      // measureRowHeight が tbody を計測用1行に差し替えると、スクロール領域の
+      // clientHeight が一時的に 0 になり visibleCount が overscan だけになる。
+      // 差し替え前のビューポート高を保持して表示行数を求める。
+      const viewportBeforeMeasure = scrollViewportHeight();
+      rowHeight = measureRowHeight();
+      visibleCount = calcVisibleCount(viewportBeforeMeasure);
+      startIndex = 0;
+
+      await ensureRowsForRange(0, visibleCount, gen);
+      if (gen !== generation) return false;
+
+      renderVisibleRows();
+      setStatus('done', totalCount.toLocaleString() + ' 件', false);
+
+      requestAnimationFrame(function () {
+        if (gen !== generation) return;
+        const nextVisible = calcVisibleCount();
+        if (nextVisible > visibleCount) {
+          visibleCount = nextVisible;
+          refreshView(gen, false);
+        }
+      });
+
+      return true;
+    }
+
+    function handleReloadError(err, gen) {
+      if (err && err.name === 'AbortError') return;
+      if (gen !== generation) return;
+      setStatus('error', err.message || '取得に失敗しました', true);
+    }
+
+    async function reloadData(options) {
+      const fullReset = !!(options && options.fullReset);
       generation += 1;
       const gen = generation;
       if (abortController) abortController.abort();
       abortController = new AbortController();
+      closeSortMenu();
       cache.clear();
       inFlight.clear();
-      columns = [];
-      totalCount = 0;
-      columnsRendered = false;
-      chunkSizeActual = chunkSize;
+      invalidateHeader();
       startIndex = 0;
-      rowHeight = 0;
-      visibleCount = 0;
       wheelAccumPx = 0;
       lastSyncedScrollTop = -1;
-      savedColumnWidths = null;
-      columnWidths = [];
-      activeResize = null;
-      if (tbody) tbody.innerHTML = '';
-      if (thead) thead.innerHTML = '';
-      if (emptyEl) emptyEl.hidden = true;
-      if (scrollEl) {
+
+      if (fullReset) {
+        columns = [];
+        totalCount = 0;
+        chunkSizeActual = chunkSize;
+        rowHeight = 0;
+        visibleCount = 0;
+        savedColumnWidths = null;
+        columnWidths = [];
+        sortStack = [];
+        updateSortIndicator();
+        activeResize = null;
+          if (tbody) tbody.innerHTML = '';
+        if (thead) thead.innerHTML = '';
+        if (emptyEl) emptyEl.hidden = true;
+        if (scrollEl) {
+          scrollEl.scrollTop = 0;
+          scrollEl.scrollLeft = 0;
+        }
+        syncHorizontalScroll();
+        updateCount('—');
+      } else if (scrollEl) {
         scrollEl.scrollTop = 0;
-        scrollEl.scrollLeft = 0;
       }
-      syncHorizontalScroll();
-      updateCount('—');
+
       setStatus('loading', '読み込み中…', false);
 
       try {
-        const first = await fetchChunk(0, gen);
-        if (!first || gen !== generation) return;
-
-        if (first.total_count === 0) {
-          setStatus('empty', 'データがありません', false);
-          renderVisibleRows();
-          return;
-        }
-
-        rowHeight = measureRowHeight();
-        visibleCount = calcVisibleCount();
-        startIndex = 0;
-
-        await ensureRowsForRange(0, visibleCount, gen);
-        if (gen !== generation) return;
-
-        renderVisibleRows();
-        setStatus('done', totalCount.toLocaleString() + ' 件', false);
+        await fetchAndRenderFromStart(gen);
       } catch (err) {
-        if (err && err.name === 'AbortError') return;
-        if (gen !== generation) return;
-        setStatus('error', err.message || '取得に失敗しました', true);
+        handleReloadError(err, gen);
       }
+    }
+
+    async function load() {
+      await reloadData({ fullReset: true });
+    }
+
+    async function reloadForSort() {
+      await reloadData({ fullReset: false });
     }
 
     if (scrollEl) {
@@ -1473,10 +1616,44 @@
 
     if (thead) {
       thead.addEventListener('mousedown', onResizeMouseDown);
+      thead.addEventListener('click', function (e) {
+        const trigger = e.target.closest('.db-col-sort-trigger');
+        if (!trigger) return;
+        e.preventDefault();
+        e.stopPropagation();
+        cancelActiveColumnResize();
+
+        const th = trigger.closest('th');
+        const index = columnIndexFromCell(th);
+        if (index < 0 || index >= columns.length) return;
+
+        const column = columns[index];
+        if (sortMenuEl && !sortMenuEl.hidden && sortMenuColumn === column) {
+          closeSortMenu();
+          return;
+        }
+        closeSortMenu();
+        openSortMenu(trigger, column);
+      });
+      thead.addEventListener('keydown', function (e) {
+        const trigger = e.target.closest('.db-col-sort-trigger');
+        if (!trigger) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          trigger.click();
+        }
+      });
     }
 
     if (countEl) {
       countEl.addEventListener('click', openRowGotoDialog);
+    }
+    if (sortClearBtn) {
+      sortClearBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearAllSort();
+      });
     }
     if (rowGotoForm) {
       rowGotoForm.addEventListener('submit', submitRowGoto);

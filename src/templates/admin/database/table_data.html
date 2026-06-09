@@ -19,6 +19,10 @@
       <span class="db-data-status-text">準備中…</span>
     </div>
     <button type="button" id="db-data-row-goto" class="data-count" disabled aria-label="行番号指定">行 —</button>
+    <div id="db-data-sort-indicator" class="db-data-sort-indicator" hidden>
+      <span class="db-data-sort-indicator-label" id="db-data-sort-indicator-label"></span>
+      <button type="button" class="db-data-sort-clear" id="db-data-sort-clear" aria-label="ソートをすべて解除">×</button>
+    </div>
     {% if read_only %}
     <span class="toolbar-notice notice info">CMSシステムテーブル — 閲覧専用です。列編集・テストデータ生成はできません。</span>
     {% endif %}

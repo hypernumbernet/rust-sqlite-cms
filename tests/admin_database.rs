@@ -716,6 +716,246 @@ async fn database_table_data_column_widths_rejects_invalid_column() {
 }
 
 #[tokio::test]
+async fn database_table_data_rows_sorts_by_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=sort_rows&col_name=label&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    for label in ["charlie", "alpha", "bravo"] {
+        sqlx::query(r#"INSERT INTO "sort_rows" ("label") VALUES (?)"#)
+            .bind(label)
+            .execute(&app.state.pool())
+            .await
+            .unwrap();
+    }
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/sort_rows/data/rows?offset=0&sort=label:asc",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        json["rows"].as_array().unwrap()[0][1],
+        serde_json::json!("alpha")
+    );
+    assert_eq!(
+        json["rows"].as_array().unwrap()[2][1],
+        serde_json::json!("charlie")
+    );
+    assert_eq!(json["sort"][0]["column"], "label");
+    assert_eq!(json["sort"][0]["direction"], "asc");
+}
+
+#[tokio::test]
+async fn database_table_data_rows_multi_column_sort() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some(
+                "name=multi_sort&col_name=group_name&col_type=text&col_nullable=0\
+                 &col_name=score&col_type=integer&col_nullable=0",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let rows = [
+        ("a", 2),
+        ("a", 1),
+        ("b", 1),
+    ];
+    for (group_name, score) in rows {
+        sqlx::query(r#"INSERT INTO "multi_sort" ("group_name", "score") VALUES (?, ?)"#)
+            .bind(group_name)
+            .bind(score)
+            .execute(&app.state.pool())
+            .await
+            .unwrap();
+    }
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/multi_sort/data/rows?offset=0&sort=group_name:asc,score:desc",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let data_rows = json["rows"].as_array().unwrap();
+
+    assert_eq!(data_rows[0][1], serde_json::json!("a"));
+    assert_eq!(data_rows[0][2], serde_json::json!("2"));
+    assert_eq!(data_rows[1][1], serde_json::json!("a"));
+    assert_eq!(data_rows[1][2], serde_json::json!("1"));
+    assert_eq!(data_rows[2][1], serde_json::json!("b"));
+}
+
+#[tokio::test]
+async fn database_table_data_rows_rejects_unknown_sort_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=sort_bad&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/sort_bad/data/rows?offset=0&sort=missing:asc",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn database_table_data_sort_save_and_load() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=sort_save&col_name=title&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "sort_save" ("title") VALUES ('z'), ('a')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let save_body = r#"{"sort":[{"column":"title","direction":"asc"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/sort_save/data/sort",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/sort_save/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["sort"][0]["column"], "title");
+    assert_eq!(json["sort"][0]["direction"], "asc");
+    assert_eq!(
+        json["rows"].as_array().unwrap()[0][1],
+        serde_json::json!("a")
+    );
+
+    let stored: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM _user_table_meta WHERE table_name = 'sort_save'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(stored.unwrap().contains("title"));
+}
+
+#[tokio::test]
+async fn database_table_data_rows_empty_sort_uses_default_order() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=sort_default&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "sort_default" ("body") VALUES ('b'), ('a')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let save_body = r#"{"sort":[{"column":"body","direction":"desc"}]}"#;
+    app.admin_request(
+        "POST",
+        "/admin/database/tables/sort_default/data/sort",
+        Some(save_body),
+        Some("application/json"),
+    )
+    .await;
+
+    let clear_body = r#"{"sort":[]}"#;
+    app.admin_request(
+        "POST",
+        "/admin/database/tables/sort_default/data/sort",
+        Some(clear_body),
+        Some("application/json"),
+    )
+    .await;
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/sort_default/data/rows?offset=0&sort=",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["sort"], serde_json::json!([]));
+    assert_eq!(
+        json["rows"].as_array().unwrap()[0][0],
+        serde_json::json!("1")
+    );
+    assert_eq!(
+        json["rows"].as_array().unwrap()[1][0],
+        serde_json::json!("2")
+    );
+}
+
+#[tokio::test]
 async fn database_table_data_column_widths_rejects_infra_table() {
     let app = common::TestApp::new().await;
 

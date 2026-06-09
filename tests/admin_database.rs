@@ -1357,7 +1357,7 @@ async fn database_table_seed_rejects_over_limit() {
             "POST",
             "/admin/database/tables/seed_limit/data/seed",
             Some(
-                "count=1000001&col_name=body&col_type=text&col_text_min=1&col_text_max=8&col_charset=ascii_alnum&col_include_null=0",
+                "count=10000001&col_name=body&col_type=text&col_text_min=1&col_text_max=8&col_charset=ascii_alnum&col_include_null=0",
             ),
             Some("application/x-www-form-urlencoded"),
         )
@@ -1373,7 +1373,7 @@ async fn database_table_seed_rejects_over_limit() {
     assert!(error.1["message"]
         .as_str()
         .unwrap_or("")
-        .contains("1000000"));
+        .contains("10000000"));
 }
 
 #[tokio::test]

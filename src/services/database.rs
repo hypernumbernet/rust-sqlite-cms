@@ -12,7 +12,7 @@ use crate::error::{AppError, AppResult, DomainError, DomainResult};
 pub const TABLE_DATA_CHUNK_SIZE: i64 = 1000;
 
 /// テストデータ生成の1回あたりの最大件数。
-pub const MAX_TEST_DATA_ROWS: u32 = 1_000_000;
+pub const MAX_TEST_DATA_ROWS: u32 = 10_000_000;
 
 /// テストデータ生成フォームの既定件数。
 pub const DEFAULT_SEED_COUNT: u32 = 100;

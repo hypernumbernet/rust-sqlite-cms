@@ -555,6 +555,8 @@ async fn database_table_data_lists_rows() {
     assert!(html.contains("db-table-data-panel"));
     assert!(html.contains("db-data-row-goto"));
     assert!(html.contains("db-row-goto-dialog"));
+    assert!(html.contains("db-cell-edit-dialog"));
+    assert!(html.contains(r#"data-read-only="false""#));
     assert!(html.contains("行 —"));
     assert!(html.contains("列編集"));
     assert!(html.contains("テストデータ生成"));
@@ -595,6 +597,10 @@ async fn database_table_data_rows_api_lists_rows() {
 
     assert_eq!(json["columns"], serde_json::json!(["id", "body"]));
     assert_eq!(json["rows"], serde_json::json!([["1", "hello"]]));
+    assert_eq!(json["column_meta"][0]["name"], "id");
+    assert_eq!(json["column_meta"][0]["pk"], true);
+    assert_eq!(json["column_meta"][1]["name"], "body");
+    assert_eq!(json["column_meta"][1]["pk"], false);
     assert_eq!(json["total_count"], 1);
     assert_eq!(json["offset"], 0);
     assert_eq!(json["shown_count"], 1);
@@ -1271,6 +1277,113 @@ async fn database_table_seed_system_table_shows_notice() {
 }
 
 #[tokio::test]
+async fn database_table_data_update_cell() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=cell_edit&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "cell_edit" ("body") VALUES ('hello')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let save_body = r#"{"column":"body","value":"updated","null":false,"keys":{"id":"1"}}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/cell_edit/data/cells",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["value"], "updated");
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/cell_edit/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["rows"], serde_json::json!([["1", "updated"]]));
+}
+
+#[tokio::test]
+async fn database_table_data_update_cell_rejects_primary_key_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=cell_edit_pk&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "cell_edit_pk" ("body") VALUES ('hello')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let save_body = r#"{"column":"id","value":"99","null":false,"keys":{"id":"1"}}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/cell_edit_pk/data/cells",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("主キー"));
+}
+
+#[tokio::test]
+async fn database_table_data_update_cell_rejects_cms_table() {
+    let app = common::TestApp::new().await;
+
+    let save_body = r#"{"column":"post_title","value":"x","null":false,"keys":{"id":"1"}}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/posts/data/cells",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert!(json["error"]["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("システムテーブル"));
+}
+
+#[tokio::test]
 async fn database_cms_table_data_is_read_only() {
     let app = common::TestApp::new().await;
 
@@ -1289,6 +1402,7 @@ async fn database_cms_table_data_is_read_only() {
         let html = String::from_utf8(body.to_vec()).unwrap();
         assert!(html.contains(table), "missing table name: {table}");
         assert!(html.contains("閲覧専用"));
+        assert!(html.contains(r#"data-read-only="true""#));
         assert!(html.contains("CMSシステムテーブル"));
         assert!(!html.contains(&format!("/admin/database/tables/{table}/data/seed")));
         assert!(!html.contains(&format!("/admin/database/tables/{table}/edit")));

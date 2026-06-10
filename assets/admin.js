@@ -9,8 +9,79 @@
       .replace(/"/g, '&quot;');
   }
 
-  function formatCellDisplay(text) {
-    return '<td class="text-mono-cell">' + escapeHtml(String(text)) + '</td>';
+  function formatCellDisplay(text, editable) {
+    let className = 'text-mono-cell';
+    if (editable) {
+      className += ' db-cell-editable';
+    }
+    let attrs = ' class="' + className + '"';
+    if (editable) {
+      attrs += ' tabindex="0" role="button"';
+    }
+    return '<td' + attrs + '>' + escapeHtml(String(text)) + '</td>';
+  }
+
+  const DEFAULT_TIMESTAMP_OFFSET = '+09:00';
+  const TIMESTAMP_WITH_OFFSET_RE =
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::\d{2})?(Z|[+-]\d{2}:?\d{2})$/i;
+  const DATETIME_LOCAL_PREFIX_RE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})/;
+  const OFFSET_HHMM_RE = /^[+-]\d{2}:\d{2}$/;
+  const OFFSET_HHMM_COMPACT_RE = /^[+-]\d{4}$/;
+  const OFFSET_HH_RE = /^[+-]\d{2}$/;
+
+  function normalizeTimestampOffset(offset) {
+    let normalized = String(offset || DEFAULT_TIMESTAMP_OFFSET).trim();
+    if (!normalized) return DEFAULT_TIMESTAMP_OFFSET;
+    if (normalized === 'Z' || normalized === 'z') return '+00:00';
+    if (OFFSET_HHMM_RE.test(normalized)) return normalized;
+    if (OFFSET_HHMM_COMPACT_RE.test(normalized)) {
+      return normalized.slice(0, 3) + ':' + normalized.slice(3);
+    }
+    if (OFFSET_HH_RE.test(normalized)) {
+      return normalized + ':00';
+    }
+    return DEFAULT_TIMESTAMP_OFFSET;
+  }
+
+  function parseTimestampWithOffset(value) {
+    if (!value) {
+      return { datetime: '', offset: DEFAULT_TIMESTAMP_OFFSET };
+    }
+    const normalized = String(value).trim().replace(' ', 'T');
+    const withOffset = normalized.match(TIMESTAMP_WITH_OFFSET_RE);
+    if (withOffset) {
+      let offset = withOffset[2];
+      if (offset === 'Z' || offset === 'z') offset = '+00:00';
+      return {
+        datetime: withOffset[1],
+        offset: normalizeTimestampOffset(offset),
+      };
+    }
+    const withoutOffset = normalized.match(DATETIME_LOCAL_PREFIX_RE);
+    return {
+      datetime: withoutOffset ? withoutOffset[1] : normalized.slice(0, 16),
+      offset: DEFAULT_TIMESTAMP_OFFSET,
+    };
+  }
+
+  function formatTimestampWithOffset(datetimeLocal, offset) {
+    const datetime = String(datetimeLocal || '').trim();
+    if (!datetime) return '';
+    const match = datetime.match(DATETIME_LOCAL_PREFIX_RE);
+    if (!match) return '';
+    return match[1] + ':00' + normalizeTimestampOffset(offset);
+  }
+
+  function dbColumnTypeLabel(typeKey) {
+    const labels = {
+      integer: '整数',
+      real: '実数',
+      text: '文字列',
+      blob: 'バイナリ',
+      timestamp: '日時',
+      boolean: '真偽値',
+    };
+    return labels[typeKey] || '不明';
   }
 
   // 仮想スクロールのスペーサー高（および scrollTop の到達上限）をこの値でキャップ
@@ -45,10 +116,13 @@
   }
 
   /** 非表示テーブル上でセル全体幅（padding・border・ヘッダーハンドル込み）を計測する。 */
-  function dbTableCellWidth(panel, text, isHeader) {
+  function dbTableCellWidth(panel, text, isHeader, isPrimaryKey) {
     const tableClass = isHeader ? 'db-table-head-table' : 'db-table-body-table';
+    const pkIconHtml = isHeader && isPrimaryKey
+      ? '<span class="db-col-pk-icon" aria-hidden="true">🔑</span>'
+      : '';
     const rowHtml = isHeader
-      ? '<tr><th><span class="text-mono">' +
+      ? '<tr><th>' + pkIconHtml + '<span class="text-mono">' +
         escapeHtml(String(text)) +
         '</span><span class="db-col-sort-trigger" aria-hidden="true"><span class="db-col-sort-icon"></span></span><span class="db-col-resize-handle" aria-hidden="true"></span></th></tr>'
       : '<tr><td class="text-mono-cell">' +
@@ -84,7 +158,7 @@
     return width;
   }
 
-  function dbHeaderCellHtml(columnName, sortEntry, sortPriority, showPriority) {
+  function dbHeaderCellHtml(columnName, sortEntry, sortPriority, showPriority, isPrimaryKey) {
     let thClass = '';
     let sortIndicatorHtml = '';
     let triggerClass = 'db-col-sort-trigger';
@@ -105,12 +179,18 @@
       }
     }
 
+    const pkIconHtml = isPrimaryKey
+      ? '<span class="db-col-pk-icon" aria-hidden="true">🔑</span>'
+      : '';
+
     return (
       '<th class="' +
       thClass.trim() +
       '" aria-sort="' +
       ariaSort +
-      '"><span class="text-mono">' +
+      '">' +
+      pkIconHtml +
+      '<span class="text-mono">' +
       escapeHtml(columnName) +
       '</span><span class="' +
       triggerClass +
@@ -575,15 +655,26 @@
     const rowGotoInput = document.getElementById('db-row-goto-input');
     const rowGotoRange = document.getElementById('db-row-goto-range');
     const rowGotoCancel = document.getElementById('db-row-goto-cancel');
+    const cellEditDialog = document.getElementById('db-cell-edit-dialog');
+    const cellEditForm = document.getElementById('db-cell-edit-form');
+    const cellEditColumnEl = document.getElementById('db-cell-edit-column');
+    const cellEditTypeEl = document.getElementById('db-cell-edit-type');
+    const cellEditInputWrap = document.getElementById('db-cell-edit-input-wrap');
+    const cellEditNullWrap = document.getElementById('db-cell-edit-null-wrap');
+    const cellEditNullInput = document.getElementById('db-cell-edit-null');
+    const cellEditErrorEl = document.getElementById('db-cell-edit-error');
+    const cellEditCancel = document.getElementById('db-cell-edit-cancel');
     const thead = document.getElementById('db-table-head');
     const tbody = document.getElementById('db-table-body');
     const emptyEl = document.getElementById('db-table-empty');
     const apiUrl = panel.dataset.apiUrl || '';
+    const readOnly = panel.dataset.readOnly === 'true';
     function dataApiPath(suffix) {
       return apiUrl.replace(/\/rows$/, suffix);
     }
     const columnWidthsUrl = dataApiPath('/column-widths');
     const sortUrl = dataApiPath('/sort');
+    const cellsUrl = dataApiPath('/cells');
     const chunkSize = parseInt(panel.dataset.chunkSize || '1000', 10);
     const overscan = parseInt(panel.dataset.overscan || '3', 10);
     const COLUMN_WIDTH_MIN = 40;
@@ -593,6 +684,9 @@
     const cache = new Map();
     const inFlight = new Map();
     let columns = [];
+    let columnMeta = [];
+    let columnMetaMap = new Map();
+    let editableColumnFlags = [];
     let totalCount = 0;
     let columnsRendered = false;
     let chunkSizeActual = chunkSize;
@@ -613,6 +707,44 @@
     let sortMenuColumn = null;
     let sortMenuAnchor = null;
     let columnWidthsApplied = false;
+    let pendingCellEdit = null;
+
+    function rebuildColumnCaches() {
+      columnMetaMap = new Map();
+      for (let i = 0; i < columnMeta.length; i++) {
+        columnMetaMap.set(columnMeta[i].name, columnMeta[i]);
+      }
+      editableColumnFlags = columns.map(function (name) {
+        if (readOnly) return false;
+        const meta = columnMetaMap.get(name);
+        return meta ? !meta.pk : false;
+      });
+    }
+
+    function columnMetaByName(name) {
+      return columnMetaMap.get(name) || null;
+    }
+
+    function isPrimaryKeyColumn(name) {
+      const meta = columnMetaByName(name);
+      return meta ? !!meta.pk : false;
+    }
+
+    function primaryKeyValuesFromRow(row) {
+      const keys = {};
+      for (let i = 0; i < columnMeta.length; i++) {
+        if (columnMeta[i].pk) {
+          keys[columnMeta[i].name] = row[i];
+        }
+      }
+      return keys;
+    }
+
+    function rowIndexFromDataRow(tr) {
+      if (!tr || !tr.dataset) return -1;
+      const rowIndex = parseInt(tr.dataset.rowIndex, 10);
+      return Number.isFinite(rowIndex) ? rowIndex : -1;
+    }
 
     function setStatus(state, text, showRetry) {
       if (!statusEl || !statusTextEl) return;
@@ -678,6 +810,229 @@
       rowGotoInput.setCustomValidity('');
       scrollToStartIndex(Math.min(rowNum - 1, maxStartIndex()));
       closeRowGotoDialog();
+    }
+
+    function clearCellEditError() {
+      if (cellEditErrorEl) {
+        cellEditErrorEl.hidden = true;
+        cellEditErrorEl.textContent = '';
+      }
+    }
+
+    function showCellEditError(message) {
+      if (!cellEditErrorEl) return;
+      cellEditErrorEl.hidden = false;
+      cellEditErrorEl.textContent = message;
+    }
+
+    function configureCellEditValueInput(input, meta) {
+      input.id = 'db-cell-edit-value';
+      input.name = 'value';
+      input.required = !meta.nullable;
+    }
+
+    function buildCellEditInput(meta, currentValue) {
+      if (!cellEditInputWrap) return null;
+      cellEditInputWrap.innerHTML = '';
+
+      let input;
+      let offsetInput = null;
+      if (meta.type_key === 'blob') {
+        input = document.createElement('textarea');
+        input.rows = 3;
+        input.placeholder = '16進数（例: 0x0102）';
+      } else if (meta.type_key === 'boolean') {
+        input = document.createElement('select');
+        input.innerHTML =
+          '<option value="0">0 (false)</option><option value="1">1 (true)</option>';
+      } else if (meta.type_key === 'integer') {
+        input = document.createElement('input');
+        input.type = 'number';
+        input.step = '1';
+      } else if (meta.type_key === 'real') {
+        input = document.createElement('input');
+        input.type = 'number';
+        input.step = 'any';
+      } else if (meta.type_key === 'timestamp') {
+        const parsed = parseTimestampWithOffset(currentValue);
+        const fields = document.createElement('div');
+        fields.className = 'db-cell-edit-timestamp-fields';
+
+        input = document.createElement('input');
+        input.type = 'datetime-local';
+        input.className = 'db-cell-edit-timestamp-input';
+        configureCellEditValueInput(input, meta);
+        input.value = parsed.datetime;
+
+        offsetInput = document.createElement('input');
+        offsetInput.type = 'text';
+        offsetInput.className = 'db-cell-edit-offset-input';
+        offsetInput.id = 'db-cell-edit-offset';
+        offsetInput.name = 'offset';
+        offsetInput.value = parsed.offset;
+        offsetInput.placeholder = DEFAULT_TIMESTAMP_OFFSET;
+        offsetInput.inputMode = 'text';
+        offsetInput.autocomplete = 'off';
+        offsetInput.setAttribute('aria-label', 'UTCオフセット');
+
+        fields.appendChild(input);
+        fields.appendChild(offsetInput);
+        cellEditInputWrap.appendChild(fields);
+        return { valueInput: input, offsetInput: offsetInput };
+      } else {
+        input = document.createElement('input');
+        input.type = 'text';
+      }
+
+      configureCellEditValueInput(input, meta);
+
+      if (meta.type_key === 'boolean') {
+        input.value = currentValue === '1' || currentValue === 'true' ? '1' : '0';
+      } else {
+        input.value = currentValue;
+      }
+
+      cellEditInputWrap.appendChild(input);
+      return { valueInput: input, offsetInput: null };
+    }
+
+    function syncCellEditNullState(meta, editInputs) {
+      if (!cellEditNullWrap || !cellEditNullInput) return;
+      const valueInput = editInputs && editInputs.valueInput;
+      const offsetInput = editInputs && editInputs.offsetInput;
+      const disabled = meta.nullable && cellEditNullInput.checked;
+      if (meta.nullable) {
+        cellEditNullWrap.hidden = false;
+      } else {
+        cellEditNullWrap.hidden = true;
+        cellEditNullInput.checked = false;
+      }
+      if (valueInput) valueInput.disabled = disabled;
+      if (offsetInput) offsetInput.disabled = disabled;
+    }
+
+    function openCellEditDialog(rowIndex, columnIndex) {
+      if (readOnly || !cellEditDialog || columnIndex < 0 || columnIndex >= columns.length) return;
+      const columnName = columns[columnIndex];
+      const meta = columnMetaByName(columnName);
+      if (!meta || meta.pk) return;
+
+      const row = getRow(rowIndex);
+      if (!row) return;
+
+      pendingCellEdit = {
+        rowIndex: rowIndex,
+        columnIndex: columnIndex,
+        columnName: columnName,
+        meta: meta,
+        keys: primaryKeyValuesFromRow(row),
+        currentValue: row[columnIndex] || '',
+      };
+
+      clearCellEditError();
+      if (cellEditColumnEl) cellEditColumnEl.textContent = columnName;
+      if (cellEditTypeEl) cellEditTypeEl.textContent = dbColumnTypeLabel(meta.type_key);
+
+      const editInputs = buildCellEditInput(meta, pendingCellEdit.currentValue);
+      pendingCellEdit.editInputs = editInputs;
+      if (cellEditNullInput) {
+        cellEditNullInput.checked = meta.nullable && pendingCellEdit.currentValue === '';
+        cellEditNullInput.onchange = function () {
+          syncCellEditNullState(meta, editInputs);
+        };
+      }
+      syncCellEditNullState(meta, editInputs);
+
+      cellEditDialog.showModal();
+      const valueInput = editInputs && editInputs.valueInput;
+      if (valueInput && !valueInput.disabled) {
+        valueInput.focus();
+        if (typeof valueInput.select === 'function') valueInput.select();
+      }
+    }
+
+    function closeCellEditDialog() {
+      if (cellEditDialog) cellEditDialog.close();
+      pendingCellEdit = null;
+      clearCellEditError();
+    }
+
+    function updateCachedCellValue(rowIndex, columnIndex, value) {
+      const chunkOffset = chunkOffsetForIndex(rowIndex);
+      const chunk = cache.get(chunkOffset);
+      if (!chunk) return;
+      const localIndex = rowIndex - chunkOffset;
+      if (!chunk[localIndex]) return;
+      chunk[localIndex][columnIndex] = value;
+    }
+
+    async function submitCellEdit(e) {
+      e.preventDefault();
+      if (!pendingCellEdit) return;
+
+      clearCellEditError();
+      const meta = pendingCellEdit.meta;
+      const editInputs = pendingCellEdit.editInputs;
+      const valueInput = editInputs && editInputs.valueInput;
+      const useNull = !!(cellEditNullInput && cellEditNullInput.checked);
+      let value = valueInput ? valueInput.value : '';
+
+      if (meta.type_key === 'timestamp' && !useNull) {
+        const offsetInput = editInputs && editInputs.offsetInput;
+        const offset = offsetInput ? offsetInput.value : DEFAULT_TIMESTAMP_OFFSET;
+        value = formatTimestampWithOffset(value, offset);
+        if (!value) {
+          showCellEditError('日時を入力してください');
+          return;
+        }
+      }
+
+      try {
+        const response = await fetch(cellsUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            column: pendingCellEdit.columnName,
+            value: value,
+            null: useNull,
+            keys: pendingCellEdit.keys,
+          }),
+        });
+
+        if (!response.ok) {
+          let message = '保存に失敗しました';
+          try {
+            const err = await response.json();
+            if (err.error && err.error.message) message = err.error.message;
+          } catch (parseErr) {}
+          showCellEditError(message);
+          return;
+        }
+
+        const data = await response.json();
+        const newValue =
+          data && data.value !== undefined ? String(data.value) : useNull ? '' : value;
+        updateCachedCellValue(
+          pendingCellEdit.rowIndex,
+          pendingCellEdit.columnIndex,
+          newValue
+        );
+        closeCellEditDialog();
+        renderVisibleRows();
+      } catch (err) {
+        showCellEditError('保存に失敗しました');
+      }
+    }
+
+    function handleCellEditActivation(cell) {
+      if (!cell || !cell.classList.contains('db-cell-editable')) return;
+      const tr = cell.closest('tr');
+      if (!tr) return;
+      const columnIndex = columnIndexFromCell(cell);
+      const rowIndex = rowIndexFromDataRow(tr);
+      if (columnIndex < 0 || rowIndex < 0) return;
+      openCellEditDialog(rowIndex, columnIndex);
     }
 
     function chunkOffsetForIndex(rowIndex) {
@@ -884,7 +1239,7 @@
       if (index < 0 || index >= columns.length) return;
 
       const colName = columns[index];
-      let width = dbTableCellWidth(panel, colName, true);
+      let width = dbTableCellWidth(panel, colName, true, isPrimaryKeyColumn(colName));
       const sampleCount = Math.min(totalCount, 40);
       let rowsHtml = '';
       for (let rowIndex = 0; rowIndex < sampleCount; rowIndex++) {
@@ -1237,7 +1592,8 @@
               col,
               found ? found.entry : null,
               priority,
-              showPriority
+              showPriority,
+              isPrimaryKeyColumn(col)
             );
           })
           .join('') +
@@ -1311,10 +1667,10 @@
           continue;
         }
         const row = getRow(rowIndex);
-        html += '<tr>';
+        html += '<tr data-row-index="' + rowIndex + '">';
         if (row) {
           for (let k = 0; k < row.length; k++) {
-            html += formatCellDisplay(row[k]);
+            html += formatCellDisplay(row[k], editableColumnFlags[k]);
           }
         } else {
           for (let k = 0; k < colCount; k++) {
@@ -1359,7 +1715,7 @@
 
       let html = '<tr class="db-virtual-measure">';
       for (let k = 0; k < sampleRow.length; k++) {
-        html += formatCellDisplay(sampleRow[k]);
+        html += formatCellDisplay(sampleRow[k], editableColumnFlags[k]);
       }
       html += '</tr>';
       tbody.innerHTML = html;
@@ -1447,6 +1803,8 @@
 
         if (offset === 0) {
           columns = data.columns || [];
+          columnMeta = Array.isArray(data.column_meta) ? data.column_meta : [];
+          rebuildColumnCaches();
           totalCount = data.total_count || 0;
           chunkSizeActual = data.chunk_size || chunkSize;
           savedColumnWidths = data.column_widths || null;
@@ -1776,6 +2134,8 @@
 
       if (fullReset) {
         columns = [];
+        columnMeta = [];
+        rebuildColumnCaches();
         totalCount = 0;
         chunkSizeActual = chunkSize;
         rowHeight = 0;
@@ -1885,6 +2245,31 @@
     if (rowGotoDialog) {
       rowGotoDialog.addEventListener('click', function (e) {
         if (e.target === rowGotoDialog) closeRowGotoDialog();
+      });
+    }
+    if (cellEditForm) {
+      cellEditForm.addEventListener('submit', submitCellEdit);
+    }
+    if (cellEditCancel) {
+      cellEditCancel.addEventListener('click', closeCellEditDialog);
+    }
+    if (cellEditDialog) {
+      cellEditDialog.addEventListener('click', function (e) {
+        if (e.target === cellEditDialog) closeCellEditDialog();
+      });
+    }
+    if (tbody && !readOnly) {
+      tbody.addEventListener('click', function (e) {
+        const cell = e.target.closest('td.db-cell-editable');
+        if (!cell) return;
+        handleCellEditActivation(cell);
+      });
+      tbody.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const cell = e.target.closest('td.db-cell-editable');
+        if (!cell) return;
+        e.preventDefault();
+        handleCellEditActivation(cell);
       });
     }
 

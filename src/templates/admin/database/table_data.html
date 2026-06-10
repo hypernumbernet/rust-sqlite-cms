@@ -39,6 +39,7 @@
   class="panel panel-table"
   id="db-table-data-panel"
   data-api-url="{{ data_api_url }}"
+  data-read-only="{{ read_only }}"
   data-chunk-size="1000"
   data-overscan="3"
 >
@@ -54,6 +55,34 @@
   </div>
   <p class="empty" id="db-table-empty" hidden>データがありません。</p>
 </section>
+
+<dialog id="db-cell-edit-dialog" class="db-cell-edit-dialog">
+  <div class="db-cell-edit-dialog-inner">
+    <div class="db-cell-edit-dialog-header">
+      <h2>セルを編集</h2>
+    </div>
+    <form id="db-cell-edit-form" class="db-cell-edit-dialog-body">
+      <div class="db-cell-edit-value-field">
+        <div class="db-cell-edit-field-head">
+          <span class="db-cell-edit-column-name" id="db-cell-edit-column"></span>
+          <span class="db-cell-edit-type-label" id="db-cell-edit-type"></span>
+        </div>
+        <div id="db-cell-edit-input-wrap"></div>
+      </div>
+      <div class="db-cell-edit-null-wrap" id="db-cell-edit-null-wrap" hidden>
+        <label class="db-cell-edit-null-label" for="db-cell-edit-null">
+          <input type="checkbox" id="db-cell-edit-null" name="null">
+          <span>NULL にする</span>
+        </label>
+      </div>
+      <p class="notice error db-cell-edit-error" id="db-cell-edit-error" hidden></p>
+      <div class="db-cell-edit-dialog-actions">
+        <button type="submit" class="button">保存</button>
+        <button type="button" class="button secondary" id="db-cell-edit-cancel">キャンセル</button>
+      </div>
+    </form>
+  </div>
+</dialog>
 
 <dialog id="db-row-goto-dialog" class="db-row-goto-dialog">
   <div class="db-row-goto-dialog-inner">

@@ -1093,8 +1093,24 @@ tr:last-child td { border-bottom: 0; }
   color: #a7aaad;
   cursor: default;
 }
+#db-table-data-panel .db-col-pk-icon {
+  margin-right: 4px;
+  font-size: 12px;
+  line-height: 1;
+}
 #db-table-data-panel .text-mono-cell {
   word-break: normal;
+}
+#db-table-data-panel .db-cell-editable {
+  cursor: pointer;
+}
+#db-table-data-panel .db-cell-editable:hover,
+#db-table-data-panel .db-cell-editable:focus-visible {
+  background: rgba(34, 113, 177, 0.08);
+  outline: none;
+}
+#db-table-data-panel .db-cell-editable:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 #db-table-data-panel .db-virtual-pad-top td,
 #db-table-data-panel .db-virtual-pad-bottom td {
@@ -1196,6 +1212,7 @@ tr:last-child td { border-bottom: 0; }
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+.db-cell-edit-dialog,
 .db-row-goto-dialog {
   border: none;
   border-radius: 8px;
@@ -1203,24 +1220,100 @@ tr:last-child td { border-bottom: 0; }
   width: min(360px, calc(100vw - 32px));
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 }
+.db-cell-edit-dialog {
+  width: min(420px, calc(100vw - 32px));
+}
+.db-cell-edit-dialog::backdrop,
 .db-row-goto-dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
 }
+.db-cell-edit-dialog-inner,
 .db-row-goto-dialog-inner {
   display: flex;
   flex-direction: column;
 }
+.db-cell-edit-dialog-header,
 .db-row-goto-dialog-header {
   padding: 16px 18px;
   border-bottom: 1px solid var(--border);
 }
+.db-cell-edit-dialog-header h2,
 .db-row-goto-dialog-header h2 {
   margin: 0;
   font-size: 16px;
 }
+.db-cell-edit-dialog-body,
 .db-row-goto-dialog-body {
   padding: 16px 18px;
 }
+.db-cell-edit-value-field {
+  margin-bottom: 8px;
+}
+.db-cell-edit-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.db-cell-edit-column-name {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+}
+.db-cell-edit-type-label {
+  flex: none;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.db-cell-edit-value-field textarea,
+.db-cell-edit-value-field input:not([type="checkbox"]),
+.db-cell-edit-value-field select {
+  width: 100%;
+  font-family: ui-monospace, monospace;
+}
+.db-cell-edit-timestamp-fields {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+.db-cell-edit-timestamp-fields .db-cell-edit-timestamp-input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.db-cell-edit-value-field .db-cell-edit-timestamp-fields .db-cell-edit-offset-input {
+  flex: 0 0 5.25rem;
+  margin: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+  text-align: center;
+}
+.db-cell-edit-null-wrap {
+  margin: 0 0 14px;
+}
+.db-cell-edit-null-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 400;
+  cursor: pointer;
+  user-select: none;
+}
+.db-cell-edit-null-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  flex: none;
+}
+.db-cell-edit-error {
+  margin: 0 0 12px;
+}
+.db-cell-edit-dialog-actions,
 .db-row-goto-dialog-actions {
   display: flex;
   flex-wrap: wrap;

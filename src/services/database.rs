@@ -1,6 +1,6 @@
 //! データベーススキーマのイントロスペクションとユーザー定義オブジェクトの管理。
 
-use chrono::{Duration, Local, NaiveDateTime};
+use chrono::{DateTime, Duration, FixedOffset, Local, NaiveDateTime, TimeZone};
 use rand::rngs::OsRng;
 use rand::Rng;
 use serde::Deserialize;
@@ -158,6 +158,32 @@ pub struct TableSortEntry {
     pub direction: TableSortDirection,
 }
 
+/// データ一覧 API 向けの列メタデータ。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TableDataColumnMeta {
+    pub name: String,
+    pub pk: bool,
+    pub type_key: String,
+    pub nullable: bool,
+}
+
+/// セル更新リクエスト。
+#[derive(Debug, Clone, Deserialize)]
+pub struct TableCellUpdateRequest {
+    pub column: String,
+    #[serde(default)]
+    pub value: String,
+    #[serde(default)]
+    pub null: bool,
+    pub keys: std::collections::HashMap<String, String>,
+}
+
+/// セル更新結果。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TableCellUpdateResult {
+    pub value: String,
+}
+
 /// ユーザーテーブルのデータ一覧（1チャンク分）。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TableDataView {
@@ -172,6 +198,9 @@ pub struct TableDataView {
     /// offset=0 のときのみ。適用中のソート（空ならデフォルト順）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<Vec<TableSortEntry>>,
+    /// offset=0 のときのみ。列メタデータ（PK・型・NULL 可）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub column_meta: Option<Vec<TableDataColumnMeta>>,
 }
 
 /// `sqlite_master` から取得したテーブルまたはビューの一覧項目。
@@ -193,6 +222,9 @@ struct MasterRow {
 #[derive(sqlx::FromRow)]
 struct PragmaTableInfoRow {
     name: String,
+    #[sqlx(rename = "type")]
+    type_name: String,
+    notnull: i32,
     pk: i32,
 }
 
@@ -1195,6 +1227,12 @@ pub async fn list_user_table_rows(
         None
     };
 
+    let column_meta = if offset == 0 {
+        Some(column_meta_from_pragma(&pragma_rows)?)
+    } else {
+        None
+    };
+
     Ok(TableDataView {
         columns,
         rows,
@@ -1203,6 +1241,91 @@ pub async fn list_user_table_rows(
         has_more,
         column_widths,
         sort,
+        column_meta,
+    })
+}
+
+pub async fn update_table_cell(
+    pool: &SqlitePool,
+    name: &str,
+    request: &TableCellUpdateRequest,
+) -> DomainResult<TableCellUpdateResult> {
+    let name = ensure_editable_user_table(name)?;
+    if !object_name_exists(pool, name, "table").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    let pragma_rows = table_pragma_info(pool, name).await?;
+    let column_meta = column_meta_from_pragma(&pragma_rows)?;
+    let target = column_meta
+        .iter()
+        .find(|col| col.name == request.column)
+        .ok_or_else(|| {
+            DomainError::Validation(format!(
+                "カラム `{}` はテーブルに存在しません",
+                request.column
+            ))
+        })?;
+
+    if target.pk {
+        return Err(DomainError::Validation(
+            "主キー列は編集できません".into(),
+        ));
+    }
+
+    let pk_columns: Vec<&TableDataColumnMeta> =
+        column_meta.iter().filter(|col| col.pk).collect();
+    if pk_columns.is_empty() {
+        return Err(DomainError::Validation(
+            "主キー列が定義されていないテーブルは編集できません".into(),
+        ));
+    }
+
+    for pk in &pk_columns {
+        if !request.keys.contains_key(&pk.name) {
+            return Err(DomainError::Validation(format!(
+                "主キー列 `{}` の値が指定されていません",
+                pk.name
+            )));
+        }
+    }
+
+    let new_value = parse_cell_update_value(
+        &target.type_key,
+        target.nullable,
+        request.null,
+        &request.value,
+        &target.name,
+    )?;
+
+    let quoted_table = quote_sql_identifier(name);
+    let quoted_column = quote_sql_identifier(&target.name);
+    let where_clause = pk_columns
+        .iter()
+        .map(|pk| format!("{} = ?", quote_sql_identifier(&pk.name)))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    let query = format!("UPDATE {quoted_table} SET {quoted_column} = ? WHERE {where_clause}");
+
+    let mut sql_query = sqlx::query(sqlx::AssertSqlSafe(query));
+    sql_query = bind_cell_value(sql_query, &new_value);
+    for pk in &pk_columns {
+        let raw = request
+            .keys
+            .get(&pk.name)
+            .map(String::as_str)
+            .unwrap_or("");
+        let pk_value = parse_cell_key_value(&pk.type_key, raw, &pk.name)?;
+        sql_query = bind_cell_value(sql_query, &pk_value);
+    }
+
+    let result = sql_query.execute(pool).await?;
+    if result.rows_affected() == 0 {
+        return Err(DomainError::NotFound);
+    }
+
+    Ok(TableCellUpdateResult {
+        value: cell_value_to_display(&target.type_key, &new_value),
     })
 }
 
@@ -1245,6 +1368,204 @@ async fn table_pragma_info(pool: &SqlitePool, table_name: &str) -> DomainResult<
 async fn table_column_names(pool: &SqlitePool, table_name: &str) -> DomainResult<Vec<String>> {
     let rows = table_pragma_info(pool, table_name).await?;
     Ok(rows.into_iter().map(|row| row.name).collect())
+}
+
+fn column_meta_from_pragma(rows: &[PragmaTableInfoRow]) -> DomainResult<Vec<TableDataColumnMeta>> {
+    rows.iter()
+        .map(|row| {
+            let type_key = pragma_type_to_type_key(&row.type_name).ok_or_else(|| {
+                DomainError::Validation(format!(
+                    "カラム `{}` の型を判別できません",
+                    row.name
+                ))
+            })?;
+            Ok(TableDataColumnMeta {
+                name: row.name.clone(),
+                pk: row.pk > 0,
+                type_key: type_key.to_string(),
+                nullable: row.notnull == 0,
+            })
+        })
+        .collect()
+}
+
+fn pragma_type_to_type_key(type_name: &str) -> Option<&'static str> {
+    let upper = type_name.trim().to_ascii_uppercase();
+    if upper.is_empty() {
+        return Some("text");
+    }
+    if upper.contains("INT") {
+        return Some("integer");
+    }
+    if upper.contains("REAL") || upper.contains("FLOA") || upper.contains("DOUB") {
+        return Some("real");
+    }
+    if upper.contains("BLOB") {
+        return Some("blob");
+    }
+    if upper.contains("BOOL") {
+        return Some("boolean");
+    }
+    if upper.contains("TIMESTAMP")
+        || upper.contains("DATETIME")
+        || upper.contains("DATE")
+        || upper.contains("TIME")
+    {
+        return Some("timestamp");
+    }
+    if upper.contains("TEXT") || upper.contains("CHAR") || upper.contains("CLOB") {
+        return Some("text");
+    }
+    None
+}
+
+#[derive(Debug, Clone)]
+enum CellBindValue {
+    Null,
+    Integer(i64),
+    Real(f64),
+    Text(String),
+    Blob(Vec<u8>),
+}
+
+fn parse_cell_update_value(
+    type_key: &str,
+    nullable: bool,
+    is_null: bool,
+    raw: &str,
+    column_name: &str,
+) -> DomainResult<CellBindValue> {
+    if is_null {
+        if !nullable {
+            return Err(DomainError::Validation(format!(
+                "NOT NULL 列 `{column_name}` には NULL を設定できません"
+            )));
+        }
+        return Ok(CellBindValue::Null);
+    }
+
+    let raw = raw.trim();
+    match type_key {
+        "integer" => {
+            if raw.is_empty() && nullable {
+                return Ok(CellBindValue::Null);
+            }
+            let value = raw
+                .parse::<i64>()
+                .map_err(|_| DomainError::Validation(format!("{column_name}は整数で指定してください")))?;
+            Ok(CellBindValue::Integer(value))
+        }
+        "boolean" => {
+            if raw.is_empty() && nullable {
+                return Ok(CellBindValue::Null);
+            }
+            let value = match raw {
+                "0" | "false" | "FALSE" | "False" => 0,
+                "1" | "true" | "TRUE" | "True" => 1,
+                _ => {
+                    return Err(DomainError::Validation(format!(
+                        "{column_name}は 0/1 または true/false で指定してください"
+                    )));
+                }
+            };
+            Ok(CellBindValue::Integer(value))
+        }
+        "real" => {
+            if raw.is_empty() && nullable {
+                return Ok(CellBindValue::Null);
+            }
+            let value = raw
+                .parse::<f64>()
+                .map_err(|_| DomainError::Validation(format!("{column_name}は数値で指定してください")))?;
+            Ok(CellBindValue::Real(value))
+        }
+        "text" => {
+            if raw.is_empty() && nullable {
+                return Ok(CellBindValue::Null);
+            }
+            Ok(CellBindValue::Text(raw.to_string()))
+        }
+        "timestamp" => {
+            if raw.is_empty() && nullable {
+                return Ok(CellBindValue::Null);
+            }
+            let canonical =
+                parse_and_canonicalize_cell_timestamp(raw, &format!("{column_name}"))?;
+            Ok(CellBindValue::Text(canonical))
+        }
+        "blob" => {
+            if raw.is_empty() && nullable {
+                return Ok(CellBindValue::Null);
+            }
+            Ok(CellBindValue::Blob(parse_hex_blob(raw, column_name)?))
+        }
+        _ => Err(DomainError::Validation(format!(
+            "カラム `{column_name}` の型が不正です"
+        ))),
+    }
+}
+
+fn parse_cell_key_value(
+    type_key: &str,
+    raw: &str,
+    column_name: &str,
+) -> DomainResult<CellBindValue> {
+    parse_cell_update_value(type_key, false, false, raw, column_name)
+}
+
+fn parse_hex_blob(raw: &str, column_name: &str) -> DomainResult<Vec<u8>> {
+    let raw = raw.trim();
+    let hex = raw
+        .strip_prefix("0x")
+        .or_else(|| raw.strip_prefix("0X"))
+        .unwrap_or(raw);
+    if hex.is_empty() {
+        return Ok(Vec::new());
+    }
+    if !hex.len().is_multiple_of(2) || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(DomainError::Validation(format!(
+            "{column_name}は16進数（偶数桁）で指定してください"
+        )));
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    let chars: Vec<char> = hex.chars().collect();
+    let mut index = 0;
+    while index < chars.len() {
+        let pair: String = chars[index..index + 2].iter().collect();
+        let byte = u8::from_str_radix(&pair, 16).map_err(|_| {
+            DomainError::Validation(format!("{column_name}は16進数で指定してください"))
+        })?;
+        bytes.push(byte);
+        index += 2;
+    }
+    Ok(bytes)
+}
+
+fn bind_cell_value<'q>(
+    query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments>,
+    value: &CellBindValue,
+) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments> {
+    match value {
+        CellBindValue::Null => query.bind(None::<String>),
+        CellBindValue::Integer(value) => query.bind(value),
+        CellBindValue::Real(value) => query.bind(value),
+        CellBindValue::Text(value) => query.bind(value),
+        CellBindValue::Blob(value) => query.bind(value),
+    }
+}
+
+fn cell_value_to_display(_type_key: &str, value: &CellBindValue) -> String {
+    match value {
+        CellBindValue::Null => String::new(),
+        CellBindValue::Integer(value) => value.to_string(),
+        CellBindValue::Real(value) => value.to_string(),
+        CellBindValue::Text(value) => value.clone(),
+        CellBindValue::Blob(bytes) => format!("0x{}", bytes_to_hex(bytes)),
+    }
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn row_to_cells(row: &sqlx::sqlite::SqliteRow, column_count: usize) -> Vec<String> {
@@ -1707,8 +2028,92 @@ fn parse_form_u32(value: Option<&String>, label: &str) -> DomainResult<u32> {
 }
 
 fn parse_form_datetime(value: &str, label: &str) -> DomainResult<NaiveDateTime> {
-    NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M")
-        .map_err(|_| DomainError::Validation(format!("{label}は YYYY-MM-DDTHH:MM 形式で指定してください")))
+    let normalized = value.trim().replace(' ', "T");
+    let normalized = normalized
+        .strip_suffix('Z')
+        .or_else(|| normalized.strip_suffix('z'))
+        .unwrap_or(normalized.as_str());
+
+    const FORMATS: &[&str] = &["%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"];
+    for format in FORMATS {
+        if let Ok(parsed) = NaiveDateTime::parse_from_str(normalized, format) {
+            return Ok(parsed);
+        }
+    }
+
+    Err(DomainError::Validation(format!(
+        "{label}は YYYY-MM-DDTHH:MM 形式で指定してください"
+    )))
+}
+
+fn parse_and_canonicalize_cell_timestamp(value: &str, label: &str) -> DomainResult<String> {
+    let value = value.trim().replace(' ', "T");
+    if value.is_empty() {
+        return Err(DomainError::Validation(format!("{label}を指定してください")));
+    }
+
+    const OFFSET_FORMATS: &[&str] = &[
+        "%Y-%m-%dT%H:%M:%S%:z",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M%:z",
+        "%Y-%m-%dT%H:%M%z",
+    ];
+    for format in OFFSET_FORMATS {
+        if let Ok(parsed) = DateTime::parse_from_str(&value, format) {
+            return Ok(parsed.format("%Y-%m-%dT%H:%M:%S%:z").to_string());
+        }
+    }
+
+    if let Some(base) = value.strip_suffix('Z').or_else(|| value.strip_suffix('z')) {
+        if let Some(parsed) = parse_naive_datetime(base) {
+            let offset = FixedOffset::east_opt(0).ok_or_else(|| {
+                DomainError::Internal(anyhow::anyhow!("UTC オフセットの構築に失敗"))
+            })?;
+            return Ok(format_timestamp_with_offset(
+                parsed,
+                offset,
+                &format!("{label}の日時"),
+            )?);
+        }
+    }
+
+    if let Some(parsed) = parse_naive_datetime(&value) {
+        let offset = default_jst_offset()?;
+        return Ok(format_timestamp_with_offset(
+            parsed,
+            offset,
+            &format!("{label}の日時"),
+        )?);
+    }
+
+    Err(DomainError::Validation(format!(
+        "{label}は YYYY-MM-DDTHH:MM:SS+HH:MM 形式で指定してください"
+    )))
+}
+
+fn parse_naive_datetime(value: &str) -> Option<NaiveDateTime> {
+    const FORMATS: &[&str] = &["%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M"];
+    FORMATS
+        .iter()
+        .find_map(|format| NaiveDateTime::parse_from_str(value, format).ok())
+}
+
+fn default_jst_offset() -> DomainResult<FixedOffset> {
+    FixedOffset::east_opt(9 * 3600).ok_or_else(|| {
+        DomainError::Internal(anyhow::anyhow!("日本標準時オフセットの構築に失敗"))
+    })
+}
+
+fn format_timestamp_with_offset(
+    naive: NaiveDateTime,
+    offset: FixedOffset,
+    label: &str,
+) -> DomainResult<String> {
+    let parsed = offset
+        .from_local_datetime(&naive)
+        .single()
+        .ok_or_else(|| DomainError::Validation(format!("{label}が不正です")))?;
+    Ok(parsed.format("%Y-%m-%dT%H:%M:%S%:z").to_string())
 }
 
 fn sanitize_table_name_input(name: &str) -> DomainResult<&str> {
@@ -2211,6 +2616,133 @@ mod tests {
         assert_eq!(view.rows[0][1], "init");
         assert_eq!(view.rows[0][3], "1");
         assert_eq!(view.rows[0][5], "42");
+        let meta = view.column_meta.expect("column meta");
+        assert!(meta[0].pk);
+        assert!(!meta[1].pk);
+        assert_eq!(meta[0].type_key, "integer");
+        assert_eq!(meta[1].type_key, "text");
+    }
+
+    #[tokio::test]
+    async fn update_table_cell_updates_value() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(
+            r#"CREATE TABLE "items" (
+                id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                score REAL
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create table");
+        sqlx::query(r#"INSERT INTO "items" ("title", "score") VALUES ('old', 1.5)"#)
+            .execute(&pool)
+            .await
+            .expect("insert row");
+
+        let result = update_table_cell(
+            &pool,
+            "items",
+            &TableCellUpdateRequest {
+                column: "title".to_string(),
+                value: "new".to_string(),
+                null: false,
+                keys: [("id".to_string(), "1".to_string())]
+                    .into_iter()
+                    .collect(),
+            },
+        )
+        .await
+        .expect("update cell");
+        assert_eq!(result.value, "new");
+
+        let title: String = sqlx::query_scalar(r#"SELECT title FROM "items" WHERE id = 1"#)
+            .fetch_one(&pool)
+            .await
+            .expect("fetch title");
+        assert_eq!(title, "new");
+    }
+
+    #[tokio::test]
+    async fn update_table_cell_accepts_datetime_local_format() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(
+            r#"CREATE TABLE "events" (
+                id INTEGER PRIMARY KEY,
+                created_at TIMESTAMP NOT NULL
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create table");
+        sqlx::query(r#"INSERT INTO "events" ("created_at") VALUES ('2024-01-01T00:00:00')"#)
+            .execute(&pool)
+            .await
+            .expect("insert row");
+
+        let result = update_table_cell(
+            &pool,
+            "events",
+            &TableCellUpdateRequest {
+                column: "created_at".to_string(),
+                value: "2024-06-15T14:30:00+09:00".to_string(),
+                null: false,
+                keys: [("id".to_string(), "1".to_string())]
+                    .into_iter()
+                    .collect(),
+            },
+        )
+        .await
+        .expect("update timestamp cell");
+        assert_eq!(result.value, "2024-06-15T14:30:00+09:00");
+
+        let stored: String =
+            sqlx::query_scalar(r#"SELECT created_at FROM "events" WHERE id = 1"#)
+                .fetch_one(&pool)
+                .await
+                .expect("fetch timestamp");
+        assert_eq!(stored, "2024-06-15T14:30:00+09:00");
+    }
+
+    #[tokio::test]
+    async fn update_table_cell_normalizes_naive_timestamp_to_jst_offset() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(
+            r#"CREATE TABLE "events_naive" (
+                id INTEGER PRIMARY KEY,
+                created_at TIMESTAMP NOT NULL
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create table");
+        sqlx::query(r#"INSERT INTO "events_naive" ("created_at") VALUES ('2024-01-01T00:00:00')"#)
+            .execute(&pool)
+            .await
+            .expect("insert row");
+
+        let result = update_table_cell(
+            &pool,
+            "events_naive",
+            &TableCellUpdateRequest {
+                column: "created_at".to_string(),
+                value: "2024-06-15T14:30".to_string(),
+                null: false,
+                keys: [("id".to_string(), "1".to_string())]
+                    .into_iter()
+                    .collect(),
+            },
+        )
+        .await
+        .expect("update timestamp cell");
+        assert_eq!(result.value, "2024-06-15T14:30:00+09:00");
     }
 
     #[tokio::test]

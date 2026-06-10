@@ -27,8 +27,8 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use crate::error::{ApiResult, AppError, AppResult, DomainError};
 use crate::services::database::{
-    self, DbObjectItem, SeedFormRow, TableColumnInput, TableSortEntry, TestDataSeedForm,
-    DEFAULT_SEED_COUNT,
+    self, DbObjectItem, SeedFormRow, TableCellUpdateRequest, TableColumnInput, TableDataColumnMeta,
+    TableSortEntry, TestDataSeedForm, DEFAULT_SEED_COUNT,
 };
 use crate::state::AppState;
 
@@ -76,6 +76,8 @@ struct TableDataRowsResponse {
     column_widths: Option<HashMap<String, i32>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     sort: Option<Vec<TableSortEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    column_meta: Option<Vec<TableDataColumnMeta>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -212,6 +214,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/admin/database/tables/{name}/data/sort",
             post(save_table_sort),
+        )
+        .route(
+            "/admin/database/tables/{name}/data/cells",
+            post(update_table_cell),
         )
         .route(
             "/admin/database/tables/{name}/data/seed",
@@ -386,7 +392,18 @@ async fn table_data_rows(
         chunk_size: database::TABLE_DATA_CHUNK_SIZE,
         column_widths: data.column_widths,
         sort: data.sort,
+        column_meta: data.column_meta,
     }))
+}
+
+async fn update_table_cell(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(body): Json<TableCellUpdateRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let result = database::update_table_cell(&state.pool(), &name, &body).await?;
+    Ok(Json(json!({ "ok": true, "value": result.value })))
 }
 
 async fn save_table_sort(

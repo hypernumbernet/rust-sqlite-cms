@@ -911,6 +911,8 @@ tr:last-child td { border-bottom: 0; }
 
 /* DB table data panel */
 #db-table-data-panel {
+  --db-table-head-bg: #f6f7f7;
+  --db-table-head-bg-hover: #e8f0f6;
   display: flex;
   flex-direction: column;
   max-height: var(--admin-table-panel-max-height);
@@ -939,17 +941,14 @@ tr:last-child td { border-bottom: 0; }
   white-space: nowrap;
 }
 #db-table-data-panel .db-table-head-table th {
-  background: #f6f7f7;
-  overflow: visible;
+  position: relative;
+  background: var(--db-table-head-bg);
+  overflow: hidden;
 }
 #db-table-data-panel .db-table-body-table td {
   background: #fff;
   overflow: hidden;
   max-width: 0;
-}
-#db-table-data-panel th {
-  position: relative;
-  padding-right: calc(10px + 12px + 28px);
 }
 #db-table-data-panel .db-col-sort-trigger {
   position: absolute;
@@ -962,7 +961,6 @@ tr:last-child td { border-bottom: 0; }
   justify-content: center;
   gap: 1px;
   border-radius: 2px;
-  background: transparent;
   color: #a7aaad;
   cursor: pointer;
   user-select: none;
@@ -1003,9 +1001,15 @@ tr:last-child td { border-bottom: 0; }
 #db-table-data-panel th.is-sorted-desc .db-col-sort-trigger {
   color: var(--accent);
 }
+#db-table-data-panel .db-col-sort-trigger,
+#db-table-data-panel .db-col-resize-handle {
+  background: var(--db-table-head-bg);
+}
 #db-table-data-panel .db-col-sort-trigger:hover,
-#db-table-data-panel .db-col-sort-trigger[aria-expanded="true"] {
-  background: rgba(34, 113, 177, 0.1);
+#db-table-data-panel .db-col-sort-trigger[aria-expanded="true"],
+#db-table-data-panel .db-col-resize-handle:hover,
+#db-table-data-panel .db-col-resize-handle.is-active {
+  background: var(--db-table-head-bg-hover);
 }
 #db-table-data-panel .db-col-resize-handle {
   position: absolute;
@@ -1044,10 +1048,6 @@ tr:last-child td { border-bottom: 0; }
   background: transparent;
   box-shadow: -2px 0 0 #a7aaad, 2px 0 0 #a7aaad;
   transition: box-shadow 0.15s ease;
-}
-#db-table-data-panel .db-col-resize-handle:hover,
-#db-table-data-panel .db-col-resize-handle.is-active {
-  background: rgba(34, 113, 177, 0.1);
 }
 #db-table-data-panel .db-col-resize-handle:hover::before,
 #db-table-data-panel .db-col-resize-handle.is-active::before {
@@ -1100,6 +1100,10 @@ tr:last-child td { border-bottom: 0; }
 }
 #db-table-data-panel .text-mono-cell {
   word-break: normal;
+}
+#db-table-data-panel .db-cell-null {
+  color: var(--muted);
+  font-style: italic;
 }
 #db-table-data-panel .db-cell-editable {
   cursor: pointer;

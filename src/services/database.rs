@@ -181,14 +181,14 @@ pub struct TableCellUpdateRequest {
 /// セル更新結果。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TableCellUpdateResult {
-    pub value: String,
+    pub value: Option<String>,
 }
 
 /// ユーザーテーブルのデータ一覧（1チャンク分）。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TableDataView {
     pub columns: Vec<String>,
-    pub rows: Vec<Vec<String>>,
+    pub rows: Vec<Vec<Option<String>>>,
     pub total_count: i64,
     pub offset: i64,
     pub has_more: bool,
@@ -1336,7 +1336,7 @@ pub async fn fetch_table_rows_chunk(
     limit: i64,
     column_count: usize,
     order_by: &str,
-) -> DomainResult<Vec<Vec<String>>> {
+) -> DomainResult<Vec<Vec<Option<String>>>> {
     let name = ensure_viewable_table(name)?;
     if offset < 0 || limit < 0 {
         return Err(DomainError::Validation(
@@ -1554,13 +1554,13 @@ fn bind_cell_value<'q>(
     }
 }
 
-fn cell_value_to_display(_type_key: &str, value: &CellBindValue) -> String {
+fn cell_value_to_display(_type_key: &str, value: &CellBindValue) -> Option<String> {
     match value {
-        CellBindValue::Null => String::new(),
-        CellBindValue::Integer(value) => value.to_string(),
-        CellBindValue::Real(value) => value.to_string(),
-        CellBindValue::Text(value) => value.clone(),
-        CellBindValue::Blob(bytes) => format!("0x{}", bytes_to_hex(bytes)),
+        CellBindValue::Null => None,
+        CellBindValue::Integer(value) => Some(value.to_string()),
+        CellBindValue::Real(value) => Some(value.to_string()),
+        CellBindValue::Text(value) => Some(value.clone()),
+        CellBindValue::Blob(bytes) => Some(format!("0x{}", bytes_to_hex(bytes))),
     }
 }
 
@@ -1568,23 +1568,26 @@ fn bytes_to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-fn row_to_cells(row: &sqlx::sqlite::SqliteRow, column_count: usize) -> Vec<String> {
+fn row_to_cells(row: &sqlx::sqlite::SqliteRow, column_count: usize) -> Vec<Option<String>> {
     (0..column_count)
         .map(|index| format_sqlite_cell(row, index))
         .collect()
 }
 
-fn format_sqlite_cell(row: &sqlx::sqlite::SqliteRow, index: usize) -> String {
+fn format_sqlite_cell(row: &sqlx::sqlite::SqliteRow, index: usize) -> Option<String> {
     if let Ok(value) = row.try_get::<Option<i64>, _>(index) {
-        return value.map(|v| v.to_string()).unwrap_or_default();
+        return value.map(|v| v.to_string());
     }
     if let Ok(value) = row.try_get::<Option<f64>, _>(index) {
-        return value.map(|v| v.to_string()).unwrap_or_default();
+        return value.map(|v| v.to_string());
     }
     if let Ok(value) = row.try_get::<Option<String>, _>(index) {
-        return value.unwrap_or_default();
+        return value;
     }
-    String::new()
+    if let Ok(value) = row.try_get::<Option<Vec<u8>>, _>(index) {
+        return value.map(|bytes| format!("0x{}", bytes_to_hex(&bytes)));
+    }
+    None
 }
 
 pub fn build_seed_form_rows(columns: &[TableColumnInput]) -> Vec<SeedFormRow> {
@@ -2612,10 +2615,10 @@ mod tests {
             ]
         );
         assert_eq!(view.rows.len(), 1);
-        assert_eq!(view.rows[0][0], "1");
-        assert_eq!(view.rows[0][1], "init");
-        assert_eq!(view.rows[0][3], "1");
-        assert_eq!(view.rows[0][5], "42");
+        assert_eq!(view.rows[0][0], Some("1".to_string()));
+        assert_eq!(view.rows[0][1], Some("init".to_string()));
+        assert_eq!(view.rows[0][3], Some("1".to_string()));
+        assert_eq!(view.rows[0][5], Some("42".to_string()));
         let meta = view.column_meta.expect("column meta");
         assert!(meta[0].pk);
         assert!(!meta[1].pk);
@@ -2657,7 +2660,7 @@ mod tests {
         )
         .await
         .expect("update cell");
-        assert_eq!(result.value, "new");
+        assert_eq!(result.value, Some("new".to_string()));
 
         let title: String = sqlx::query_scalar(r#"SELECT title FROM "items" WHERE id = 1"#)
             .fetch_one(&pool)
@@ -2699,7 +2702,7 @@ mod tests {
         )
         .await
         .expect("update timestamp cell");
-        assert_eq!(result.value, "2024-06-15T14:30:00+09:00");
+        assert_eq!(result.value, Some("2024-06-15T14:30:00+09:00".to_string()));
 
         let stored: String =
             sqlx::query_scalar(r#"SELECT created_at FROM "events" WHERE id = 1"#)
@@ -2742,7 +2745,37 @@ mod tests {
         )
         .await
         .expect("update timestamp cell");
-        assert_eq!(result.value, "2024-06-15T14:30:00+09:00");
+        assert_eq!(result.value, Some("2024-06-15T14:30:00+09:00".to_string()));
+    }
+
+    #[tokio::test]
+    async fn list_user_table_rows_serializes_null_as_none() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(
+            r#"CREATE TABLE "nullable_rows" (
+                id INTEGER PRIMARY KEY,
+                body TEXT,
+                score INTEGER
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create table");
+        sqlx::query(
+            r#"INSERT INTO "nullable_rows" ("body", "score") VALUES ('', NULL)"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert row");
+
+        let view = list_user_table_rows(&pool, "nullable_rows", 0, None)
+            .await
+            .expect("list rows");
+        assert_eq!(view.rows.len(), 1);
+        assert_eq!(view.rows[0][1], Some(String::new()));
+        assert_eq!(view.rows[0][2], None);
     }
 
     #[tokio::test]
@@ -2839,8 +2872,11 @@ mod tests {
             .await
             .expect("list rows");
         assert_eq!(
-            view.rows.iter().map(|row| row[1].as_str()).collect::<Vec<_>>(),
-            vec!["a", "b", "c"]
+            view.rows
+                .iter()
+                .map(|row| row[1].as_deref())
+                .collect::<Vec<_>>(),
+            vec![Some("a"), Some("b"), Some("c")]
         );
         assert_eq!(view.sort, Some(sort));
     }

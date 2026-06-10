@@ -66,7 +66,7 @@ struct TableDataRowsQuery {
 #[derive(serde::Serialize)]
 struct TableDataRowsResponse {
     columns: Vec<String>,
-    rows: Vec<Vec<String>>,
+    rows: Vec<Vec<Option<String>>>,
     total_count: i64,
     offset: i64,
     shown_count: i64,

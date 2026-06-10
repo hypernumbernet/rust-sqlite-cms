@@ -9,6 +9,10 @@
       .replace(/"/g, '&quot;');
   }
 
+  function isCellNull(value) {
+    return value === null || value === undefined;
+  }
+
   function formatCellDisplay(text, editable) {
     let className = 'text-mono-cell';
     if (editable) {
@@ -18,7 +22,10 @@
     if (editable) {
       attrs += ' tabindex="0" role="button"';
     }
-    return '<td' + attrs + '>' + escapeHtml(String(text)) + '</td>';
+    const content = isCellNull(text)
+      ? '<span class="db-cell-null">null</span>'
+      : escapeHtml(String(text));
+    return '<td' + attrs + '>' + content + '</td>';
   }
 
   const DEFAULT_TIMESTAMP_OFFSET = '+09:00';
@@ -96,9 +103,37 @@
     MIN: 40,
     MAX: 2000,
     AUTO_MAX: 500,
-    HANDLE: 12,
-    SORT: 28,
+    // リサイズ幅(12) + ソート位置(right:12)・幅(14) に合わせたヘッダー右端の操作領域
+    HEADER_CHROME: 26,
   };
+
+  function isPrimaryPointerButton(e) {
+    return e.button === 0;
+  }
+
+  function dbHeaderPkIconHtml(isPrimaryKey) {
+    return isPrimaryKey
+      ? '<span class="db-col-pk-icon" aria-hidden="true">🔑</span>'
+      : '';
+  }
+
+  function dbHeaderLabelHtml(columnName, isPrimaryKey) {
+    return (
+      dbHeaderPkIconHtml(isPrimaryKey) +
+      '<span class="text-mono">' +
+      escapeHtml(columnName) +
+      '</span>'
+    );
+  }
+
+  function dbHeaderMeasureRowHtml(columnName, isPrimaryKey) {
+    return (
+      '<tr><th>' +
+      dbHeaderLabelHtml(columnName, isPrimaryKey) +
+      '<span class="db-col-sort-trigger" aria-hidden="true"><span class="db-col-sort-icon"></span></span>' +
+      '<span class="db-col-resize-handle" aria-hidden="true"></span></th></tr>'
+    );
+  }
 
   function clampDbColumnWidth(width, maxWidth) {
     const max = maxWidth == null ? DB_COL_WIDTH.MAX : maxWidth;
@@ -118,13 +153,8 @@
   /** 非表示テーブル上でセル全体幅（padding・border・ヘッダーハンドル込み）を計測する。 */
   function dbTableCellWidth(panel, text, isHeader, isPrimaryKey) {
     const tableClass = isHeader ? 'db-table-head-table' : 'db-table-body-table';
-    const pkIconHtml = isHeader && isPrimaryKey
-      ? '<span class="db-col-pk-icon" aria-hidden="true">🔑</span>'
-      : '';
     const rowHtml = isHeader
-      ? '<tr><th>' + pkIconHtml + '<span class="text-mono">' +
-        escapeHtml(String(text)) +
-        '</span><span class="db-col-sort-trigger" aria-hidden="true"><span class="db-col-sort-icon"></span></span><span class="db-col-resize-handle" aria-hidden="true"></span></th></tr>'
+      ? dbHeaderMeasureRowHtml(String(text), isPrimaryKey)
       : '<tr><td class="text-mono-cell">' +
         escapeHtml(String(text)) +
         '</td></tr>';
@@ -152,7 +182,7 @@
     const width = Math.ceil(
       contentWidth +
         dbHorizontalBoxExtra(cell) +
-        (isHeader ? DB_COL_WIDTH.HANDLE + DB_COL_WIDTH.SORT : 0)
+        (isHeader ? DB_COL_WIDTH.HEADER_CHROME : 0)
     );
     wrapper.remove();
     return width;
@@ -179,20 +209,14 @@
       }
     }
 
-    const pkIconHtml = isPrimaryKey
-      ? '<span class="db-col-pk-icon" aria-hidden="true">🔑</span>'
-      : '';
-
     return (
       '<th class="' +
       thClass.trim() +
       '" aria-sort="' +
       ariaSort +
       '">' +
-      pkIconHtml +
-      '<span class="text-mono">' +
-      escapeHtml(columnName) +
-      '</span><span class="' +
+      dbHeaderLabelHtml(columnName, isPrimaryKey) +
+      '<span class="' +
       triggerClass +
       '" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-label="' +
       escapeHtml(columnName) +
@@ -889,7 +913,7 @@
       if (meta.type_key === 'boolean') {
         input.value = currentValue === '1' || currentValue === 'true' ? '1' : '0';
       } else {
-        input.value = currentValue;
+        input.value = isCellNull(currentValue) ? '' : currentValue;
       }
 
       cellEditInputWrap.appendChild(input);
@@ -926,7 +950,7 @@
         columnName: columnName,
         meta: meta,
         keys: primaryKeyValuesFromRow(row),
-        currentValue: row[columnIndex] || '',
+        currentValue: row[columnIndex],
       };
 
       clearCellEditError();
@@ -936,7 +960,7 @@
       const editInputs = buildCellEditInput(meta, pendingCellEdit.currentValue);
       pendingCellEdit.editInputs = editInputs;
       if (cellEditNullInput) {
-        cellEditNullInput.checked = meta.nullable && pendingCellEdit.currentValue === '';
+        cellEditNullInput.checked = meta.nullable && isCellNull(pendingCellEdit.currentValue);
         cellEditNullInput.onchange = function () {
           syncCellEditNullState(meta, editInputs);
         };
@@ -1011,8 +1035,12 @@
         }
 
         const data = await response.json();
-        const newValue =
-          data && data.value !== undefined ? String(data.value) : useNull ? '' : value;
+        let newValue;
+        if (data && Object.prototype.hasOwnProperty.call(data, 'value')) {
+          newValue = isCellNull(data.value) ? null : String(data.value);
+        } else {
+          newValue = useNull ? null : value;
+        }
         updateCachedCellValue(
           pendingCellEdit.rowIndex,
           pendingCellEdit.columnIndex,
@@ -1517,6 +1545,8 @@
     }
 
     function onResizeMouseDown(e) {
+      if (!isPrimaryPointerButton(e)) return;
+
       const handle = e.target.closest('.db-col-resize-handle');
       if (!handle || !thead) return;
 
@@ -1547,7 +1577,7 @@
 
     function onResizeDoubleClick(e) {
       const handle = e.target.closest('.db-col-resize-handle');
-      if (!handle || !thead || e.button !== 0) return;
+      if (!handle || !thead || !isPrimaryPointerButton(e)) return;
 
       e.preventDefault();
       e.stopPropagation();

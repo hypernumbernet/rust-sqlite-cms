@@ -609,6 +609,40 @@ async fn database_table_data_rows_api_lists_rows() {
 }
 
 #[tokio::test]
+async fn database_table_data_rows_api_serializes_null_values() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=null_rows_api&col_name=body&col_type=text&col_nullable=1&col_name=score&col_type=integer&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "null_rows_api" ("body", "score") VALUES ('', NULL)"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/null_rows_api/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["rows"], serde_json::json!([["1", "", null]]));
+}
+
+#[tokio::test]
 async fn database_table_data_rows_includes_column_widths() {
     let app = common::TestApp::new().await;
 

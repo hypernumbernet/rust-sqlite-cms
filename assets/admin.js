@@ -679,6 +679,10 @@
     const rowGotoInput = document.getElementById('db-row-goto-input');
     const rowGotoRange = document.getElementById('db-row-goto-range');
     const rowGotoCancel = document.getElementById('db-row-goto-cancel');
+    const sortedNavConfirmDialog = document.getElementById('db-sorted-nav-confirm-dialog');
+    const sortedNavConfirmMessageEl = document.getElementById('db-sorted-nav-confirm-message');
+    const sortedNavConfirmOk = document.getElementById('db-sorted-nav-confirm-ok');
+    const sortedNavConfirmCancel = document.getElementById('db-sorted-nav-confirm-cancel');
     const cellEditDialog = document.getElementById('db-cell-edit-dialog');
     const cellEditForm = document.getElementById('db-cell-edit-form');
     const cellEditColumnEl = document.getElementById('db-cell-edit-column');
@@ -701,12 +705,23 @@
     const cellsUrl = dataApiPath('/cells');
     const chunkSize = parseInt(panel.dataset.chunkSize || '1000', 10);
     const overscan = parseInt(panel.dataset.overscan || '3', 10);
+    const maxCachedChunks = parseInt(panel.dataset.maxCachedChunks || '1000', 10);
+    const FETCH_CONCURRENCY = 1;
     const COLUMN_WIDTH_MIN = 40;
+    const SORT_SLOW_ROW_THRESHOLD = 1000000;
 
     let generation = 0;
     let abortController = null;
+    let prefetchAbortController = null;
+    let prefetchTargetOffset = null;
+    let wantPrefetch = false;
     const cache = new Map();
     const inFlight = new Map();
+    let highQueue = [];
+    const queuedOffsets = new Set();
+    const pinnedHighOffsets = new Set();
+    let activeFetches = 0;
+    let lastPrefetchStartIndex = 0;
     let columns = [];
     let columnMeta = [];
     let columnMetaMap = new Map();
@@ -719,6 +734,7 @@
     let rowHeight = 0;
     let isSyncingScroll = false;
     let scrollRaf = 0;
+    let renderRaf = 0;
     let renderPending = false;
     let needsRefresh = false;
     let wheelAccumPx = 0;
@@ -730,6 +746,10 @@
     let sortMenuEl = null;
     let sortMenuColumn = null;
     let sortMenuAnchor = null;
+    let sortedNavConfirmResolve = null;
+    let sortedNavConfirmPending = false;
+    let sortedDeepNavAcknowledged = false;
+    let navSerial = Promise.resolve();
     let columnWidthsApplied = false;
     let pendingCellEdit = null;
 
@@ -789,6 +809,26 @@
       }
     }
 
+    function hasMissingVisibleChunks() {
+      const offsets = chunkOffsetsForRange(startIndex, visibleCount);
+      for (let i = 0; i < offsets.length; i++) {
+        if (!cache.has(offsets[i])) return true;
+      }
+      return false;
+    }
+
+    function updateViewStatus() {
+      if (totalCount === 0) {
+        setStatus('empty', 'データがありません', false);
+        return;
+      }
+      if (hasMissingVisibleChunks()) {
+        setStatus('loading', '読み込み中…', false);
+        return;
+      }
+      setStatus('done', totalCount.toLocaleString() + ' 件', false);
+    }
+
     function updateCount(startRow) {
       if (!countEl) return;
       if (startRow === '—') {
@@ -822,7 +862,7 @@
       if (rowGotoDialog) rowGotoDialog.close();
     }
 
-    function submitRowGoto(e) {
+    async function submitRowGoto(e) {
       e.preventDefault();
       if (!rowGotoInput) return;
       const rowNum = parseInt(rowGotoInput.value, 10);
@@ -832,8 +872,10 @@
         return;
       }
       rowGotoInput.setCustomValidity('');
-      scrollToStartIndex(Math.min(rowNum - 1, maxStartIndex()));
-      closeRowGotoDialog();
+      const moved = await requestNavigateToStartIndex(Math.min(rowNum - 1, maxStartIndex()), {
+        alwaysAsk: true,
+      });
+      if (moved) closeRowGotoDialog();
     }
 
     function clearCellEditError() {
@@ -1227,7 +1269,98 @@
       });
     }
 
+    function resetSortedDeepNavAcknowledged() {
+      sortedDeepNavAcknowledged = false;
+    }
+
+    function requiresSortedNavConfirm(targetStartIndex, options) {
+      if (sortStack.length === 0) return false;
+      if (targetStartIndex + 1 < SORT_SLOW_ROW_THRESHOLD) return false;
+      if (options && options.alwaysAsk) return true;
+      return !sortedDeepNavAcknowledged;
+    }
+
+    function sortedNavConfirmMessage(targetStartIndex) {
+      return (
+        'ソートが適用されているため、' +
+        (targetStartIndex + 1).toLocaleString() +
+        ' 行目以降へ移動するとデータ取得に時間がかかる場合があります。続行しますか？'
+      );
+    }
+
+    function isScrollInputBlocked() {
+      return (
+        sortedNavConfirmPending ||
+        (sortedNavConfirmDialog && sortedNavConfirmDialog.open)
+      );
+    }
+
+    function closeSortedNavConfirmDialog(confirmed) {
+      if (sortedNavConfirmDialog) sortedNavConfirmDialog.close();
+      if (!sortedNavConfirmResolve) return;
+      const resolve = sortedNavConfirmResolve;
+      sortedNavConfirmResolve = null;
+      resolve(confirmed);
+    }
+
+    function confirmSortedNav(targetStartIndex) {
+      if (!sortedNavConfirmDialog) return Promise.resolve(true);
+      if (sortedNavConfirmMessageEl) {
+        sortedNavConfirmMessageEl.textContent = sortedNavConfirmMessage(targetStartIndex);
+      }
+      return new Promise(function (resolve) {
+        sortedNavConfirmResolve = resolve;
+        sortedNavConfirmDialog.showModal();
+      });
+    }
+
+    function requestNavigateToStartIndex(newStart, options) {
+      if (!scrollEl || rowHeight <= 0 || totalCount === 0) return Promise.resolve(false);
+      newStart = Math.max(0, Math.min(newStart, maxStartIndex()));
+      if (newStart === startIndex) return Promise.resolve(true);
+      if (isScrollInputBlocked()) return Promise.resolve(false);
+
+      const needsConfirm = requiresSortedNavConfirm(newStart, options);
+      if (needsConfirm) {
+        sortedNavConfirmPending = true;
+        wheelAccumPx = 0;
+        syncScrollTopFromStartIndex();
+      }
+
+      const task = navSerial.then(function () {
+        return executeNavigateToStartIndex(newStart, options, needsConfirm);
+      });
+      navSerial = task.catch(function () {});
+      return task;
+    }
+
+    async function executeNavigateToStartIndex(newStart, options, needsConfirm) {
+      try {
+        if (!scrollEl || rowHeight <= 0 || totalCount === 0) return false;
+        newStart = Math.max(0, Math.min(newStart, maxStartIndex()));
+        if (newStart === startIndex) return true;
+
+        if (needsConfirm) {
+          syncScrollTopFromStartIndex();
+          const confirmed = await confirmSortedNav(newStart);
+          if (!confirmed) {
+            syncScrollTopFromStartIndex();
+            return false;
+          }
+          sortedDeepNavAcknowledged = true;
+        }
+
+        startIndex = newStart;
+        syncScrollTopFromStartIndex();
+        refreshView(generation);
+        return true;
+      } finally {
+        if (needsConfirm) sortedNavConfirmPending = false;
+      }
+    }
+
     async function commitSortChange() {
+      resetSortedDeepNavAcknowledged();
       updateSortIndicator();
       invalidateHeader();
       await Promise.all([saveSort(), reloadForSort()]);
@@ -1589,10 +1722,265 @@
       autoFitColumnWidth(index);
     }
 
+    function touchCacheOffset(offset) {
+      if (!cache.has(offset)) return;
+      const rows = cache.get(offset);
+      cache.delete(offset);
+      cache.set(offset, rows);
+    }
+
+    function setCacheOffset(offset, rows) {
+      if (cache.has(offset)) cache.delete(offset);
+      cache.set(offset, rows);
+      evictCacheIfNeeded();
+    }
+
+    function pinnedChunkOffsets() {
+      const pinned = new Set(pinnedHighOffsets);
+      const visible = chunkOffsetsForRange(startIndex, visibleCount);
+      for (let i = 0; i < visible.length; i++) {
+        pinned.add(visible[i]);
+      }
+      return pinned;
+    }
+
+    function evictCacheIfNeeded() {
+      const pinned = pinnedChunkOffsets();
+      while (cache.size > maxCachedChunks) {
+        let evicted = false;
+        for (const offset of cache.keys()) {
+          if (!pinned.has(offset)) {
+            cache.delete(offset);
+            evicted = true;
+            break;
+          }
+        }
+        if (!evicted) break;
+      }
+    }
+
+    function clearFetchQueues() {
+      highQueue = [];
+      queuedOffsets.clear();
+      pinnedHighOffsets.clear();
+    }
+
+    function cancelPrefetch() {
+      wantPrefetch = false;
+      if (prefetchAbortController) {
+        prefetchAbortController.abort();
+        prefetchAbortController = null;
+      }
+      prefetchTargetOffset = null;
+    }
+
+    function resetTableDataSession() {
+      generation += 1;
+      if (abortController) {
+        abortController.abort();
+        abortController = null;
+      }
+      cancelPrefetch();
+      cache.clear();
+      inFlight.clear();
+      clearFetchQueues();
+      lastPrefetchStartIndex = 0;
+      renderPending = false;
+      needsRefresh = false;
+      if (renderRaf) {
+        cancelAnimationFrame(renderRaf);
+        renderRaf = 0;
+      }
+      if (scrollRaf) {
+        cancelAnimationFrame(scrollRaf);
+        scrollRaf = 0;
+      }
+      navSerial = Promise.resolve();
+      sortedNavConfirmPending = false;
+      if (sortedNavConfirmResolve) {
+        closeSortedNavConfirmDialog(false);
+      }
+      closeSortMenu();
+      closeRowGotoDialog();
+      closeCellEditDialog();
+      wheelAccumPx = 0;
+    }
+
+    function isOffsetInVisibleRange(offset) {
+      const offsets = chunkOffsetsForRange(startIndex, visibleCount);
+      for (let i = 0; i < offsets.length; i++) {
+        if (offsets[i] === offset) return true;
+      }
+      return false;
+    }
+
+    function scheduledChunkCount() {
+      return cache.size + inFlight.size + queuedOffsets.size;
+    }
+
+    function maxChunkOffset() {
+      if (totalCount <= 0) return 0;
+      return chunkOffsetForIndex(totalCount - 1);
+    }
+
+    function enqueueChunk(offset, gen) {
+      if (gen !== generation) return;
+
+      if (cache.has(offset)) {
+        pinnedHighOffsets.add(offset);
+        return;
+      }
+
+      pinnedHighOffsets.add(offset);
+      if (inFlight.has(offset)) {
+        pumpFetches();
+        return;
+      }
+
+      const highIdx = highQueue.indexOf(offset);
+      if (highIdx >= 0) {
+        if (highIdx > 0) {
+          highQueue.splice(highIdx, 1);
+          highQueue.unshift(offset);
+        }
+        pumpFetches();
+        return;
+      }
+
+      if (queuedOffsets.has(offset)) return;
+
+      queuedOffsets.add(offset);
+      highQueue.unshift(offset);
+      pumpFetches();
+    }
+
+    function dequeueNextOffset() {
+      while (highQueue.length > 0) {
+        const offset = highQueue.shift();
+        queuedOffsets.delete(offset);
+        if (!cache.has(offset) && !inFlight.has(offset)) {
+          return offset;
+        }
+        pinnedHighOffsets.delete(offset);
+      }
+      return null;
+    }
+
+    function pumpFetches() {
+      const gen = generation;
+      if (activeFetches >= FETCH_CONCURRENCY) return;
+
+      const offset = dequeueNextOffset();
+      if (offset !== null) {
+        activeFetches += 1;
+        fetchChunk(offset, gen)
+          .then(function () {
+            if (gen === generation && isOffsetInVisibleRange(offset)) {
+              scheduleRender();
+            }
+          })
+          .catch(function (err) {
+            if (err && err.name === 'AbortError') return;
+            if (gen === generation && isOffsetInVisibleRange(offset)) {
+              setStatus('error', err.message || '取得に失敗しました', true);
+            }
+          })
+          .finally(function () {
+            pinnedHighOffsets.delete(offset);
+            activeFetches = Math.max(0, activeFetches - 1);
+            pumpFetches();
+          });
+        return;
+      }
+
+      if (!wantPrefetch) return;
+
+      const prefetchOffset = peekNextPrefetchOffset();
+      if (!canPrefetchOffset(prefetchOffset)) {
+        wantPrefetch = false;
+        return;
+      }
+
+      wantPrefetch = false;
+      lastPrefetchStartIndex = startIndex;
+      prefetchTargetOffset = prefetchOffset;
+      ensurePrefetchAbortController();
+
+      activeFetches += 1;
+      fetchChunk(prefetchOffset, gen, { prefetch: true })
+        .catch(function (err) {
+          if (err && err.name === 'AbortError') return;
+        })
+        .finally(function () {
+          prefetchTargetOffset = null;
+          activeFetches = Math.max(0, activeFetches - 1);
+          pumpFetches();
+        });
+    }
+
+    function enqueueVisibleChunks(start, count, gen) {
+      const offsets = chunkOffsetsForRange(start, count);
+      for (let i = 0; i < offsets.length; i++) {
+        enqueueChunk(offsets[i], gen);
+      }
+    }
+
+    function canPrefetchOffset(offset) {
+      if (offset < 0 || offset > maxChunkOffset()) return false;
+      if (scheduledChunkCount() >= maxCachedChunks) return false;
+      if (isOffsetInVisibleRange(offset)) return false;
+      if (cache.has(offset)) return false;
+      if (inFlight.has(offset)) return false;
+      return true;
+    }
+
+    function peekNextPrefetchOffset() {
+      const step = chunkSizeActual;
+      const scrollingDown = startIndex >= lastPrefetchStartIndex;
+      const firstVisible = chunkOffsetForIndex(startIndex);
+      const lastVisible = chunkOffsetForIndex(
+        Math.min(startIndex + Math.max(visibleCount, 1) - 1, totalCount - 1)
+      );
+      return scrollingDown ? lastVisible + step : firstVisible - step;
+    }
+
+    function ensurePrefetchAbortController() {
+      if (!prefetchAbortController || prefetchAbortController.signal.aborted) {
+        prefetchAbortController = new AbortController();
+      }
+    }
+
+    function updatePrefetch(gen) {
+      if (gen !== generation || totalCount <= 0) return;
+
+      const nextOffset = peekNextPrefetchOffset();
+      if (prefetchTargetOffset !== null && prefetchTargetOffset !== nextOffset) {
+        if (prefetchAbortController) prefetchAbortController.abort();
+        prefetchAbortController = null;
+      }
+
+      wantPrefetch = true;
+      pumpFetches();
+    }
+
+    function scheduleRender() {
+      if (renderRaf) return;
+      renderRaf = requestAnimationFrame(function () {
+        renderRaf = 0;
+        if (renderPending) {
+          needsRefresh = true;
+          return;
+        }
+        renderVisibleRows();
+        updateViewStatus();
+      });
+    }
+
     function getRow(rowIndex) {
       const chunkOffset = chunkOffsetForIndex(rowIndex);
       const chunk = cache.get(chunkOffset);
       if (!chunk) return null;
+      touchCacheOffset(chunkOffset);
       return chunk[rowIndex - chunkOffset] || null;
     }
 
@@ -1642,6 +2030,29 @@
       syncHorizontalScroll();
     }
 
+    function computeScaledPads() {
+      const eff = effectiveScrollHeight();
+      const maxTopPad = Math.max(0, eff - visibleCount * rowHeight);
+      const topPad = scrollEl ? Math.min(scrollEl.scrollTop, maxTopPad) : 0;
+      const bottomPad = Math.max(0, eff - topPad - visibleCount * rowHeight);
+      return { topPad: topPad, bottomPad: bottomPad };
+    }
+
+    function updateScaledPads() {
+      if (!tbody || !isScaled() || totalCount <= 0) return;
+      const pads = computeScaledPads();
+      const topRow = tbody.querySelector('.db-virtual-pad-top');
+      if (topRow) {
+        const firstTd = topRow.querySelector('td');
+        if (firstTd) firstTd.style.cssText = padStyle(pads.topPad);
+      }
+      const bottomRow = tbody.querySelector('.db-virtual-pad-bottom');
+      if (bottomRow) {
+        const firstTd = bottomRow.querySelector('td');
+        if (firstTd) firstTd.style.cssText = padStyle(pads.bottomPad);
+      }
+    }
+
     function renderVisibleRows() {
       if (!tbody) return;
 
@@ -1673,10 +2084,9 @@
         // スケール時はスペーサ総高をキャップ済み高に保ちつつ、表示行を実スクロール
         // 位置へ重ねる。topPad を現在の scrollTop に合わせることで罫線・内容が
         // ビューポート内に正しく描画される。
-        const eff = effectiveScrollHeight();
-        const maxTopPad = Math.max(0, eff - visibleCount * rowHeight);
-        topPad = scrollEl ? Math.min(scrollEl.scrollTop, maxTopPad) : 0;
-        bottomPad = Math.max(0, eff - topPad - visibleCount * rowHeight);
+        const pads = computeScaledPads();
+        topPad = pads.topPad;
+        bottomPad = pads.bottomPad;
       } else {
         topPad = startIndex * rowHeight;
         bottomPad = Math.max(0, (totalCount - startIndex - visibleCount) * rowHeight);
@@ -1798,8 +2208,12 @@
       };
     }
 
-    async function fetchChunk(offset, gen) {
-      if (cache.has(offset)) return chunkResponse(offset);
+    async function fetchChunk(offset, gen, options) {
+      const isPrefetch = !!(options && options.prefetch);
+      if (cache.has(offset)) {
+        touchCacheOffset(offset);
+        return chunkResponse(offset);
+      }
       if (inFlight.has(offset)) {
         await inFlight.get(offset);
         return cache.has(offset) ? chunkResponse(offset) : null;
@@ -1812,8 +2226,15 @@
           'offset=' +
           offset +
           sortQueryString();
+        const signal = isPrefetch
+          ? prefetchAbortController
+            ? prefetchAbortController.signal
+            : undefined
+          : abortController
+            ? abortController.signal
+            : undefined;
         const response = await fetch(url, {
-          signal: abortController ? abortController.signal : undefined,
+          signal: signal,
           credentials: 'same-origin',
         });
 
@@ -1845,42 +2266,22 @@
           updateSortIndicator();
         }
 
-        cache.set(offset, data.rows || []);
+        setCacheOffset(offset, data.rows || []);
         return data;
       })();
 
       inFlight.set(offset, promise);
       try {
         return await promise;
+      } catch (err) {
+        if (err && err.name === 'AbortError') return null;
+        throw err;
       } finally {
         inFlight.delete(offset);
       }
     }
 
-    async function ensureRowsForRange(start, count, gen) {
-      const offsets = chunkOffsetsForRange(start, count);
-      const pending = [];
-      for (let i = 0; i < offsets.length; i++) {
-        if (!cache.has(offsets[i])) {
-          pending.push(fetchChunk(offsets[i], gen));
-        }
-      }
-      if (pending.length > 0) {
-        await Promise.all(pending);
-        if (gen !== generation) return false;
-      }
-      return true;
-    }
-
-    function isRangeCached(start, count) {
-      const offsets = chunkOffsetsForRange(start, count);
-      for (let i = 0; i < offsets.length; i++) {
-        if (!cache.has(offsets[i])) return false;
-      }
-      return true;
-    }
-
-    async function refreshView(gen, showLoading) {
+    function refreshView(gen) {
       if (renderPending) {
         needsRefresh = true;
         return;
@@ -1891,19 +2292,11 @@
         do {
           needsRefresh = false;
 
-          const needsFetch = !isRangeCached(startIndex, visibleCount);
-          if (needsFetch && showLoading) {
-            setStatus('loading', '読み込み中…', false);
-          }
-
-          await ensureRowsForRange(startIndex, visibleCount, gen);
-          if (gen !== generation) return;
-
           renderVisibleRows();
+          updateViewStatus();
 
-          if (totalCount > 0) {
-            setStatus('done', totalCount.toLocaleString() + ' 件', false);
-          }
+          enqueueVisibleChunks(startIndex, visibleCount, gen);
+          updatePrefetch(gen);
         } while (needsRefresh && gen === generation);
       } finally {
         renderPending = false;
@@ -1961,12 +2354,24 @@
       if (rowHeight <= 0 || totalCount === 0) return;
 
       const newStart = startIndexFromOffset(offset);
-      // スケール時は同一インデックスでも topPad が scrollTop に追従する必要が
-      // あるため、表示行がビューポートからずれないよう常に再描画する。
-      if (newStart === startIndex && !isScaled()) return;
+      if (newStart === startIndex) {
+        if (isScaled()) updateScaledPads();
+        return;
+      }
+
+      if (isScrollInputBlocked()) {
+        syncScrollTopFromStartIndex();
+        return;
+      }
+
+      if (requiresSortedNavConfirm(newStart)) {
+        syncScrollTopFromStartIndex();
+        requestNavigateToStartIndex(newStart);
+        return;
+      }
 
       startIndex = newStart;
-      refreshView(generation, true);
+      refreshView(generation);
     }
 
     function syncFromScroll() {
@@ -2002,18 +2407,13 @@
       return Math.max(1, Math.floor(scrollEl.clientHeight / rowHeight));
     }
 
-    function scrollToStartIndex(newStart) {
-      if (!scrollEl || rowHeight <= 0 || totalCount === 0) return;
-      newStart = Math.max(0, Math.min(newStart, maxStartIndex()));
-      if (newStart === startIndex) return;
-      startIndex = newStart;
-      syncScrollTopFromStartIndex();
-      refreshView(generation, true);
+    function scrollToStartIndex(newStart, options) {
+      requestNavigateToStartIndex(newStart, options);
     }
 
-    function scrollByRows(deltaRows) {
+    function scrollByRows(deltaRows, options) {
       if (deltaRows === 0) return;
-      scrollToStartIndex(startIndex + deltaRows);
+      scrollToStartIndex(startIndex + deltaRows, options);
     }
 
     function isHorizontalWheel(e) {
@@ -2036,6 +2436,12 @@
       if (!canUseRowScrollInput()) return;
 
       e.preventDefault();
+      if (isScrollInputBlocked()) {
+        wheelAccumPx = 0;
+        syncScrollTopFromStartIndex();
+        return;
+      }
+
       wheelAccumPx += wheelDeltaToPixels(e, rowHeight, scrollEl.clientHeight);
       const rows = Math.trunc(wheelAccumPx / rowHeight);
       if (rows === 0) return;
@@ -2052,6 +2458,11 @@
       }
 
       if (!canUseRowScrollInput()) return;
+      if (isScrollInputBlocked()) {
+        e.preventDefault();
+        syncScrollTopFromStartIndex();
+        return;
+      }
 
       if (e.key === 'Home') {
         e.preventDefault();
@@ -2093,7 +2504,7 @@
       visibleCount = calcVisibleCount();
       startIndex = Math.min(prevStart, maxStartIndex());
       syncScrollTopFromStartIndex();
-      refreshView(generation, false);
+      refreshView(generation);
     }
 
     function rafThrottle(fn) {
@@ -2124,18 +2535,18 @@
       visibleCount = calcVisibleCount(viewportBeforeMeasure);
       startIndex = 0;
 
-      await ensureRowsForRange(0, visibleCount, gen);
-      if (gen !== generation) return false;
-
       renderVisibleRows();
-      setStatus('done', totalCount.toLocaleString() + ' 件', false);
+      updateViewStatus();
+
+      enqueueVisibleChunks(0, visibleCount, gen);
+      updatePrefetch(gen);
 
       requestAnimationFrame(function () {
         if (gen !== generation) return;
         const nextVisible = calcVisibleCount();
         if (nextVisible > visibleCount) {
           visibleCount = nextVisible;
-          refreshView(gen, false);
+          refreshView(gen);
         }
       });
 
@@ -2150,19 +2561,15 @@
 
     async function reloadData(options) {
       const fullReset = !!(options && options.fullReset);
-      generation += 1;
+      resetTableDataSession();
       const gen = generation;
-      if (abortController) abortController.abort();
       abortController = new AbortController();
-      closeSortMenu();
-      cache.clear();
-      inFlight.clear();
       invalidateHeader();
       startIndex = 0;
-      wheelAccumPx = 0;
       lastSyncedScrollTop = -1;
 
       if (fullReset) {
+        resetSortedDeepNavAcknowledged();
         columns = [];
         columnMeta = [];
         rebuildColumnCaches();
@@ -2192,7 +2599,10 @@
       setStatus('loading', '読み込み中…', false);
 
       try {
-        await fetchAndRenderFromStart(gen);
+        const ok = await fetchAndRenderFromStart(gen);
+        if (!ok && gen === generation) {
+          setStatus('error', '取得に失敗しました', true);
+        }
       } catch (err) {
         handleReloadError(err, gen);
       }
@@ -2277,6 +2687,25 @@
         if (e.target === rowGotoDialog) closeRowGotoDialog();
       });
     }
+    if (sortedNavConfirmOk) {
+      sortedNavConfirmOk.addEventListener('click', function () {
+        closeSortedNavConfirmDialog(true);
+      });
+    }
+    if (sortedNavConfirmCancel) {
+      sortedNavConfirmCancel.addEventListener('click', function () {
+        closeSortedNavConfirmDialog(false);
+      });
+    }
+    if (sortedNavConfirmDialog) {
+      sortedNavConfirmDialog.addEventListener('click', function (e) {
+        if (e.target === sortedNavConfirmDialog) closeSortedNavConfirmDialog(false);
+      });
+      sortedNavConfirmDialog.addEventListener('cancel', function (e) {
+        e.preventDefault();
+        closeSortedNavConfirmDialog(false);
+      });
+    }
     if (cellEditForm) {
       cellEditForm.addEventListener('submit', submitCellEdit);
     }
@@ -2302,6 +2731,13 @@
         handleCellEditActivation(cell);
       });
     }
+
+    window.addEventListener('pagehide', resetTableDataSession);
+    window.addEventListener('pageshow', function (event) {
+      if (event.persisted) {
+        reloadData({ fullReset: true });
+      }
+    });
 
     load();
   }

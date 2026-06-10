@@ -42,6 +42,7 @@
   data-read-only="{{ read_only }}"
   data-chunk-size="1000"
   data-overscan="3"
+  data-max-cached-chunks="1000"
 >
   <div class="db-table-header">
     <table class="db-table-head-table">
@@ -99,6 +100,21 @@
         <button type="button" class="button secondary" id="db-row-goto-cancel">キャンセル</button>
       </div>
     </form>
+  </div>
+</dialog>
+
+<dialog id="db-sorted-nav-confirm-dialog" class="db-sorted-nav-confirm-dialog">
+  <div class="db-sorted-nav-confirm-dialog-inner">
+    <div class="db-sorted-nav-confirm-dialog-header">
+      <h2>移動の確認</h2>
+    </div>
+    <div class="db-sorted-nav-confirm-dialog-body">
+      <p class="notice info db-sorted-nav-confirm-message" id="db-sorted-nav-confirm-message"></p>
+      <div class="db-sorted-nav-confirm-dialog-actions">
+        <button type="button" class="button" id="db-sorted-nav-confirm-ok">続行</button>
+        <button type="button" class="button secondary" id="db-sorted-nav-confirm-cancel">キャンセル</button>
+      </div>
+    </div>
   </div>
 </dialog>
 {% endblock %}

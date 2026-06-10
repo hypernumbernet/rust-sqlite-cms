@@ -556,6 +556,8 @@ async fn database_table_data_lists_rows() {
     assert!(html.contains("db-data-row-goto"));
     assert!(html.contains("db-row-goto-dialog"));
     assert!(html.contains("db-cell-edit-dialog"));
+    assert!(html.contains("db-sorted-nav-confirm-dialog"));
+    assert!(html.contains("db-sorted-nav-confirm-message"));
     assert!(html.contains(r#"data-read-only="false""#));
     assert!(html.contains("行 —"));
     assert!(html.contains("列編集"));

@@ -1217,7 +1217,8 @@ tr:last-child td { border-bottom: 0; }
   outline-offset: 1px;
 }
 .db-cell-edit-dialog,
-.db-row-goto-dialog {
+.db-row-goto-dialog,
+.db-sorted-nav-confirm-dialog {
   border: none;
   border-radius: 8px;
   padding: 0;
@@ -1228,27 +1229,35 @@ tr:last-child td { border-bottom: 0; }
   width: min(420px, calc(100vw - 32px));
 }
 .db-cell-edit-dialog::backdrop,
-.db-row-goto-dialog::backdrop {
+.db-row-goto-dialog::backdrop,
+.db-sorted-nav-confirm-dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
 }
 .db-cell-edit-dialog-inner,
-.db-row-goto-dialog-inner {
+.db-row-goto-dialog-inner,
+.db-sorted-nav-confirm-dialog-inner {
   display: flex;
   flex-direction: column;
 }
 .db-cell-edit-dialog-header,
-.db-row-goto-dialog-header {
+.db-row-goto-dialog-header,
+.db-sorted-nav-confirm-dialog-header {
   padding: 16px 18px;
   border-bottom: 1px solid var(--border);
 }
 .db-cell-edit-dialog-header h2,
-.db-row-goto-dialog-header h2 {
+.db-row-goto-dialog-header h2,
+.db-sorted-nav-confirm-dialog-header h2 {
   margin: 0;
   font-size: 16px;
 }
 .db-cell-edit-dialog-body,
-.db-row-goto-dialog-body {
+.db-row-goto-dialog-body,
+.db-sorted-nav-confirm-dialog-body {
   padding: 16px 18px;
+}
+.db-sorted-nav-confirm-message {
+  margin-bottom: 0;
 }
 .db-cell-edit-value-field {
   margin-bottom: 8px;
@@ -1318,7 +1327,8 @@ tr:last-child td { border-bottom: 0; }
   margin: 0 0 12px;
 }
 .db-cell-edit-dialog-actions,
-.db-row-goto-dialog-actions {
+.db-row-goto-dialog-actions,
+.db-sorted-nav-confirm-dialog-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

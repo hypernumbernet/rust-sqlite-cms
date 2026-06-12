@@ -102,7 +102,7 @@
   const DB_COL_WIDTH = {
     MIN: 40,
     MAX: 2000,
-    AUTO_MAX: 500,
+    AUTO_MAX: 1000,
     // リサイズ幅(12) + ソート位置(right:12)・幅(14) に合わせたヘッダー右端の操作領域
     HEADER_CHROME: 26,
   };
@@ -126,12 +126,26 @@
     );
   }
 
-  function dbHeaderMeasureRowHtml(columnName, isPrimaryKey) {
+  function dbHeaderMeasureThHtml(columnName, isPrimaryKey) {
     return (
-      '<tr><th>' +
+      '<th>' +
       dbHeaderLabelHtml(columnName, isPrimaryKey) +
       '<span class="db-col-sort-trigger" aria-hidden="true"><span class="db-col-sort-icon"></span></span>' +
-      '<span class="db-col-resize-handle" aria-hidden="true"></span></th></tr>'
+      '<span class="db-col-resize-handle" aria-hidden="true"></span></th>'
+    );
+  }
+
+  function dbHeaderMeasureRowHtml(columnName, isPrimaryKey) {
+    return '<tr>' + dbHeaderMeasureThHtml(columnName, isPrimaryKey) + '</tr>';
+  }
+
+  function measureDbCellWidth(cell, isHeader) {
+    const inner = cell.querySelector(isHeader ? '.text-mono' : '.text-mono-cell');
+    const contentWidth = inner ? inner.scrollWidth : cell.scrollWidth;
+    return Math.ceil(
+      contentWidth +
+        dbHorizontalBoxExtra(cell) +
+        (isHeader ? DB_COL_WIDTH.HEADER_CHROME : 0)
     );
   }
 
@@ -177,13 +191,7 @@
       return 0;
     }
 
-    const inner = cell.querySelector('.text-mono, .text-mono-cell');
-    const contentWidth = inner ? inner.scrollWidth : cell.scrollWidth;
-    const width = Math.ceil(
-      contentWidth +
-        dbHorizontalBoxExtra(cell) +
-        (isHeader ? DB_COL_WIDTH.HEADER_CHROME : 0)
-    );
+    const width = measureDbCellWidth(cell, isHeader);
     wrapper.remove();
     return width;
   }
@@ -1330,40 +1338,148 @@
       await commitSortChange();
     }
 
-    function autoFitColumnWidth(index, options) {
-      if (index < 0 || index >= columns.length) return;
+    const AUTO_FIT_SAMPLE_ROWS = 40;
 
-      const colName = columns[index];
-      let width = dbTableCellWidth(panel, colName, true, isPrimaryKeyColumn(colName));
-      const sampleCount = Math.min(totalCount, 40);
+    function currentColumnWidth(index) {
+      return columnWidths[index] >= COLUMN_WIDTH_MIN ? columnWidths[index] : 0;
+    }
+
+    function resolveAutoFitWidth(index, measuredWidth) {
+      const fitted = clampDbColumnWidth(measuredWidth, DB_COL_WIDTH.AUTO_MAX);
+      const current = currentColumnWidth(index);
+      return current > DB_COL_WIDTH.AUTO_MAX
+        ? clampDbColumnWidth(current, DB_COL_WIDTH.MAX)
+        : fitted;
+    }
+
+    function measureSampleRowCellsHtml(row, columnIndex) {
+      if (columnIndex == null) {
+        let html = '';
+        for (let i = 0; i < columns.length; i++) {
+          html += formatCellDisplay(row && i < row.length ? row[i] : null);
+        }
+        return html;
+      }
+      if (!row || columnIndex >= row.length) return formatCellDisplay(null);
+      return formatCellDisplay(row[columnIndex]);
+    }
+
+    function withMeasureTable(tableHtml, callback) {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'db-table-measure-root';
+      wrapper.innerHTML = tableHtml;
+      panel.appendChild(wrapper);
+      try {
+        return callback(wrapper);
+      } finally {
+        wrapper.remove();
+      }
+    }
+
+    function buildAutoFitSampleRowsHtml(columnIndex) {
+      const sampleCount = Math.min(totalCount, AUTO_FIT_SAMPLE_ROWS);
       let rowsHtml = '';
       for (let rowIndex = 0; rowIndex < sampleCount; rowIndex++) {
         const row = getRow(rowIndex);
-        if (!row || index >= row.length) continue;
-        rowsHtml += '<tr>' + formatCellDisplay(row[index]) + '</tr>';
+        if (!row) continue;
+        rowsHtml += '<tr>' + measureSampleRowCellsHtml(row, columnIndex) + '</tr>';
       }
+      return rowsHtml;
+    }
 
-      if (rowsHtml) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'db-table-measure-root';
-        wrapper.innerHTML =
-          '<table class="db-table-body-table db-table-measure-table"><tbody>' +
+    function measureColumnContentWidth(index) {
+      if (index < 0 || index >= columns.length) return DB_COL_WIDTH.MIN;
+
+      let width = dbTableCellWidth(
+        panel,
+        columns[index],
+        true,
+        isPrimaryKeyColumn(columns[index])
+      );
+      const rowsHtml = buildAutoFitSampleRowsHtml(index);
+      if (!rowsHtml) return width;
+
+      return withMeasureTable(
+        '<table class="db-table-body-table db-table-measure-table"><tbody>' +
           rowsHtml +
-          '</tbody></table>';
-        panel.appendChild(wrapper);
-        wrapper.querySelectorAll('td').forEach(function (cell) {
-          const inner = cell.querySelector('.text-mono-cell');
-          const contentWidth = inner ? inner.scrollWidth : cell.scrollWidth;
-          const measured = Math.ceil(contentWidth + dbHorizontalBoxExtra(cell));
-          if (measured > width) width = measured;
-        });
-        wrapper.remove();
+          '</tbody></table>',
+        function (wrapper) {
+          wrapper.querySelectorAll('td').forEach(function (cell) {
+            width = Math.max(width, measureDbCellWidth(cell, false));
+          });
+          return width;
+        }
+      );
+    }
+
+    function measureAllColumnContentWidths() {
+      const colCount = columns.length;
+      const widths = new Array(colCount).fill(0);
+
+      let headerRowHtml = '<tr>';
+      for (let i = 0; i < colCount; i++) {
+        headerRowHtml += dbHeaderMeasureThHtml(
+          columns[i],
+          isPrimaryKeyColumn(columns[i])
+        );
+      }
+      headerRowHtml += '</tr>';
+
+      withMeasureTable(
+        '<table class="db-table-head-table db-table-measure-table"><thead>' +
+          headerRowHtml +
+          '</thead></table>',
+        function (wrapper) {
+          wrapper.querySelectorAll('th').forEach(function (cell, i) {
+            widths[i] = measureDbCellWidth(cell, true);
+          });
+        }
+      );
+
+      const rowsHtml = buildAutoFitSampleRowsHtml();
+      if (rowsHtml) {
+        withMeasureTable(
+          '<table class="db-table-body-table db-table-measure-table"><tbody>' +
+            rowsHtml +
+            '</tbody></table>',
+          function (wrapper) {
+            wrapper.querySelectorAll('tr').forEach(function (rowEl) {
+              rowEl.querySelectorAll('td').forEach(function (cell, i) {
+                if (i < colCount) {
+                  widths[i] = Math.max(widths[i], measureDbCellWidth(cell, false));
+                }
+              });
+            });
+          }
+        );
       }
 
-      columnWidths[index] = clampDbColumnWidth(width, DB_COL_WIDTH.AUTO_MAX);
+      for (let i = 0; i < colCount; i++) {
+        if (widths[i] < DB_COL_WIDTH.MIN) widths[i] = DB_COL_WIDTH.MIN;
+      }
+      return widths;
+    }
+
+    function finishAutoFit() {
       columnWidthsApplied = false;
       applyColumnWidthsOnly();
-      if (!options || !options.skipSave) saveColumnWidths();
+      saveColumnWidths();
+    }
+
+    function commitAutoFitWidths(measuredWidths) {
+      for (let i = 0; i < columns.length; i++) {
+        columnWidths[i] = resolveAutoFitWidth(i, measuredWidths[i]);
+      }
+      finishAutoFit();
+    }
+
+    function autoFitColumnWidth(index) {
+      if (index < 0 || index >= columns.length) return;
+      columnWidths[index] = resolveAutoFitWidth(
+        index,
+        measureColumnContentWidth(index)
+      );
+      finishAutoFit();
     }
 
     function autoFitAllColumnWidths() {
@@ -1371,10 +1487,7 @@
       if (columnWidths.length < columns.length) {
         columnWidths.length = columns.length;
       }
-      for (let i = 0; i < columns.length; i++) {
-        autoFitColumnWidth(i, { skipSave: true });
-      }
-      saveColumnWidths();
+      commitAutoFitWidths(measureAllColumnContentWidths());
     }
 
     function updateFitAllColumnsButton() {
@@ -2214,6 +2327,7 @@
           invalidateHeader();
           sortStack = Array.isArray(data.sort) ? data.sort.slice() : [];
           updateSortIndicator();
+          updateFitAllColumnsButton();
         }
 
         setCacheOffset(offset, data.rows || []);
@@ -2542,6 +2656,7 @@
         }
         syncHorizontalScroll();
         updateCount('—');
+        updateFitAllColumnsButton();
       } else if (scrollEl) {
         scrollEl.scrollTop = 0;
       }
@@ -2618,6 +2733,11 @@
 
     if (countEl) {
       countEl.addEventListener('click', openRowGotoDialog);
+    }
+    if (fitAllColumnsBtn) {
+      fitAllColumnsBtn.addEventListener('click', function () {
+        autoFitAllColumnWidths();
+      });
     }
     if (sortClearBtn) {
       sortClearBtn.addEventListener('click', function (e) {

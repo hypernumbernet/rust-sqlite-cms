@@ -590,6 +590,8 @@ async fn database_table_data_lists_rows() {
     assert!(html.contains("行 —"));
     assert!(html.contains("列編集"));
     assert!(html.contains("テストデータ生成"));
+    assert!(html.contains("db-data-fit-all-columns"));
+    assert!(html.contains("全列幅調整"));
     assert!(html.contains(r#"/admin/database/tables/data_rows/data/seed"#));
     assert!(!html.contains("hello"));
 }
@@ -1468,6 +1470,8 @@ async fn database_cms_table_data_is_read_only() {
         assert!(html.contains("閲覧専用"));
         assert!(html.contains(r#"data-read-only="true""#));
         assert!(html.contains("CMSシステムテーブル"));
+        assert!(html.contains("db-data-fit-all-columns"));
+        assert!(html.contains("全列幅調整"));
         assert!(!html.contains(&format!("/admin/database/tables/{table}/data/seed")));
         assert!(!html.contains(&format!("/admin/database/tables/{table}/edit")));
     }

@@ -118,12 +118,10 @@ struct DatabaseTemplate {
     layout: layout::AdminLayoutCtx,
     tables: Vec<TableListItem>,
     views: Vec<DbObjectItem>,
-    has_tables: bool,
     has_views: bool,
     is_tables_tab: bool,
     is_views_tab: bool,
-    tables_tab_url: &'static str,
-    views_tab_url: &'static str,
+    has_user_tables: bool,
     new_url: String,
 }
 
@@ -234,12 +232,19 @@ async fn index(
     State(state): State<AppState>,
     Query(query): Query<DatabaseQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let tables = database::list_tables(&state.pool())
-        .await?
+    let pool = state.pool();
+    let (table_items, views) =
+        tokio::try_join!(database::list_tables(&pool), database::list_views(&pool))?;
+    let mut has_user_tables = false;
+    let tables = table_items
         .into_iter()
-        .map(table_list_item)
+        .map(|item| {
+            if !item.is_system {
+                has_user_tables = true;
+            }
+            table_list_item(item)
+        })
         .collect::<Vec<_>>();
-    let views = database::list_views(&state.pool()).await?;
     let is_views_tab = query.tab == "views";
     let new_url = if is_views_tab {
         "/admin/database/views/new".to_string()
@@ -249,14 +254,12 @@ async fn index(
 
     let html = DatabaseTemplate {
         layout: layout::AdminLayoutCtx::new(&auth),
-        has_tables: !tables.is_empty(),
+        has_user_tables,
         has_views: !views.is_empty(),
         tables,
         views,
         is_tables_tab: !is_views_tab,
         is_views_tab,
-        tables_tab_url: "/admin/database",
-        views_tab_url: "/admin/database?tab=views",
         new_url,
     }
     .render()?;

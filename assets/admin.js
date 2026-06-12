@@ -2855,12 +2855,51 @@
     }
   }
 
+  function initDatabaseIndex() {
+    const checkbox = document.getElementById('db-show-system-tables');
+    const emptyEl = document.getElementById('db-tables-empty');
+    const tbody = document.getElementById('db-tables-body');
+    if (!checkbox) return;
+
+    const STORAGE_KEY = 'admin.database.showSystemTables';
+    const systemRows = tbody ? tbody.querySelectorAll('.db-table-row-system') : [];
+    const userRowCount = tbody ? tbody.rows.length - systemRows.length : 0;
+
+    function applyShowSystem(show) {
+      for (let i = 0; i < systemRows.length; i++) {
+        systemRows[i].hidden = !show;
+      }
+      checkbox.checked = show;
+      if (emptyEl && tbody) {
+        emptyEl.hidden = show || userRowCount > 0;
+      }
+      try {
+        localStorage.setItem(STORAGE_KEY, show ? '1' : '0');
+      } catch (_err) {
+        /* ignore quota / private mode */
+      }
+    }
+
+    let show = false;
+    try {
+      show = localStorage.getItem(STORAGE_KEY) === '1';
+    } catch (_err) {
+      /* ignore */
+    }
+
+    applyShowSystem(show);
+    checkbox.addEventListener('change', function () {
+      applyShowSystem(checkbox.checked);
+    });
+  }
+
   function initPageModules() {
     initTemplateRepeater();
     initSeedForm();
     initMediaPicker();
     initTableData();
     initWidgetConfig();
+    initDatabaseIndex();
   }
 
   window.Admin = {

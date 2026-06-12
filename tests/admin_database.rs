@@ -5,6 +5,22 @@ use axum::http::{Request, StatusCode};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
+fn assert_system_table_row_hidden(html: &str, table: &str) {
+    let needle = format!(">{table}</span>");
+    assert!(html.contains(&needle), "missing table row: {table}");
+    let idx = html.find(&needle).expect("table row");
+    let tr_start = html[..idx].rfind("<tr").expect("tr start");
+    let tr_tag = &html[tr_start..idx];
+    assert!(
+        tr_tag.contains("db-table-row-system"),
+        "table {table} is not marked as system row"
+    );
+    assert!(
+        tr_tag.contains("hidden"),
+        "table {table} system row is not hidden by default"
+    );
+}
+
 fn parse_sse_events(body: &str) -> Vec<(String, serde_json::Value)> {
     let mut events = Vec::new();
     for block in body.split("\n\n") {
@@ -41,6 +57,13 @@ async fn database_index_lists_cms_tables() {
     assert!(html.contains("DB管理"));
     assert!(html.contains("テーブル"));
     assert!(html.contains("ビュー"));
+    assert!(html.contains("システムテーブル"));
+    assert!(html.contains("db-show-system-tables"));
+    assert!(!html.contains(r#"id="db-show-system-tables" checked"#));
+    assert!(html.contains(r#"id="db-tables-empty""#));
+    assert!(!html.contains(r#"id="db-tables-empty" hidden"#));
+    assert!(!html.contains("_sqlx_migrations"));
+
     for table in [
         "widget_types",
         "placeholders",
@@ -50,14 +73,16 @@ async fn database_index_lists_cms_tables() {
         "layouts",
         "pages",
         "users",
+        "user_table_meta",
     ] {
-        assert!(html.contains(table), "missing table: {table}");
+        assert_system_table_row_hidden(&html, table);
     }
+    let meta_row = html.split("user_table_meta</span>").nth(1).unwrap_or("");
+    assert!(meta_row.contains("システム"));
+    assert!(!meta_row.contains("列編集"));
+    assert!(meta_row.contains("データ"));
     assert!(html.contains("システム"));
     assert!(!html.contains("リードオンリー"));
-    assert!(!html.contains("_sqlx_migrations"));
-    // CMS コアテーブルはすべて種別「システム」
-    assert!(html.contains("posts</span>"));
     let posts_row = html.split("posts</span>").nth(1).unwrap_or("");
     assert!(posts_row.contains("システム"));
 }
@@ -125,6 +150,9 @@ async fn database_create_user_table_and_view() {
     assert!(html.contains(r#"/admin/database/tables/custom_notes/data"#));
     assert!(custom_row.contains("列編集"));
     assert!(custom_row.contains("データ"));
+    assert!(html.contains(r#"id="db-tables-empty" hidden"#));
+    assert_system_table_row_hidden(&html, "posts");
+
     let posts_row = html.split("posts</span>").nth(1).unwrap_or("");
     assert!(!posts_row.contains(r#"/admin/database/tables/posts/edit"#));
     assert!(posts_row.contains(r#"/admin/database/tables/posts/data"#));
@@ -714,7 +742,7 @@ async fn database_table_data_column_widths_save_and_load() {
     assert_eq!(json["ok"], true);
 
     let stored: Option<String> = sqlx::query_scalar(
-        "SELECT column_widths_json FROM _user_table_meta WHERE table_name = 'col_widths_save'",
+        "SELECT column_widths_json FROM user_table_meta WHERE table_name = 'col_widths_save'",
     )
     .fetch_optional(&app.state.pool())
     .await
@@ -929,7 +957,7 @@ async fn database_table_data_sort_save_and_load() {
     );
 
     let stored: Option<String> = sqlx::query_scalar(
-        "SELECT sort_json FROM _user_table_meta WHERE table_name = 'sort_save'",
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'sort_save'",
     )
     .fetch_optional(&app.state.pool())
     .await
@@ -1005,7 +1033,7 @@ async fn database_table_data_column_widths_rejects_infra_table() {
     let response = app
         .admin_request(
             "POST",
-            "/admin/database/tables/_user_table_meta/data/column-widths",
+            "/admin/database/tables/_sqlx_migrations/data/column-widths",
             Some(save_body),
             Some("application/json"),
         )

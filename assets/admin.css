@@ -321,6 +321,12 @@ textarea::placeholder {
 }
 .db-tab-bar .toolbar-actions {
   padding-bottom: 6px;
+  align-items: center;
+}
+.db-tab-bar .toolbar-actions .checkbox {
+  margin: 0;
+  white-space: nowrap;
+  font-size: 14px;
 }
 
 table { width: 100%; border-collapse: collapse; }

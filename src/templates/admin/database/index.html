@@ -17,17 +17,23 @@
 {% block content %}
 <div class="db-tab-bar">
   <nav class="tab-nav" aria-label="DB管理">
-    <a href="{{ tables_tab_url }}"{% if is_tables_tab %} class="active"{% endif %}>テーブル</a>
-    <a href="{{ views_tab_url }}"{% if is_views_tab %} class="active"{% endif %}>ビュー</a>
+    <a href="/admin/database"{% if is_tables_tab %} class="active"{% endif %}>テーブル</a>
+    <a href="/admin/database?tab=views"{% if is_views_tab %} class="active"{% endif %}>ビュー</a>
   </nav>
   <div class="toolbar-actions">
+    {% if is_tables_tab %}
+    <label class="checkbox">
+      <input type="checkbox" id="db-show-system-tables">
+      <span>システムテーブル</span>
+    </label>
+    {% endif %}
     <a class="button" href="{{ new_url }}">新規追加</a>
   </div>
 </div>
 
 <div class="tab-panel"{% if !is_tables_tab %} hidden{% endif %}>
   <section class="panel panel-table">
-    {% if has_tables %}
+    {% if !tables.is_empty() %}
     <table>
       <thead>
         <tr>
@@ -37,9 +43,9 @@
           <th>操作</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="db-tables-body">
         {% for item in tables %}
-        <tr>
+        <tr{% if item.is_system %} class="db-table-row-system" hidden{% endif %}>
           <td><span class="text-mono">{{ item.name }}</span></td>
           <td class="row-count">
             {% if let Some(count) = item.row_count %}{{ count }}{% else %}—{% endif %}
@@ -65,9 +71,8 @@
         {% endfor %}
       </tbody>
     </table>
-    {% else %}
-    <p class="empty">テーブルがありません。</p>
     {% endif %}
+    <p class="empty" id="db-tables-empty"{% if has_user_tables %} hidden{% endif %}>テーブルがありません。</p>
   </section>
 </div>
 

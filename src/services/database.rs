@@ -1,6 +1,7 @@
 //! データベーススキーマのイントロスペクションとユーザー定義オブジェクトの管理。
 
 use chrono::{DateTime, Duration, FixedOffset, Local, NaiveDateTime, TimeZone};
+use futures_util::future::try_join_all;
 use rand::rngs::OsRng;
 use rand::Rng;
 use serde::Deserialize;
@@ -238,13 +239,14 @@ const CMS_TABLES: &[&str] = &[
     "layouts",
     "pages",
     "users",
+    "user_table_meta",
 ];
 
-/// 管理画面 DB 一覧に表示しないインフラ用テーブル。
-const HIDDEN_ADMIN_TABLES: &[&str] = &["_sqlx_migrations", "_user_table_meta"];
+/// 管理画面 DB 一覧に表示しないインフラ用テーブル。_sqlx_migrationsのカラムタイプが表示が難しいため
+const HIDDEN_ADMIN_TABLES: &[&str] = &["_sqlx_migrations"];
 
 /// DB 管理 UI メタデータ（列幅など）を保持するシステムテーブル名。
-pub const USER_TABLE_META_TABLE: &str = "_user_table_meta";
+pub const USER_TABLE_META_TABLE: &str = "user_table_meta";
 
 /// 列幅の最小・最大ピクセル値。
 const COLUMN_WIDTH_MIN_PX: i32 = 40;
@@ -326,22 +328,31 @@ pub async fn list_tables(pool: &SqlitePool) -> AppResult<Vec<DbObjectItem>> {
     .fetch_all(pool)
     .await?;
 
-    let mut items = Vec::with_capacity(rows.len());
-    for row in rows {
-        if is_hidden_admin_table(&row.name) {
-            continue;
-        }
-        let sql = row.sql.unwrap_or_default();
-        let row_count = table_row_count(pool, &row.name).await?;
-        items.push(DbObjectItem {
-            name: row.name.clone(),
-            sql_preview: truncate_sql(&sql, 80),
-            is_system: is_system_table(&row.name),
-            row_count: Some(row_count),
-            sql,
-        });
-    }
-    Ok(items)
+    let visible_rows: Vec<_> = rows
+        .into_iter()
+        .filter(|row| !is_hidden_admin_table(&row.name))
+        .collect();
+    let counts = try_join_all(
+        visible_rows
+            .iter()
+            .map(|row| table_row_count(pool, &row.name)),
+    )
+    .await?;
+
+    Ok(visible_rows
+        .into_iter()
+        .zip(counts)
+        .map(|(row, row_count)| {
+            let sql = row.sql.unwrap_or_default();
+            DbObjectItem {
+                name: row.name.clone(),
+                sql_preview: truncate_sql(&sql, 80),
+                is_system: is_system_table(&row.name),
+                row_count: Some(row_count),
+                sql,
+            }
+        })
+        .collect())
 }
 
 pub async fn list_views(pool: &SqlitePool) -> AppResult<Vec<DbObjectItem>> {
@@ -898,7 +909,7 @@ pub async fn save_table_column_widths(
 
     sqlx::query(
         r#"
-        INSERT INTO _user_table_meta (table_name, column_widths_json, updated_at)
+        INSERT INTO user_table_meta (table_name, column_widths_json, updated_at)
         VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT(table_name) DO UPDATE SET
             column_widths_json = excluded.column_widths_json,
@@ -956,7 +967,7 @@ fn is_missing_user_table_meta_error(err: &sqlx::Error) -> bool {
     matches!(
         err,
         sqlx::Error::Database(db_err)
-            if db_err.message().contains("no such table: _user_table_meta")
+            if db_err.message().contains("no such table: user_table_meta")
     )
 }
 
@@ -987,7 +998,7 @@ pub async fn save_table_sort(
 
     sqlx::query(
         r#"
-        INSERT INTO _user_table_meta (table_name, sort_json, updated_at)
+        INSERT INTO user_table_meta (table_name, sort_json, updated_at)
         VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
         ON CONFLICT(table_name) DO UPDATE SET
             sort_json = excluded.sort_json,
@@ -1100,7 +1111,7 @@ struct TableUiMeta {
 async fn get_table_ui_meta(pool: &SqlitePool, name: &str) -> DomainResult<TableUiMeta> {
     let name = ensure_viewable_table(name)?;
     let row: Option<(String, String)> = match sqlx::query_as::<_, (String, String)>(
-        "SELECT column_widths_json, sort_json FROM _user_table_meta WHERE table_name = ?",
+        "SELECT column_widths_json, sort_json FROM user_table_meta WHERE table_name = ?",
     )
     .bind(name)
     .fetch_optional(pool)
@@ -2335,6 +2346,7 @@ mod tests {
         assert!(is_system_table("sqlite_sequence"));
         assert!(is_system_table("posts"));
         assert!(is_system_table("users"));
+        assert!(is_system_table("user_table_meta"));
         assert!(!is_system_table("my_custom_table"));
     }
 
@@ -2342,6 +2354,7 @@ mod tests {
     fn is_cms_core_table_includes_users() {
         assert!(is_cms_core_table("posts"));
         assert!(is_cms_core_table("users"));
+        assert!(is_cms_core_table("user_table_meta"));
         assert!(!is_cms_core_table("my_custom_table"));
     }
 
@@ -2349,6 +2362,7 @@ mod tests {
     fn is_cms_readonly_table_covers_all_cms_core_tables() {
         assert!(is_cms_readonly_table("posts"));
         assert!(is_cms_readonly_table("users"));
+        assert!(is_cms_readonly_table("user_table_meta"));
         assert!(!is_cms_readonly_table("my_custom_table"));
     }
 
@@ -2356,6 +2370,7 @@ mod tests {
     fn is_db_admin_editable_allows_only_user_defined_tables() {
         assert!(!is_db_admin_editable("posts"));
         assert!(!is_db_admin_editable("users"));
+        assert!(!is_db_admin_editable("user_table_meta"));
         assert!(!is_db_admin_editable("_sqlx_migrations"));
         assert!(is_db_admin_editable("my_custom_table"));
     }
@@ -2366,6 +2381,7 @@ mod tests {
         assert!(!is_db_admin_data_viewable("sqlite_sequence"));
         assert!(is_db_admin_data_viewable("posts"));
         assert!(is_db_admin_data_viewable("users"));
+        assert!(is_db_admin_data_viewable("user_table_meta"));
         assert!(is_db_admin_data_viewable("my_custom_table"));
     }
 
@@ -2373,6 +2389,7 @@ mod tests {
     fn is_hidden_admin_table_detects_infra_tables() {
         assert!(is_hidden_admin_table("_sqlx_migrations"));
         assert!(!is_hidden_admin_table("posts"));
+        assert!(!is_hidden_admin_table("user_table_meta"));
     }
 
     #[test]
@@ -2386,6 +2403,7 @@ mod tests {
     #[test]
     fn validate_user_object_name_rejects_system_names() {
         assert!(validate_user_object_name("posts").is_err());
+        assert!(validate_user_object_name("user_table_meta").is_err());
         assert!(validate_user_object_name("my_table").is_ok());
         assert!(validate_user_object_name("記事").is_ok());
         assert!(validate_user_object_name("a/b").is_err());

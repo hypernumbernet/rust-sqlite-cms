@@ -105,7 +105,7 @@ CREATE TABLE IF NOT EXISTS user_table_meta (
 
 -- 初期シードデータ ---------------------------------------------------------
 INSERT INTO layouts (key, name)
-VALUES ('default', '既定');
+VALUES ('example', '例示');
 
 -- テンプレート（presets/index.html など）が参照する "news" プレースホルダー
 INSERT INTO widget_types (type_key, label, description, config, html_template, config_schema)

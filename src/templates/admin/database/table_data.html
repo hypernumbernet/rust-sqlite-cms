@@ -27,12 +27,13 @@
     <span class="toolbar-notice notice info">CMSシステムテーブルのデータは閲覧専用です。列編集・テストデータ生成はできません。</span>
     {% endif %}
   </div>
-  {% if !read_only %}
   <div class="toolbar-actions">
+    {% if !read_only %}
     <a class="button secondary" href="{{ seed_url }}">テストデータ生成</a>
     <a class="button secondary" href="{{ edit_url }}">列編集</a>
+    {% endif %}
+    <button type="button" id="db-data-fit-all-columns" class="button secondary" disabled>全列幅調整</button>
   </div>
-  {% endif %}
 </div>
 
 <section

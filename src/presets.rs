@@ -1,13 +1,13 @@
 //! 同梱のスターターデザイン。新規テンプレート作成時に複製元として選択する。
 
-/// 既定レイアウトの shell（`work/layouts/default/shell.html`）。
+/// 例示レイアウトの shell（`work/layouts/example/shell.html`）。
 pub const DEFAULT_SHELL: &str = include_str!("../presets/shell.html");
 
 /// 公開トップ `/` の初期ページ本文（`pages/index.html`）。
 pub const DEFAULT_HOME_PAGE: &str = include_str!("../presets/home_page.html");
 
-/// 既定レイアウトの site.css。
-pub const DEFAULT_SITE_CSS: &str = include_str!("../presets/default/site.css");
+/// 例示レイアウトの site.css。
+pub const DEFAULT_SITE_CSS: &str = include_str!("../presets/example/site.css");
 
 /// 1 つのプリセットデザイン（ページ本文雛形）。
 pub struct Preset {
@@ -17,7 +17,7 @@ pub struct Preset {
     pub label: &'static str,
     /// 説明文。
     pub description: &'static str,
-    /// 複製元となる MiniJinja 本文（`extends default/shell.html` 付き）。
+    /// 複製元となる MiniJinja 本文（`extends example/shell.html` 付き）。
     pub html: &'static str,
 }
 

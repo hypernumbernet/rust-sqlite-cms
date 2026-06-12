@@ -50,9 +50,9 @@ pub async fn find_by_key(pool: &SqlitePool, key: &str) -> AppResult<Option<Layou
 }
 
 /// 初回トップページ作成や新規ページの初期レイアウトに使うレイアウトを取得する。
-/// `default` key を優先し、なければ key 順の先頭を返す。
+/// `example` key を優先し、なければ key 順の先頭を返す。
 pub async fn find_bootstrap_layout(pool: &SqlitePool) -> AppResult<Layout> {
-    if let Some(layout) = find_by_key(pool, "default").await? {
+    if let Some(layout) = find_by_key(pool, "example").await? {
         return Ok(layout);
     }
 

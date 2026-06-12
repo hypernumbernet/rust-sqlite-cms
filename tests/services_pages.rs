@@ -21,7 +21,7 @@ async fn create_page_and_file_persistence() {
     let input = PageInput {
         name: "テストページ from service".to_string(),
         url_path: Some("/test-service-page".to_string()),
-        content: r#"{% extends "default/shell.html" %}
+        content: r#"{% extends "example/shell.html" %}
 {% block content %}<h1>Hello from test</h1>{% endblock %}"#
             .to_string(),
         layout_id: default.id,
@@ -38,7 +38,7 @@ async fn create_page_and_file_persistence() {
     let page = services::pages::find(&pool, id).await.expect("find failed");
     assert_eq!(page.name, "テストページ from service");
     assert_eq!(page.layout_id, default.id);
-    assert_eq!(page.layout_key, "default");
+    assert_eq!(page.layout_key, "example");
     assert!(page.is_published);
 
     let content = theme::read_page_body(&config.paths.work_dir, &page.layout_key, &file_name)
@@ -56,7 +56,7 @@ async fn delete_page_removes_file() {
     let input = PageInput {
         name: "削除テスト".to_string(),
         url_path: Some("/to-be-deleted".to_string()),
-        content: "{% extends \"default/shell.html\" %}{% block content %}gone{% endblock %}"
+        content: "{% extends \"example/shell.html\" %}{% block content %}gone{% endblock %}"
             .to_string(),
         layout_id: default.id,
         is_published: false,
@@ -70,7 +70,7 @@ async fn delete_page_removes_file() {
         .await
         .expect("delete_page failed");
 
-    let result = theme::read_page_body(&config.paths.work_dir, "default", &file_name);
+    let result = theme::read_page_body(&config.paths.work_dir, "example", &file_name);
     assert!(result.is_err());
 }
 
@@ -91,7 +91,7 @@ async fn home_page_url_can_be_changed_and_reassigned() {
     let other_input = PageInput {
         name: "別ページ".to_string(),
         url_path: Some("/other-page".to_string()),
-        content: r#"{% extends "default/shell.html" %}
+        content: r#"{% extends "example/shell.html" %}
 {% block content %}<h1>Other</h1>{% endblock %}"#
             .to_string(),
         layout_id: bootstrap.id,

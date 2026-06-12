@@ -301,16 +301,16 @@ pub fn format_static_file_size(size_bytes: u64) -> String {
     }
 }
 
-/// Phase 1 の `work/templates` / `work/pages` を `work/layouts/default/` へベストエフォートで移す。
+/// Phase 1 の `work/templates` / `work/pages` を `work/layouts/example/` へベストエフォートで移す。
 pub fn migrate_legacy_work_dir(work_dir: &str) -> std::io::Result<()> {
     let legacy_templates = Path::new(work_dir).join("templates");
     let legacy_pages = Path::new(work_dir).join("pages");
-    let target_pages = layout_dir(work_dir, "default").join("pages");
+    let target_pages = layout_dir(work_dir, "example").join("pages");
 
     if legacy_templates.join("index.html").exists()
         && !target_pages.join("index.html").exists()
     {
-        ensure_layout_dirs(work_dir, "default")?;
+        ensure_layout_dirs(work_dir, "example")?;
         std::fs::create_dir_all(&target_pages)?;
         for entry in std::fs::read_dir(&legacy_templates)? {
             let entry = entry?;
@@ -325,7 +325,7 @@ pub fn migrate_legacy_work_dir(work_dir: &str) -> std::io::Result<()> {
         }
         let legacy_static = legacy_templates.join("static");
         if legacy_static.is_dir() {
-            let dest_static = layout_static_dir(work_dir, "default");
+            let dest_static = layout_static_dir(work_dir, "example");
             std::fs::create_dir_all(&dest_static)?;
             for entry in std::fs::read_dir(legacy_static)? {
                 let entry = entry?;
@@ -338,7 +338,7 @@ pub fn migrate_legacy_work_dir(work_dir: &str) -> std::io::Result<()> {
     }
 
     if legacy_pages.is_dir() {
-        ensure_layout_dirs(work_dir, "default")?;
+        ensure_layout_dirs(work_dir, "example")?;
         std::fs::create_dir_all(&target_pages)?;
         for entry in std::fs::read_dir(legacy_pages)? {
             let entry = entry?;
@@ -352,23 +352,23 @@ pub fn migrate_legacy_work_dir(work_dir: &str) -> std::io::Result<()> {
     Ok(())
 }
 
-/// 作業ディレクトリを初期化する。既定レイアウト `default` を seed する。
+/// 作業ディレクトリを初期化する。例示レイアウト `example` を seed する。
 pub fn ensure_seeded(work_dir: &str) -> std::io::Result<()> {
     migrate_legacy_work_dir(work_dir)?;
-    ensure_layout_dirs(work_dir, "default")?;
+    ensure_layout_dirs(work_dir, "example")?;
 
-    let shell = layout_dir(work_dir, "default").join("shell.html");
+    let shell = layout_dir(work_dir, "example").join("shell.html");
     if !shell.exists() {
         std::fs::write(&shell, presets::DEFAULT_SHELL)?;
     }
 
-    let index_page = layout_dir(work_dir, "default").join("pages/index.html");
+    let index_page = layout_dir(work_dir, "example").join("pages/index.html");
     if !index_page.exists() {
         std::fs::create_dir_all(index_page.parent().unwrap())?;
         std::fs::write(&index_page, presets::DEFAULT_HOME_PAGE)?;
     }
 
-    let site_css = layout_static_dir(work_dir, "default").join("site.css");
+    let site_css = layout_static_dir(work_dir, "example").join("site.css");
     if !site_css.exists() {
         std::fs::write(&site_css, presets::DEFAULT_SITE_CSS)?;
     }
@@ -452,24 +452,24 @@ mod tests {
     fn resolve_static_path_rejects_unsafe_paths() {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let work = tmp.path().to_str().expect("utf8 path");
-        ensure_layout_dirs(work, "default").expect("dirs");
-        assert!(resolve_static_path(work, "default/../shell.html").is_none());
-        assert!(resolve_static_path(work, "default/site.css").is_none());
+        ensure_layout_dirs(work, "example").expect("dirs");
+        assert!(resolve_static_path(work, "example/../shell.html").is_none());
+        assert!(resolve_static_path(work, "example/site.css").is_none());
     }
 
     #[test]
     fn resolve_static_path_uses_layout_static_subdirectory() {
         let tmp = tempfile::TempDir::new().expect("tempdir");
         let work = tmp.path().to_str().expect("utf8 path");
-        ensure_layout_dirs(work, "default").expect("dirs");
+        ensure_layout_dirs(work, "example").expect("dirs");
         std::fs::write(
-            layout_static_dir(work, "default").join("site.css"),
+            layout_static_dir(work, "example").join("site.css"),
             "body { margin: 0; }",
         )
         .expect("write css");
 
-        let resolved = resolve_static_path(work, "default/site.css").expect("resolved");
-        assert!(resolved.ends_with("default/static/site.css"));
+        let resolved = resolve_static_path(work, "example/site.css").expect("resolved");
+        assert!(resolved.ends_with("example/static/site.css"));
     }
 
     #[test]
@@ -486,7 +486,7 @@ mod tests {
             relative_path: "site.css".to_string(),
             kind: StaticFileKind::Text,
             size_bytes: 10,
-            public_url: "/static/default/site.css".to_string(),
+            public_url: "/static/example/site.css".to_string(),
         };
         assert_eq!(text.kind_label(), "テキスト");
 
@@ -494,7 +494,7 @@ mod tests {
             relative_path: "logo.png".to_string(),
             kind: StaticFileKind::Binary,
             size_bytes: 10,
-            public_url: "/static/default/logo.png".to_string(),
+            public_url: "/static/example/logo.png".to_string(),
         };
         assert_eq!(image.kind_label(), "画像");
     }

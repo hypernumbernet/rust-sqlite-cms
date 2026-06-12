@@ -604,6 +604,7 @@
     const statusEl = document.getElementById('db-data-status');
     const statusTextEl = statusEl ? statusEl.querySelector('.db-data-status-text') : null;
     const countEl = document.getElementById('db-data-row-goto');
+    const fitAllColumnsBtn = document.getElementById('db-data-fit-all-columns');
     const sortIndicatorEl = document.getElementById('db-data-sort-indicator');
     const sortIndicatorLabelEl = document.getElementById('db-data-sort-indicator-label');
     const sortClearBtn = document.getElementById('db-data-sort-clear');
@@ -1329,7 +1330,7 @@
       await commitSortChange();
     }
 
-    function autoFitColumnWidth(index) {
+    function autoFitColumnWidth(index, options) {
       if (index < 0 || index >= columns.length) return;
 
       const colName = columns[index];
@@ -1362,7 +1363,23 @@
       columnWidths[index] = clampDbColumnWidth(width, DB_COL_WIDTH.AUTO_MAX);
       columnWidthsApplied = false;
       applyColumnWidthsOnly();
+      if (!options || !options.skipSave) saveColumnWidths();
+    }
+
+    function autoFitAllColumnWidths() {
+      if (columns.length === 0) return;
+      if (columnWidths.length < columns.length) {
+        columnWidths.length = columns.length;
+      }
+      for (let i = 0; i < columns.length; i++) {
+        autoFitColumnWidth(i, { skipSave: true });
+      }
       saveColumnWidths();
+    }
+
+    function updateFitAllColumnsButton() {
+      if (!fitAllColumnsBtn) return;
+      fitAllColumnsBtn.disabled = columns.length === 0;
     }
 
     function padStyle(height) {

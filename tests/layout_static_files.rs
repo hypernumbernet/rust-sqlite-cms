@@ -63,19 +63,19 @@ async fn sync_static_text_files_deletes_marked_paths() {
     let config = app.state.config.as_ref();
     let work_dir = &config.paths.work_dir;
 
-    theme::write_static_text(work_dir, "default", "old.css", "old").expect("seed old");
-    theme::write_static_text(work_dir, "default", "site.css", "keep").expect("seed site");
+    theme::write_static_text(work_dir, "example", "old.css", "old").expect("seed old");
+    theme::write_static_text(work_dir, "example", "site.css", "keep").expect("seed site");
 
     services::layouts::sync_static_text_files(
         config,
-        "default",
+        "example",
         &HashMap::from([("site.css".to_string(), "updated".to_string())]),
         &["old.css".to_string()],
     )
     .expect("sync");
 
-    assert!(theme::read_static_text(work_dir, "default", "old.css").is_err());
-    let site = theme::read_static_text(work_dir, "default", "site.css").expect("site.css");
+    assert!(theme::read_static_text(work_dir, "example", "old.css").is_err());
+    let site = theme::read_static_text(work_dir, "example", "site.css").expect("site.css");
     assert_eq!(site, "updated");
 }
 
@@ -84,7 +84,7 @@ async fn upload_static_file_rejects_unsafe_path() {
     let app = common::TestApp::new().await;
     let config = app.state.config.as_ref();
 
-    let err = services::layouts::upload_static_file(config, "default", "../evil.png", TINY_PNG)
+    let err = services::layouts::upload_static_file(config, "example", "../evil.png", TINY_PNG)
         .expect_err("traversal should fail");
     assert!(
         err.to_string().contains("不正") || err.to_string().contains("パス"),
@@ -97,10 +97,10 @@ async fn upload_static_binary_served_at_public_url() {
     let app = common::TestApp::new().await;
     let config = app.state.config.as_ref();
 
-    services::layouts::upload_static_file(config, "default", "logo.png", TINY_PNG)
+    services::layouts::upload_static_file(config, "example", "logo.png", TINY_PNG)
         .expect("upload png");
 
-    let resolved = resolve_static_path(&config.paths.work_dir, "default/logo.png")
+    let resolved = resolve_static_path(&config.paths.work_dir, "example/logo.png")
         .expect("resolve static");
     assert!(resolved.is_file());
 
@@ -109,7 +109,7 @@ async fn upload_static_binary_served_at_public_url() {
         .clone()
         .oneshot(
             axum::http::Request::builder()
-                .uri("http://localhost/static/default/logo.png")
+                .uri("http://localhost/static/example/logo.png")
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )

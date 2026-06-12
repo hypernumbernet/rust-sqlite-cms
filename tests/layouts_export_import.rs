@@ -20,7 +20,6 @@ async fn create_test_layout_with_page(app: &common::TestApp) -> (i64, String) {
     let input = LayoutInput {
         key: "export-src".to_string(),
         name: "エクスポート元".to_string(),
-        is_default: false,
     };
     let layout_id = layouts_service::create_layout_with_defaults(&pool, config, &input)
         .await
@@ -235,7 +234,9 @@ async fn import_rejects_url_path_conflict() {
     let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
-    let default_layout = layouts::find_default(&pool).await.expect("default");
+    let default_layout = layouts::find_bootstrap_layout(&pool)
+        .await
+        .expect("bootstrap layout");
     let page_input = PageInput {
         name: "衝突ページ".to_string(),
         url_path: Some("/conflict-url".to_string()),

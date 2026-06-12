@@ -58,9 +58,9 @@ impl TestApp {
             .await
             .expect("failed to ensure test admin");
 
-        layouts::find_default(&&pool)
+        layouts::find_bootstrap_layout(&&pool)
             .await
-            .expect("default layout from migration");
+            .expect("bootstrap layout from migration");
         pages::ensure_index_page(&&pool)
             .await
             .expect("failed to ensure index page");

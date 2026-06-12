@@ -6,9 +6,9 @@ use crate::models::layout::{Layout, LayoutInput};
 /// 全レイアウトを key 順で取得する。
 pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Layout>> {
     Ok(sqlx::query_as::<_, Layout>(
-        "SELECT id, key, name, is_default, created_at, updated_at
+        "SELECT id, key, name, created_at, updated_at
          FROM layouts
-         ORDER BY is_default DESC, key ASC",
+         ORDER BY key ASC",
     )
     .fetch_all(pool)
     .await?)
@@ -17,7 +17,7 @@ pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Layout>> {
 /// ID で取得する。
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Layout> {
     sqlx::query_as::<_, Layout>(
-        "SELECT id, key, name, is_default, created_at, updated_at
+        "SELECT id, key, name, created_at, updated_at
          FROM layouts
          WHERE id = ?",
     )
@@ -40,7 +40,7 @@ pub async fn find_key_by_id(pool: &SqlitePool, id: i64) -> AppResult<String> {
 /// key で取得する。
 pub async fn find_by_key(pool: &SqlitePool, key: &str) -> AppResult<Option<Layout>> {
     Ok(sqlx::query_as::<_, Layout>(
-        "SELECT id, key, name, is_default, created_at, updated_at
+        "SELECT id, key, name, created_at, updated_at
          FROM layouts
          WHERE key = ?",
     )
@@ -49,12 +49,17 @@ pub async fn find_by_key(pool: &SqlitePool, key: &str) -> AppResult<Option<Layou
     .await?)
 }
 
-/// 既定レイアウトを取得する。
-pub async fn find_default(pool: &SqlitePool) -> AppResult<Layout> {
+/// 初回トップページ作成や新規ページの初期レイアウトに使うレイアウトを取得する。
+/// `default` key を優先し、なければ key 順の先頭を返す。
+pub async fn find_bootstrap_layout(pool: &SqlitePool) -> AppResult<Layout> {
+    if let Some(layout) = find_by_key(pool, "default").await? {
+        return Ok(layout);
+    }
+
     sqlx::query_as::<_, Layout>(
-        "SELECT id, key, name, is_default, created_at, updated_at
+        "SELECT id, key, name, created_at, updated_at
          FROM layouts
-         WHERE is_default = 1
+         ORDER BY key ASC
          LIMIT 1",
     )
     .fetch_optional(pool)
@@ -64,20 +69,13 @@ pub async fn find_default(pool: &SqlitePool) -> AppResult<Layout> {
 
 /// レイアウトを作成する。
 pub async fn insert(pool: &SqlitePool, input: &LayoutInput) -> AppResult<i64> {
-    if input.is_default {
-        sqlx::query("UPDATE layouts SET is_default = 0")
-            .execute(pool)
-            .await?;
-    }
-
     let row: (i64,) = sqlx::query_as(
-        "INSERT INTO layouts (key, name, is_default)
-         VALUES (?, ?, ?)
+        "INSERT INTO layouts (key, name)
+         VALUES (?, ?)
          RETURNING id",
     )
     .bind(&input.key)
     .bind(&input.name)
-    .bind(input.is_default)
     .fetch_one(pool)
     .await?;
 
@@ -88,24 +86,15 @@ pub async fn insert(pool: &SqlitePool, input: &LayoutInput) -> AppResult<i64> {
 pub async fn update(pool: &SqlitePool, id: i64, input: &LayoutInput) -> AppResult<()> {
     let _ = find(pool, id).await?;
 
-    if input.is_default {
-        sqlx::query("UPDATE layouts SET is_default = 0 WHERE id != ?")
-            .bind(id)
-            .execute(pool)
-            .await?;
-    }
-
     let result = sqlx::query(
         "UPDATE layouts
          SET key = ?,
              name = ?,
-             is_default = ?,
              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
          WHERE id = ?",
     )
     .bind(&input.key)
     .bind(&input.name)
-    .bind(input.is_default)
     .bind(id)
     .execute(pool)
     .await?;

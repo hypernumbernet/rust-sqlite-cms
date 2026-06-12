@@ -91,9 +91,7 @@ struct PageFormTemplate {
     content: String,
     is_published: bool,
     is_edit: bool,
-    is_home: bool,
     layout_options: Vec<LayoutOption>,
-    selected_layout_id: i64,
     template_help: String,
     delete_action: String,
     error_message: String,
@@ -154,7 +152,7 @@ async fn new_form(
     State(state): State<AppState>,
     Path(design): Path<String>,
 ) -> AppResult<impl IntoResponse> {
-    let default = services::layouts::find_default(&state.pool()).await?;
+    let default = services::layouts::find_bootstrap_layout(&state.pool()).await?;
     let (name, content) = if design == "blank" {
         let blank = format!(
             r#"{{% extends "{}/shell.html" %}}
@@ -182,7 +180,6 @@ async fn new_form(
         content,
         false,
         false,
-        false,
         layout_options,
         "",
         "",
@@ -197,10 +194,11 @@ async fn create(
     State(state): State<AppState>,
     Form(form): Form<PageForm>,
 ) -> AppResult<Response> {
-    let input = match form.into_input(false) {
+    let input = match form.into_input() {
         Ok(input) => input,
         Err(AppError::Conflict(message)) => {
-            let html = conflict_form_response(&state, &auth, &form, false, None, false, message)
+            let html =
+                conflict_form_response(&state, &auth, &form, false, None, &form.url_path, message)
                 .await?
                 .render()?;
             return Ok(Html(html).into_response());
@@ -217,7 +215,7 @@ async fn create(
                 &form,
                 false,
                 None,
-                false,
+                &form.url_path,
                 app_err.to_string(),
             )
             .await?
@@ -260,7 +258,6 @@ async fn edit(
         content,
         page.is_published,
         true,
-        is_home,
         layout_options,
         "",
         &format!("/admin/pages/{id}/delete"),
@@ -276,14 +273,11 @@ async fn update(
     Path(id): Path<i64>,
     Form(form): Form<PageForm>,
 ) -> AppResult<Response> {
-    let page = pages::find(&state.pool(), id).await?;
-    let is_home = page.is_home();
-
-    let input = match form.into_input(is_home) {
+    let input = match form.into_input() {
         Ok(input) => input,
         Err(AppError::Conflict(message)) => {
             let html = conflict_form_response(
-                &state, &auth, &form, true, Some(id), is_home, message,
+                &state, &auth, &form, true, Some(id), &form.url_path, message,
             )
             .await?
             .render()?;
@@ -301,7 +295,7 @@ async fn update(
                 &form,
                 true,
                 Some(id),
-                is_home,
+                &form.url_path,
                 app_err.to_string(),
             )
             .await?
@@ -665,16 +659,10 @@ fn page_form_template(
     content: String,
     is_published: bool,
     is_edit: bool,
-    is_home: bool,
     layout_options: Vec<LayoutOption>,
     error_message: &str,
     delete_action: &str,
 ) -> PageFormTemplate {
-    let selected_layout_id = layout_options
-        .iter()
-        .find(|o| o.selected)
-        .map(|o| o.id)
-        .unwrap_or(0);
     PageFormTemplate {
         layout,
         heading: heading.to_string(),
@@ -685,9 +673,7 @@ fn page_form_template(
         content,
         is_published,
         is_edit,
-        is_home,
         layout_options,
-        selected_layout_id,
         template_help: template_help_text(),
         delete_action: delete_action.to_string(),
         error_message: error_message.to_string(),
@@ -701,14 +687,14 @@ async fn conflict_form_response(
     form: &PageForm,
     is_edit: bool,
     id: Option<i64>,
-    is_home: bool,
+    url_path_for_heading: &str,
     message: String,
 ) -> AppResult<PageFormTemplate> {
     let selected = parse_layout_id(&form.layout_id).unwrap_or(0);
     let layout_options = layout_options_for_form(state, selected).await?;
     let (heading, action, submit_label, delete_action) = if is_edit {
         let id = id.expect("edit conflict requires page id");
-        let heading = if is_home {
+        let heading = if normalize_url_path(url_path_for_heading) == Some("/".to_string()) {
             "トップページを編集"
         } else {
             "ページを編集"
@@ -738,7 +724,6 @@ async fn conflict_form_response(
         form.content.clone(),
         form.is_published.is_some(),
         is_edit,
-        is_home,
         layout_options,
         &message,
         &delete_action,
@@ -773,12 +758,8 @@ fn parse_layout_id(raw: &str) -> Option<i64> {
 }
 
 impl PageForm {
-    fn into_input(&self, is_home: bool) -> AppResult<PageInput> {
-        let url_path = if is_home {
-            None
-        } else {
-            normalize_url_path(self.url_path.as_str())
-        };
+    fn into_input(&self) -> AppResult<PageInput> {
+        let url_path = normalize_url_path(self.url_path.as_str());
 
         if let Some(path) = url_path.as_deref()
             && is_reserved_path(path)
@@ -793,7 +774,7 @@ impl PageForm {
         })?;
         let is_published = self.is_published.is_some();
 
-        if is_published && url_path.is_none() && !is_home {
+        if is_published && url_path.is_none() {
             return Err(AppError::Conflict(
                 "公開するには URL を指定してください".to_string(),
             ));
@@ -841,7 +822,7 @@ impl PageListItem {
             is_published: page.is_published,
             status_label,
             updated_at: super::format_updated_at(&page.updated_at),
-            can_delete: !is_home,
+            can_delete: true,
         }
     }
 }

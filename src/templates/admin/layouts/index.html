@@ -26,7 +26,6 @@
         <th>名前</th>
         <th>key</th>
         <th>ページ数</th>
-        <th>既定</th>
         <th>更新日</th>
         <th>操作</th>
       </tr>
@@ -37,7 +36,6 @@
         <td>{{ row.name }}</td>
         <td><code>{{ row.key }}</code></td>
         <td>{{ row.page_count }}</td>
-        <td>{% if row.is_default %}はい{% else %}—{% endif %}</td>
         <td>{{ row.updated_at }}</td>
         <td>
           <div class="op-actions">

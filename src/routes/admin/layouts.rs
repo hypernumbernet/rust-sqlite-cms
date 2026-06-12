@@ -22,8 +22,6 @@ use super::{auth::AuthUser, format_updated_at, layout as admin_layout};
 struct LayoutForm {
     key: String,
     name: String,
-    #[serde(default)]
-    is_default: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,7 +59,6 @@ struct LayoutListItem {
     id: i64,
     key: String,
     name: String,
-    is_default: bool,
     page_count: i64,
     updated_at: String,
     can_delete: bool,
@@ -123,7 +120,6 @@ struct LayoutFormTemplate {
     submit_label: String,
     key: String,
     name: String,
-    is_default: bool,
     layout_files: Vec<LayoutFileRow>,
     layout_id: i64,
     upload_action: String,
@@ -186,10 +182,9 @@ async fn index(
             id: row.id,
             key: row.key,
             name: row.name,
-            is_default: row.is_default,
             page_count,
             updated_at: format_updated_at(&row.updated_at),
-            can_delete: !row.is_default && page_count == 0,
+            can_delete: page_count == 0,
         });
     }
 
@@ -316,7 +311,6 @@ async fn new_form(auth: AuthUser, State(state): State<AppState>) -> AppResult<im
         "作成する",
         String::new(),
         String::new(),
-        false,
         Vec::new(),
         0,
         false,
@@ -387,7 +381,6 @@ async fn edit(
         "更新する",
         row.key,
         row.name,
-        row.is_default,
         layout_files,
         id,
         true,
@@ -689,7 +682,6 @@ async fn build_layout_form(
     submit_label: &str,
     key: String,
     name: String,
-    is_default: bool,
     layout_files: Vec<LayoutFileRow>,
     layout_id: i64,
     is_edit: bool,
@@ -715,7 +707,6 @@ async fn build_layout_form(
         submit_label: submit_label.to_string(),
         key,
         name,
-        is_default,
         layout_files,
         layout_id,
         upload_action,
@@ -770,7 +761,6 @@ async fn layout_error_response(
         submit_label,
         form.key.clone(),
         form.name.clone(),
-        form.is_default.is_some(),
         layout_files,
         layout_id,
         is_edit,
@@ -850,10 +840,6 @@ impl LayoutForm {
         if key.is_empty() || name.is_empty() {
             return Err("key と名前は必須です".to_string());
         }
-        Ok(LayoutInput {
-            key,
-            name,
-            is_default: self.is_default.is_some(),
-        })
+        Ok(LayoutInput { key, name })
     }
 }

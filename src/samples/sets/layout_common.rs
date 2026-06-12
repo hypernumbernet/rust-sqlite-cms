@@ -69,7 +69,6 @@ pub async fn install(state: &AppState, spec: &LayoutSetSpec) -> AppResult<super:
     let layout_input = LayoutInput {
         key: spec.layout_key.to_string(),
         name: spec.layout_name.to_string(),
-        is_default: false,
     };
 
     layouts::create_layout(

@@ -238,11 +238,12 @@
   }
 
   function isReservedPath(path) {
-    return path === '/'
-      || path === '/admin'
+    return path === '/admin'
       || path.startsWith('/admin/')
       || path === '/static'
-      || path.startsWith('/static/');
+      || path.startsWith('/static/')
+      || path === '/uploads'
+      || path.startsWith('/uploads/');
   }
 
   function validatePageUrlForm(form) {

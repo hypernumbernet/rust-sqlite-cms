@@ -105,7 +105,7 @@ pub async fn ensure_index_page(pool: &SqlitePool) -> AppResult<()> {
         return Ok(());
     }
 
-    let default = layouts::find_default(pool).await?;
+    let default = layouts::find_bootstrap_layout(pool).await?;
 
     sqlx::query(
         "INSERT INTO pages (name, url_path, file_name, layout_id, is_published)
@@ -187,30 +187,6 @@ pub async fn insert(pool: &SqlitePool, input: &PageInput) -> AppResult<(i64, Str
 
 /// ページのメタ情報を更新する。
 pub async fn update(pool: &SqlitePool, id: i64, input: &PageInput) -> AppResult<()> {
-    let page = find(pool, id).await?;
-
-    if page.is_home() {
-        let result = sqlx::query(
-            "UPDATE pages
-             SET name = ?,
-                 layout_id = ?,
-                 is_published = ?,
-                 updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-             WHERE id = ?",
-        )
-        .bind(&input.name)
-        .bind(input.layout_id)
-        .bind(input.is_published)
-        .bind(id)
-        .execute(pool)
-        .await?;
-
-        if result.rows_affected() == 0 {
-            return Err(AppError::NotFound);
-        }
-        return Ok(());
-    }
-
     url_paths::ensure_url_available(pool, input.url_path.as_deref(), Some(id)).await?;
 
     let result = sqlx::query(
@@ -239,14 +215,6 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PageInput) -> AppResult<
 
 /// ページのメタ行を削除する。本文ファイルの削除は呼び出し側で行う。
 pub async fn delete(pool: &SqlitePool, id: i64) -> AppResult<()> {
-    let page = find(pool, id).await?;
-
-    if page.is_home() {
-        return Err(AppError::Conflict(
-            "トップページは削除できません".to_string(),
-        ));
-    }
-
     let result = sqlx::query("DELETE FROM pages WHERE id = ?")
         .bind(id)
         .execute(pool)

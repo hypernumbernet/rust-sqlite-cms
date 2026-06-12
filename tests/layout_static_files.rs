@@ -28,12 +28,13 @@ async fn update_layout_syncs_site_css() {
     let pool = app.state.pool();
     let config = app.state.config.as_ref();
 
-    let layout = layouts::find_default(&pool).await.expect("default layout");
+    let layout = layouts::find_bootstrap_layout(&pool)
+        .await
+        .expect("bootstrap layout");
     let shell = theme::read_shell(&config.paths.work_dir, &layout.key).unwrap_or_default();
     let input = LayoutInput {
         key: layout.key.clone(),
         name: layout.name.clone(),
-        is_default: layout.is_default,
     };
 
     let mut static_files = HashMap::new();
@@ -126,9 +127,9 @@ async fn upload_static_binary_served_at_public_url() {
 async fn list_admin_files_includes_shell_and_static() {
     let app = common::TestApp::new().await;
     let config = app.state.config.as_ref();
-    let layout = layouts::find_default(&app.state.pool())
+    let layout = layouts::find_bootstrap_layout(&app.state.pool())
         .await
-        .expect("default layout");
+        .expect("bootstrap layout");
 
     let files =
         services::layouts::list_admin_files(&config.paths.work_dir, &layout.key).expect("list");
@@ -155,8 +156,6 @@ async fn create_layout_seeds_site_css() {
     let input = LayoutInput {
         key: "corp".to_string(),
         name: "Corporate".to_string(),
-        is_default: false,
-
     };
     let static_files = services::layouts::default_static_text_files_for_create();
 

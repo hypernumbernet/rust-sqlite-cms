@@ -136,13 +136,6 @@
       <label for="name">名前</label>
       <input id="name" name="name" type="text" value="{{ name }}" required>
     </div>
-    <div class="field">
-      <div class="checkbox">
-        <input id="is_default" name="is_default" type="checkbox" value="1"{% if is_default %} checked{% endif %}>
-        <label for="is_default">既定レイアウトにする</label>
-      </div>
-      <p class="help">初回起動時のトップページ作成時のレイアウト、新規ページ追加時の初期選択に使われます。既存トップページ（<code>/</code>）の表示内容やレイアウトは自動では切り替わりません。favicon は <a href="/admin/media">メディア</a> で公開 URL を <code>/favicon.ico</code> に設定してください。</p>
-    </div>
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
       <a class="button secondary" href="/admin/layouts">戻る</a>

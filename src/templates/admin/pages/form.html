@@ -12,7 +12,7 @@
 
 {% block content %}
 
-<form method="post" action="{{ action }}" class="form-layout code-editor-form"{% if !is_home %} data-validate="page-url"{% endif %}>
+<form method="post" action="{{ action }}" class="form-layout code-editor-form" data-validate="page-url">
   <section class="panel">
     <div class="field field--grow">
       <label for="content">HTML（MiniJinja）</label>
@@ -30,44 +30,26 @@
 
     <div class="field">
       <label for="layout_id">レイアウト</label>
-      <select id="layout_id" name="layout_id" required{% if is_home %} disabled{% endif %}>
+      <select id="layout_id" name="layout_id" required>
         {% for opt in layout_options %}
         <option value="{{ opt.id }}"{% if opt.selected %} selected{% endif %}>{{ opt.label }}</option>
         {% endfor %}
       </select>
-      {% if is_home %}
-      <input type="hidden" name="layout_id" value="{{ selected_layout_id }}">
-      <p class="help">トップページのレイアウトは作成時に固定され、ここからは変更できません。shell や CSS の編集は <a href="/admin/layouts">レイアウト管理</a> から行います。</p>
-      {% else %}
       <p class="help"><a href="/admin/layouts">レイアウト管理</a>のファイル一覧から shell.html や site.css を編集できます。</p>
-      {% endif %}
     </div>
 
-    {% if is_home %}
-    <input type="hidden" name="url_path" value="/">
-    <div class="field">
-      <label for="url_path_display">URL</label>
-      <input id="url_path_display" type="text" value="/" disabled>
-      <p class="help">トップページの URL は <code>/</code> 固定です。</p>
-    </div>
-    {% else %}
     <div class="field">
       <label for="url_path">URL</label>
       <input id="url_path" name="url_path" type="text" value="{{ url_path }}" placeholder="/about">
-      <p class="help">公開する URL（例: <code>/about</code>）。空のままだと下書きとして保存します。</p>
+      <p class="help">公開する URL（例: <code>/about</code>）。<code>/</code> を指定するとトップページになります。既に別ページが <code>/</code> の場合は先にその URL を変更してください。空のままだと下書きとして保存します。</p>
     </div>
-    {% endif %}
 
     <div class="field">
       <div class="checkbox">
         <input id="is_published" name="is_published" type="checkbox" value="1"{% if is_published %} checked{% endif %}>
         <label for="is_published">公開する</label>
       </div>
-      {% if is_home %}
-      <p class="help">オフにすると <code>/</code> は 404 になります（削除はできません）。</p>
-      {% else %}
-      <p class="help">公開するには URL の指定が必要です。</p>
-      {% endif %}
+      <p class="help">公開するには URL の指定が必要です。トップページ（<code>/</code>）を非公開にすると <code>/</code> は 404 になります。</p>
     </div>
 
     <div class="actions">
@@ -77,7 +59,7 @@
   </aside>
 </form>
 
-{% if is_edit && !is_home %}
+{% if is_edit %}
 <form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="このページを削除しますか？">
   <button class="button danger" type="submit">削除する</button>
 </form>

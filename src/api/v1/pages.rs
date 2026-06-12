@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::error::{ApiError, ApiResult};
 use crate::models::page::{Page, PageInput};
 use crate::repos::layouts;
-use crate::routes::url::normalize_url_path;
+use crate::routes::url::{is_reserved_path, normalize_url_path};
 use crate::services;
 use crate::state::AppState;
 use crate::theme;
@@ -69,6 +69,14 @@ async fn create(
 ) -> ApiResult<Json<Page>> {
     let url_path = payload.url_path.as_deref().and_then(normalize_url_path);
 
+    if let Some(path) = url_path.as_deref()
+        && is_reserved_path(path)
+    {
+        return Err(ApiError::Validation(format!(
+            "URL「{path}」はシステムで予約されているため使用できません"
+        )));
+    }
+
     if payload.is_published && url_path.is_none() {
         return Err(ApiError::Validation(
             "公開するには url_path を指定してください".into(),
@@ -77,7 +85,7 @@ async fn create(
 
     let layout_id = match payload.layout_id {
         Some(id) => id,
-        None => layouts::find_default(&state.pool()).await?.id,
+        None => layouts::find_bootstrap_layout(&state.pool()).await?.id,
     };
 
     let input = PageInput {
@@ -101,13 +109,23 @@ async fn update(
 ) -> ApiResult<Json<Page>> {
     let current = services::pages::find(&state.pool(), id).await?;
 
+    let url_path = payload
+        .url_path
+        .as_deref()
+        .map(|s| normalize_url_path(s))
+        .unwrap_or(current.url_path);
+
+    if let Some(path) = url_path.as_deref()
+        && is_reserved_path(path)
+    {
+        return Err(ApiError::Validation(format!(
+            "URL「{path}」はシステムで予約されているため使用できません"
+        )));
+    }
+
     let input = PageInput {
         name: payload.name.unwrap_or(current.name),
-        url_path: payload
-            .url_path
-            .as_deref()
-            .map(|s| normalize_url_path(s))
-            .unwrap_or(current.url_path),
+        url_path,
         content: payload.content.unwrap_or_else(|| {
             theme::read_page_body(
                 &state.config.paths.work_dir,

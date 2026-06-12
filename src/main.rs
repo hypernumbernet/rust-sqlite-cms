@@ -66,7 +66,7 @@ async fn main() -> AppResult<()> {
     }
 
     theme::ensure_seeded(&config.paths.work_dir)?;
-    layouts::find_default(&pool).await?;
+    layouts::find_bootstrap_layout(&pool).await?;
     media::ensure_uploads_dir(&config.paths.uploads_dir)?;
     pages::ensure_index_page(&pool).await?;
     tracing::info!("作業ディレクトリを初期化しました");

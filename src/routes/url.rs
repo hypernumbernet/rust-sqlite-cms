@@ -16,10 +16,10 @@ pub fn normalize_url_path(raw: &str) -> Option<String> {
     Some(path)
 }
 
-/// システム（公開トップ・管理画面）が使用する予約済みパスかどうか。
+/// システム（管理画面・静的配信）が使用する予約済みパスかどうか。
+/// `/` はページ URL として使用可能。
 pub fn is_reserved_path(path: &str) -> bool {
-    path == "/"
-        || path == "/admin"
+    path == "/admin"
         || path.starts_with("/admin/")
         || path == "/static"
         || path.starts_with("/static/")

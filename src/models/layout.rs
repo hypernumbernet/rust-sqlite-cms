@@ -13,8 +13,6 @@ pub struct LayoutExportManifest {
 pub struct LayoutExportMeta {
     pub key: String,
     pub name: String,
-    #[serde(default)]
-    pub is_default: bool,
 }
 
 /// manifest 内のページメタ情報（本文は ZIP 内ファイル）。
@@ -51,7 +49,6 @@ pub struct Layout {
     pub id: i64,
     pub key: String,
     pub name: String,
-    pub is_default: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -61,5 +58,4 @@ pub struct Layout {
 pub struct LayoutInput {
     pub key: String,
     pub name: String,
-    pub is_default: bool,
 }

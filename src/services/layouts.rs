@@ -60,9 +60,11 @@ pub async fn find(pool: &SqlitePool, id: i64) -> DomainResult<Layout> {
     layouts_repo::find(pool, id).await.map_err(Into::into)
 }
 
-/// 既定レイアウトを取得。
-pub async fn find_default(pool: &SqlitePool) -> DomainResult<Layout> {
-    layouts_repo::find_default(pool).await.map_err(Into::into)
+/// 初回トップページ作成や新規ページの初期レイアウトに使うレイアウトを取得。
+pub async fn find_bootstrap_layout(pool: &SqlitePool) -> DomainResult<Layout> {
+    layouts_repo::find_bootstrap_layout(pool)
+        .await
+        .map_err(Into::into)
 }
 
 /// 管理画面からの新規作成（既定 shell + site.css）。
@@ -296,10 +298,6 @@ pub fn default_static_text_files_for_create() -> HashMap<String, String> {
 pub async fn delete_layout(pool: &SqlitePool, config: &AppConfig, id: i64) -> DomainResult<()> {
     let layout = layouts_repo::find(pool, id).await?;
 
-    if layout.is_default {
-        return Err(AppError::Conflict("既定レイアウトは削除できません".to_string()).into());
-    }
-
     let count = layouts_repo::count_pages(pool, id).await?;
     if count > 0 {
         return Err(AppError::Conflict(format!(
@@ -362,7 +360,6 @@ pub async fn export_layout_zip(
         layout: LayoutExportMeta {
             key: layout.key.clone(),
             name: layout.name.clone(),
-            is_default: layout.is_default,
         },
         pages: pages
             .iter()
@@ -473,7 +470,6 @@ pub async fn import_layout_zip(
         let input = LayoutInput {
             key: layout.key.clone(),
             name: manifest.layout.name.trim().to_string(),
-            is_default: layout.is_default,
         };
         update_layout_meta(pool, config, layout.id, &input).await?;
         apply_layout_package(pool, config, layout.id, &layout_key, &manifest, &zip_files).await?;
@@ -482,7 +478,6 @@ pub async fn import_layout_zip(
         let input = LayoutInput {
             key: layout_key.clone(),
             name: manifest.layout.name.trim().to_string(),
-            is_default: false,
         };
         validate_layout_key(&input.key)?;
         let id = layouts_repo::insert(pool, &input).await?;

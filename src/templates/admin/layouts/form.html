@@ -141,33 +141,7 @@
         <input id="is_default" name="is_default" type="checkbox" value="1"{% if is_default %} checked{% endif %}>
         <label for="is_default">既定レイアウトにする</label>
       </div>
-    </div>
-    <div class="field">
-      <label>Favicon</label>
-      <input type="hidden" name="favicon_media_id" id="favicon_media_id" value="{{ favicon_media_id_value }}">
-      <div class="favicon-picker-preview" id="favicon-preview" aria-live="polite">
-        {% match favicon_selected %}
-        {% when Some with (sel) %}
-        {% if sel.show_preview %}
-        <img src="{{ sel.public_url }}" alt="">
-        {% endif %}
-        <div class="meta">
-          <strong>{{ sel.title }}</strong>
-          <span>ID {{ sel.id }}</span>
-        </div>
-        {% when None %}
-        <span class="favicon-picker-empty">未設定</span>
-        {% endmatch %}
-      </div>
-      <div class="favicon-picker-actions">
-        <button type="button" class="button secondary" id="favicon-open-btn"{% if !has_media %} disabled{% endif %}>メディアを選択…</button>
-        <button type="button" class="button secondary" id="favicon-clear-btn"{% if favicon_selected.is_none() %} disabled{% endif %}>クリア</button>
-      </div>
-      {% if !has_media %}
-      <p class="help" style="margin-top:8px">画像がありません。<a href="/admin/media">メディア</a> 画面から先にアップロードしてください。</p>
-      {% else %}
-      <p class="help" style="margin-top:8px">PNG / WebP / ICO など。既定レイアウトの favicon は <code>/favicon.ico</code> でも配信されます。</p>
-      {% endif %}
+      <p class="help">初回起動時のトップページ作成時のレイアウト、新規ページ追加時の初期選択に使われます。既存トップページ（<code>/</code>）の表示内容やレイアウトは自動では切り替わりません。favicon は <a href="/admin/media">メディア</a> で公開 URL を <code>/favicon.ico</code> に設定してください。</p>
     </div>
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
@@ -180,38 +154,6 @@
 <form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="このレイアウトを削除しますか？">
   <button class="button danger" type="submit">削除する</button>
 </form>
-{% endif %}
-
-{% if has_media %}
-<dialog id="favicon-dialog" class="media-picker-dialog">
-  <div class="media-picker-dialog-inner">
-    <div class="media-picker-dialog-header">
-      <h2>Favicon を選択</h2>
-      <button type="button" class="button secondary" id="favicon-dialog-close">閉じる</button>
-    </div>
-    <div class="media-picker-dialog-body">
-      <div class="media-picker-grid" id="favicon-picker-grid">
-        {% for item in media_picker_items %}
-        <button
-          type="button"
-          class="media-picker-item"
-          data-media-id="{{ item.id }}"
-          data-title="{{ item.title }}"
-          data-public-url="{{ item.public_url }}"
-          data-show-preview="{% if item.show_preview %}1{% else %}0{% endif %}"
-        >
-          {% if item.show_preview %}
-          <img src="{{ item.public_url }}" alt="">
-          {% else %}
-          <span class="filename">{{ item.title }}</span>
-          {% endif %}
-          <span class="label">{{ item.title }}</span>
-        </button>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
-</dialog>
 {% endif %}
 
 {% if !error_message.is_empty() %}

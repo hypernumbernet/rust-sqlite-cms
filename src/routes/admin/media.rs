@@ -1,15 +1,17 @@
 use askama::Template;
 use axum::{
-    Router,
+    Form, Router,
     extract::{Multipart, Path, State},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use serde::Deserialize;
 
 use crate::error::{AppError, AppResult};
 use crate::media::{self, format_file_size};
 use crate::models::media::MediaInput;
 use crate::repos::media as media_repo;
+use crate::services;
 use crate::state::AppState;
 
 use super::{auth::AuthUser, layout};
@@ -23,6 +25,11 @@ struct MediaListItem {
     updated_at: String,
     public_url: String,
     is_image: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct PublicUrlForm {
+    public_url: String,
 }
 
 #[derive(Template)]
@@ -39,6 +46,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/media", get(index))
         .route("/admin/media/upload", post(upload))
+        .route("/admin/media/{id}/public-url", post(update_public_url))
         .route("/admin/media/{id}/delete", post(delete))
 }
 
@@ -84,6 +92,31 @@ async fn upload(
 
     let html = render_index(&auth, &state, "ファイルが選択されていません", "").await?;
     Ok(Html(html).into_response())
+}
+
+async fn update_public_url(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Form(form): Form<PublicUrlForm>,
+) -> AppResult<Response> {
+    match services::media::update_public_url(&state.pool(), id, &form.public_url).await {
+        Ok(()) => {
+            let html = render_index(
+                &auth,
+                &state,
+                "",
+                "公開 URL を更新しました",
+            )
+            .await?;
+            Ok(Html(html).into_response())
+        }
+        Err(AppError::Conflict(message)) => {
+            let html = render_index(&auth, &state, &message, "").await?;
+            Ok(Html(html).into_response())
+        }
+        Err(err) => Err(err),
+    }
 }
 
 async fn delete(
@@ -136,7 +169,7 @@ async fn render_index(
             mime_type: item.mime_type.clone().unwrap_or_default(),
             file_size_label: format_file_size(item.file_size_bytes()),
             updated_at: super::format_updated_at(&item.updated_at),
-            public_url: item.public_url(),
+            public_url: item.resolved_public_url(),
             is_image: item.is_image(),
         })
         .collect::<Vec<_>>();

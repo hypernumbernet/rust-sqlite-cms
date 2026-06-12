@@ -1,0 +1,11 @@
+{% extends "corporate/shell.html" %}
+{% block title %}お問い合わせ - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container" style="max-width:720px;padding:64px 0">
+      <h1>お問い合わせ</h1>
+      <p class="lead">ご質問・ご相談は以下のフォームよりお送りください。担当者より折り返しご連絡いたします。</p>
+      {{ corporate_contact_html | safe }}
+    </div>
+  </section>
+{% endblock %}

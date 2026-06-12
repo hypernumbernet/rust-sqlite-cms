@@ -11,7 +11,7 @@ use sqlx::SqlitePool;
 
 use crate::error::{AppError, AppResult};
 use crate::models::layout::{LayoutImportMode, LayoutInput};
-use crate::repos::{layouts as layouts_repo, media as media_repo};
+use crate::repos::layouts as layouts_repo;
 use crate::services::{self, layouts::LayoutAdminFile};
 use crate::state::AppState;
 use crate::theme;
@@ -24,8 +24,6 @@ struct LayoutForm {
     name: String,
     #[serde(default)]
     is_default: Option<String>,
-    #[serde(default)]
-    favicon_media_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,22 +67,6 @@ struct LayoutListItem {
     can_delete: bool,
 }
 
-#[derive(Debug, Clone)]
-struct FaviconPreview {
-    id: i64,
-    title: String,
-    public_url: String,
-    show_preview: bool,
-}
-
-#[derive(Debug, Clone)]
-struct MediaPickerItem {
-    id: i64,
-    title: String,
-    public_url: String,
-    show_preview: bool,
-}
-
 /// レイアウト編集画面のファイル一覧行。
 #[derive(Debug, Clone)]
 struct LayoutFileRow {
@@ -111,8 +93,8 @@ struct FileEditView {
 }
 
 const SHELL_HELP: &str = "共通の head / nav / footer。ページ本文は block content に差し込まれます。\
-    静的ファイルは /static/ レイアウトkey/ を参照できます。favicon はレイアウト設定の \
-    favicon_url で反映されます。";
+    静的ファイルは /static/ レイアウトkey/ を参照できます。favicon は \
+    <a href=\"/admin/media\">メディア</a> で公開 URL を /favicon.ico に設定してください。";
 
 const NEW_STATIC_HELP: &str = "static/ からの相対パス（例: site.css, js/app.js）を下のパス欄に入力してください。\
     css / js / svg / json / txt / map のみ作成できます。";
@@ -146,10 +128,6 @@ struct LayoutFormTemplate {
     layout_id: i64,
     upload_action: String,
     new_file_url: String,
-    favicon_media_id_value: String,
-    favicon_selected: Option<FaviconPreview>,
-    media_picker_items: Vec<MediaPickerItem>,
-    has_media: bool,
     is_edit: bool,
     key_readonly: bool,
     delete_action: String,
@@ -341,7 +319,6 @@ async fn new_form(auth: AuthUser, State(state): State<AppState>) -> AppResult<im
         false,
         Vec::new(),
         0,
-        None,
         false,
         false,
         "",
@@ -413,7 +390,6 @@ async fn edit(
         row.is_default,
         layout_files,
         id,
-        row.favicon_media_id,
         true,
         true,
         &query.error,
@@ -706,7 +682,7 @@ async fn destroy(State(state): State<AppState>, AxumPath(id): AxumPath<i64>) -> 
 }
 
 async fn build_layout_form(
-    pool: &SqlitePool,
+    _pool: &SqlitePool,
     layout: admin_layout::AdminLayoutCtx,
     heading: &str,
     action: &str,
@@ -716,17 +692,11 @@ async fn build_layout_form(
     is_default: bool,
     layout_files: Vec<LayoutFileRow>,
     layout_id: i64,
-    favicon_media_id: Option<i64>,
     is_edit: bool,
     key_readonly: bool,
     error_message: &str,
     delete_action: &str,
 ) -> AppResult<LayoutFormTemplate> {
-    let favicon_media_id_value = favicon_media_id.map(|id| id.to_string()).unwrap_or_default();
-    let (media_picker_items, has_media) = load_favicon_media_picker_items(pool).await?;
-    let favicon_selected =
-        resolve_favicon_preview(pool, favicon_media_id, &media_picker_items).await?;
-
     let upload_action = if is_edit {
         format!("/admin/layouts/{layout_id}/static/upload")
     } else {
@@ -750,10 +720,6 @@ async fn build_layout_form(
         layout_id,
         upload_action,
         new_file_url,
-        favicon_media_id_value,
-        favicon_selected,
-        media_picker_items,
-        has_media,
         is_edit,
         key_readonly,
         delete_action: delete_action.to_string(),
@@ -789,7 +755,6 @@ async fn layout_error_response(
         )
     };
 
-    let favicon_media_id = parse_favicon_media_id(&form.favicon_media_id).ok().flatten();
     let layout_files = if is_edit {
         let row = layouts_repo::find(pool, layout_id).await?;
         load_layout_file_rows(work_dir, layout_id, &row.key)
@@ -808,7 +773,6 @@ async fn layout_error_response(
         form.is_default.is_some(),
         layout_files,
         layout_id,
-        favicon_media_id,
         is_edit,
         is_edit,
         &message,
@@ -879,57 +843,6 @@ fn build_file_edit_template(auth: &AuthUser, view: FileEditView) -> LayoutFileEd
     }
 }
 
-async fn load_favicon_media_picker_items(
-    pool: &SqlitePool,
-) -> AppResult<(Vec<MediaPickerItem>, bool)> {
-    let items = media_repo::list_all(pool)
-        .await?
-        .into_iter()
-        .filter(|item| item.is_favicon_suitable())
-        .map(|item| {
-            let title = item.title.clone();
-            MediaPickerItem {
-                id: item.id,
-                title,
-                public_url: item.public_url(),
-                show_preview: item.is_image(),
-            }
-        })
-        .collect::<Vec<_>>();
-    let has_media = !items.is_empty();
-    Ok((items, has_media))
-}
-
-async fn resolve_favicon_preview(
-    pool: &SqlitePool,
-    favicon_media_id: Option<i64>,
-    picker_items: &[MediaPickerItem],
-) -> AppResult<Option<FaviconPreview>> {
-    let Some(id) = favicon_media_id else {
-        return Ok(None);
-    };
-    if let Some(item) = picker_items.iter().find(|i| i.id == id) {
-        return Ok(Some(FaviconPreview {
-            id: item.id,
-            title: item.title.clone(),
-            public_url: item.public_url.clone(),
-            show_preview: item.show_preview,
-        }));
-    }
-    if let Ok(media) = media_repo::find(pool, id).await {
-        if media.is_favicon_suitable() {
-            let title = media.title.clone();
-            return Ok(Some(FaviconPreview {
-                id: media.id,
-                title,
-                public_url: media.public_url(),
-                show_preview: media.is_image(),
-            }));
-        }
-    }
-    Ok(None)
-}
-
 impl LayoutForm {
     fn into_input(&self) -> Result<LayoutInput, String> {
         let key = self.key.trim().to_string();
@@ -937,23 +850,10 @@ impl LayoutForm {
         if key.is_empty() || name.is_empty() {
             return Err("key と名前は必須です".to_string());
         }
-        let favicon_media_id = parse_favicon_media_id(&self.favicon_media_id)?;
         Ok(LayoutInput {
             key,
             name,
             is_default: self.is_default.is_some(),
-            favicon_media_id,
         })
     }
-}
-
-fn parse_favicon_media_id(raw: &str) -> Result<Option<i64>, String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Ok(None);
-    }
-    trimmed
-        .parse::<i64>()
-        .map(Some)
-        .map_err(|_| "favicon のメディア ID が不正です".to_string())
 }

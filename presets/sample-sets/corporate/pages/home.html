@@ -1,0 +1,68 @@
+{% extends "corporate/shell.html" %}
+{% block title %}ホーム - {{ blogname }}{% endblock %}
+{% block content %}
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <div class="eyebrow">Corporate Website</div>
+          <h1>地域と企業の成長を支える、信頼できるデジタルパートナー。</h1>
+          <p class="lead">{{ blogdescription }}</p>
+          <a class="button" href="/corporate/news">最新のお知らせを見る</a>
+        </div>
+        <div class="hero-card">
+          <h2>お知らせをすばやく更新</h2>
+          <p>管理画面から投稿を作成・公開すると、トップページやお知らせページに自動で反映されます。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="hero-visual">
+      <div class="container">
+        {{ corporate_hero_html | safe }}
+      </div>
+    </section>
+
+    <section id="carousel" class="carousel-section">
+      <div class="container">
+        {{ corporate_main_carousel_html | safe }}
+      </div>
+    </section>
+
+    <section id="services">
+      <div class="container">
+        <h2 class="section-title">事業内容</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>Web サイト制作</h3>
+            <p>企業のブランドや採用活動に合わせた、見やすく更新しやすいサイトを設計します。</p>
+          </article>
+          <article class="card">
+            <h3>業務システム開発</h3>
+            <p>日々の業務に合わせた小さな改善から、基幹業務の効率化まで支援します。</p>
+          </article>
+          <article class="card">
+            <h3>運用サポート</h3>
+            <p>公開後の改善、保守、コンテンツ更新まで継続的に伴走します。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="news">
+      <div class="container">
+        <h2 class="section-title">お知らせ</h2>
+        <div class="news-list">
+          {{ corporate_news_html | safe }}
+        </div>
+      </div>
+    </section>
+
+    <section id="company">
+      <div class="container">
+        <h2 class="section-title">会社概要</h2>
+        <div class="profile">
+          <p>サンプル株式会社は、中小企業の情報発信と業務改善を支援する架空の企業です。本サンプルでは、コーポレートサイトに必要なページ構成とウィジェットの使い方を体験できます。</p>
+        </div>
+      </div>
+    </section>
+{% endblock %}

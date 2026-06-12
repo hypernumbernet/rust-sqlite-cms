@@ -15,9 +15,7 @@ use crate::models::layout::{
 };
 use crate::models::page::PageInput;
 use crate::presets;
-use crate::repos::{
-    layouts as layouts_repo, media as media_repo, pages as pages_repo, url_paths,
-};
+use crate::repos::{layouts as layouts_repo, pages as pages_repo, url_paths};
 use crate::theme::{self, StaticFileEntry, StaticFileKind};
 
 /// 管理画面のレイアウトファイル一覧行。
@@ -92,7 +90,6 @@ pub async fn create_layout(
     static_text_files: &HashMap<String, String>,
 ) -> DomainResult<i64> {
     validate_layout_key(&input.key)?;
-    validate_favicon_media(pool, input.favicon_media_id).await?;
 
     if layouts_repo::find_by_key(pool, &input.key).await?.is_some() {
         return Err(AppError::Conflict(format!(
@@ -118,7 +115,6 @@ pub async fn update_layout_meta(
     input: &LayoutInput,
 ) -> DomainResult<()> {
     validate_layout_key(&input.key)?;
-    validate_favicon_media(pool, input.favicon_media_id).await?;
 
     let current = layouts_repo::find(pool, id).await?;
     if current.key != input.key {
@@ -318,33 +314,6 @@ pub async fn delete_layout(pool: &SqlitePool, config: &AppConfig, id: i64) -> Do
     Ok(())
 }
 
-/// レイアウトに設定された favicon の公開 URL。未設定・無効参照は `None`。
-pub async fn favicon_url_for_layout(pool: &SqlitePool, layout_id: i64) -> Option<String> {
-    let layout = layouts_repo::find(pool, layout_id).await.ok()?;
-    let media_id = layout.favicon_media_id?;
-    let media = media_repo::find(pool, media_id).await.ok()?;
-    if media.is_favicon_suitable() {
-        Some(media.public_url())
-    } else {
-        None
-    }
-}
-
-async fn validate_favicon_media(pool: &SqlitePool, media_id: Option<i64>) -> DomainResult<()> {
-    let Some(id) = media_id else {
-        return Ok(());
-    };
-    let media = media_repo::find(pool, id).await?;
-    if media.is_favicon_suitable() {
-        Ok(())
-    } else {
-        Err(AppError::Conflict(
-            "favicon には画像または .ico 形式のメディアを選択してください".into(),
-        )
-        .into())
-    }
-}
-
 fn static_entry_to_admin_file(entry: &StaticFileEntry) -> LayoutAdminFile {
     LayoutAdminFile {
         display_path: format!("static/{}", entry.relative_path),
@@ -394,7 +363,6 @@ pub async fn export_layout_zip(
             key: layout.key.clone(),
             name: layout.name.clone(),
             is_default: layout.is_default,
-            favicon_media_id: layout.favicon_media_id,
         },
         pages: pages
             .iter()
@@ -501,15 +469,11 @@ pub async fn import_layout_zip(
         url_paths::ensure_url_available(pool, page.url_path.as_deref(), exclude).await?;
     }
 
-    let favicon_media_id =
-        resolve_import_favicon_media_id(pool, manifest.layout.favicon_media_id).await;
-
     let action = if let Some(layout) = existing {
         let input = LayoutInput {
             key: layout.key.clone(),
             name: manifest.layout.name.trim().to_string(),
             is_default: layout.is_default,
-            favicon_media_id,
         };
         update_layout_meta(pool, config, layout.id, &input).await?;
         apply_layout_package(pool, config, layout.id, &layout_key, &manifest, &zip_files).await?;
@@ -519,7 +483,6 @@ pub async fn import_layout_zip(
             key: layout_key.clone(),
             name: manifest.layout.name.trim().to_string(),
             is_default: false,
-            favicon_media_id,
         };
         validate_layout_key(&input.key)?;
         let id = layouts_repo::insert(pool, &input).await?;
@@ -805,20 +768,6 @@ fn rewrite_layout_key_in_text(bytes: &[u8], source_key: &str, target_key: &str) 
             &format!("/static/{target_key}/"),
         )
         .into_bytes()
-}
-
-async fn resolve_import_favicon_media_id(
-    pool: &SqlitePool,
-    media_id: Option<i64>,
-) -> Option<i64> {
-    let Some(id) = media_id else {
-        return None;
-    };
-    if validate_favicon_media(pool, Some(id)).await.is_ok() {
-        Some(id)
-    } else {
-        None
-    }
 }
 
 fn write_zip_entry(

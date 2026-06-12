@@ -7,8 +7,8 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::dev::reset::{perform_basic_append, perform_basic_reset};
 use crate::error::{AppError, AppResult};
+use crate::samples::{self, InstallResult, SampleLayoutSetMeta, SampleTableSetMeta};
 use crate::state::AppState;
 
 use super::{auth::AuthUser, layout};
@@ -17,34 +17,38 @@ use super::{auth::AuthUser, layout};
 #[template(path = "admin/samples/index.html")]
 struct SamplesTemplate {
     layout: layout::AdminLayoutCtx,
+    layout_sets: Vec<SampleLayoutSetMeta>,
+    table_sets: Vec<SampleTableSetMeta>,
     message: String,
     error_message: String,
-    last_result: Option<ResetSummary>,
-    show_restart_notice: bool,
-    result_heading: String,
+    last_result: Option<InstallSummary>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ResetSummary {
+pub struct InstallSummary {
+    pub result_kind: String,
     pub message: String,
+    pub layout_key: String,
+    pub preview_path: String,
     pub placeholders_count: i64,
     pub posts_count: i64,
     pub media_count: i64,
     pub pages_count: i64,
+    pub tables_count: i64,
+    pub views_count: i64,
+    pub rows_count: i64,
 }
 
 #[derive(Debug, Deserialize)]
 struct SampleForm {
-    /// 将来的にどのサンプルを適用するかを選択できるようにする
     #[serde(default)]
     sample: String,
-    /// reset: 全体リセット / append: 既存データに追加
-    #[serde(default = "default_action_reset")]
+    #[serde(default = "default_action_install")]
     action: String,
 }
 
-fn default_action_reset() -> String {
-    "reset".to_string()
+fn default_action_install() -> String {
+    "install".to_string()
 }
 
 pub fn router() -> Router<AppState> {
@@ -52,16 +56,26 @@ pub fn router() -> Router<AppState> {
         .route("/admin/samples", get(show).post(apply))
 }
 
-async fn show(auth: AuthUser, State(_state): State<AppState>) -> AppResult<impl IntoResponse> {
-    let html = SamplesTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
-        message: String::new(),
-        error_message: String::new(),
-        last_result: None,
-        show_restart_notice: false,
-        result_heading: String::new(),
+fn render_template(
+    auth: &AuthUser,
+    message: String,
+    error_message: String,
+    last_result: Option<InstallSummary>,
+) -> AppResult<String> {
+    SamplesTemplate {
+        layout: layout::AdminLayoutCtx::new(auth),
+        layout_sets: samples::SAMPLE_LAYOUT_SETS.to_vec(),
+        table_sets: samples::SAMPLE_TABLE_SETS.to_vec(),
+        message,
+        error_message,
+        last_result,
     }
-    .render()?;
+    .render()
+    .map_err(Into::into)
+}
+
+async fn show(auth: AuthUser, State(_state): State<AppState>) -> AppResult<impl IntoResponse> {
+    let html = render_template(&auth, String::new(), String::new(), None)?;
     Ok(Html(html))
 }
 
@@ -70,82 +84,95 @@ async fn apply(
     State(state): State<AppState>,
     Form(form): Form<SampleForm>,
 ) -> AppResult<Response> {
-    let _sample_key = if form.sample.is_empty() {
-        "basic"
-    } else {
-        form.sample.as_str()
-    };
+    if form.action != "install" {
+        let html = render_template(
+            &auth,
+            String::new(),
+            "不明な操作です。".to_string(),
+            None,
+        )?;
+        return Ok(Html(html).into_response());
+    }
 
-    let is_append = form.action == "append";
+    if form.sample.is_empty() {
+        let html = render_template(
+            &auth,
+            String::new(),
+            "サンプルセットが指定されていません。".to_string(),
+            None,
+        )?;
+        return Ok(Html(html).into_response());
+    }
 
-    let result = if is_append {
-        perform_basic_append(&state).await
-    } else {
-        perform_basic_reset(&state).await
-    };
-
-    match result {
+    match samples::install_sample_set(&state, &form.sample).await {
         Ok(result) => {
-            let summary = ResetSummary {
-                message: result.message,
-                placeholders_count: result.placeholders_count,
-                posts_count: result.posts_count,
-                media_count: result.media_count,
-                pages_count: result.pages_count,
-            };
-
-            let (message, result_heading, show_restart_notice) = if is_append {
-                (
-                    "サンプルデータの追加が完了しました。".to_string(),
-                    "追加完了".to_string(),
-                    false,
-                )
-            } else {
-                (
-                    "リセットが完了しました。".to_string(),
-                    "リセット完了".to_string(),
-                    false,
-                )
-            };
-
-            let html = SamplesTemplate {
-                layout: layout::AdminLayoutCtx::new(&auth),
-                message,
-                error_message: String::new(),
-                last_result: Some(summary),
-                show_restart_notice,
-                result_heading,
-            }
-            .render()?;
-
+            let (success_message, summary) = summary_from_result(&result);
+            let html = render_template(&auth, success_message, String::new(), Some(summary))?;
             Ok(Html(html).into_response())
         }
         Err(AppError::Conflict(msg)) => {
             let error_message = msg.strip_prefix("conflict: ").unwrap_or(&msg).to_string();
-
-            let html = SamplesTemplate {
-                layout: layout::AdminLayoutCtx::new(&auth),
-                message: String::new(),
-                error_message,
-                last_result: None,
-                show_restart_notice: false,
-                result_heading: String::new(),
-            }
-            .render()?;
+            let html = render_template(&auth, String::new(), error_message, None)?;
             Ok(Html(html).into_response())
         }
         Err(e) => {
-            let label = if is_append { "追加" } else { "リセット" };
-            let html = SamplesTemplate {
-                layout: layout::AdminLayoutCtx::new(&auth),
-                message: String::new(),
-                error_message: format!("{}中にエラーが発生しました: {}", label, e),
-                last_result: None,
-                show_restart_notice: false,
-                result_heading: String::new(),
-            }
-            .render()?;
+            let html = render_template(
+                &auth,
+                String::new(),
+                format!("インストール中にエラーが発生しました: {e}"),
+                None,
+            )?;
             Ok(Html(html).into_response())
         }
+    }
+}
+
+fn summary_from_result(result: &InstallResult) -> (String, InstallSummary) {
+    match result {
+        InstallResult::Layout {
+            message,
+            layout_key,
+            preview_path,
+            placeholders_count,
+            posts_count,
+            media_count,
+            pages_count,
+        } => (
+            "サンプルレイアウトセットのインストールが完了しました。".to_string(),
+            InstallSummary {
+                result_kind: "layout".to_string(),
+                message: message.clone(),
+                layout_key: layout_key.clone(),
+                preview_path: preview_path.clone(),
+                placeholders_count: *placeholders_count,
+                posts_count: *posts_count,
+                media_count: *media_count,
+                pages_count: *pages_count,
+                tables_count: 0,
+                views_count: 0,
+                rows_count: 0,
+            },
+        ),
+        InstallResult::Tables {
+            message,
+            tables_count,
+            views_count,
+            rows_count,
+        } => (
+            "DBテーブルセットのインストールが完了しました。".to_string(),
+            InstallSummary {
+                result_kind: "tables".to_string(),
+                message: message.clone(),
+                layout_key: String::new(),
+                preview_path: String::new(),
+                placeholders_count: 0,
+                posts_count: 0,
+                media_count: 0,
+                pages_count: 0,
+                tables_count: *tables_count,
+                views_count: *views_count,
+                rows_count: *rows_count,
+            },
+        ),
     }
 }

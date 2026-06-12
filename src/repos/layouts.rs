@@ -6,7 +6,7 @@ use crate::models::layout::{Layout, LayoutInput};
 /// 全レイアウトを key 順で取得する。
 pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Layout>> {
     Ok(sqlx::query_as::<_, Layout>(
-        "SELECT id, key, name, is_default, favicon_media_id, created_at, updated_at
+        "SELECT id, key, name, is_default, created_at, updated_at
          FROM layouts
          ORDER BY is_default DESC, key ASC",
     )
@@ -17,7 +17,7 @@ pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Layout>> {
 /// ID で取得する。
 pub async fn find(pool: &SqlitePool, id: i64) -> AppResult<Layout> {
     sqlx::query_as::<_, Layout>(
-        "SELECT id, key, name, is_default, favicon_media_id, created_at, updated_at
+        "SELECT id, key, name, is_default, created_at, updated_at
          FROM layouts
          WHERE id = ?",
     )
@@ -40,7 +40,7 @@ pub async fn find_key_by_id(pool: &SqlitePool, id: i64) -> AppResult<String> {
 /// key で取得する。
 pub async fn find_by_key(pool: &SqlitePool, key: &str) -> AppResult<Option<Layout>> {
     Ok(sqlx::query_as::<_, Layout>(
-        "SELECT id, key, name, is_default, favicon_media_id, created_at, updated_at
+        "SELECT id, key, name, is_default, created_at, updated_at
          FROM layouts
          WHERE key = ?",
     )
@@ -52,7 +52,7 @@ pub async fn find_by_key(pool: &SqlitePool, key: &str) -> AppResult<Option<Layou
 /// 既定レイアウトを取得する。
 pub async fn find_default(pool: &SqlitePool) -> AppResult<Layout> {
     sqlx::query_as::<_, Layout>(
-        "SELECT id, key, name, is_default, favicon_media_id, created_at, updated_at
+        "SELECT id, key, name, is_default, created_at, updated_at
          FROM layouts
          WHERE is_default = 1
          LIMIT 1",
@@ -71,14 +71,13 @@ pub async fn insert(pool: &SqlitePool, input: &LayoutInput) -> AppResult<i64> {
     }
 
     let row: (i64,) = sqlx::query_as(
-        "INSERT INTO layouts (key, name, is_default, favicon_media_id)
-         VALUES (?, ?, ?, ?)
+        "INSERT INTO layouts (key, name, is_default)
+         VALUES (?, ?, ?)
          RETURNING id",
     )
     .bind(&input.key)
     .bind(&input.name)
     .bind(input.is_default)
-    .bind(input.favicon_media_id)
     .fetch_one(pool)
     .await?;
 
@@ -101,14 +100,12 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &LayoutInput) -> AppResul
          SET key = ?,
              name = ?,
              is_default = ?,
-             favicon_media_id = ?,
              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
          WHERE id = ?",
     )
     .bind(&input.key)
     .bind(&input.name)
     .bind(input.is_default)
-    .bind(input.favicon_media_id)
     .bind(id)
     .execute(pool)
     .await?;

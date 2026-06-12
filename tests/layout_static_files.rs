@@ -34,7 +34,6 @@ async fn update_layout_syncs_site_css() {
         key: layout.key.clone(),
         name: layout.name.clone(),
         is_default: layout.is_default,
-        favicon_media_id: layout.favicon_media_id,
     };
 
     let mut static_files = HashMap::new();
@@ -157,7 +156,7 @@ async fn create_layout_seeds_site_css() {
         key: "corp".to_string(),
         name: "Corporate".to_string(),
         is_default: false,
-        favicon_media_id: None,
+
     };
     let static_files = services::layouts::default_static_text_files_for_create();
 

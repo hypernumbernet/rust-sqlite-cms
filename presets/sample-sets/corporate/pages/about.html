@@ -1,0 +1,42 @@
+{% extends "corporate/shell.html" %}
+{% block title %}会社概要 - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container" style="max-width:820px;padding:64px 0">
+      <h1>会社概要</h1>
+      <p class="lead">{{ blogdescription }}</p>
+
+      <article class="about-block">
+        <h2>私たちについて</h2>
+        <p>サンプル株式会社は、地域の中小企業がデジタルで成果を出せるよう、Web サイト制作から業務システム開発、運用サポートまで一貫して支援する架空の企業です。</p>
+      </article>
+
+      <article class="about-block">
+        <h2>事業領域</h2>
+        <ul class="about-list">
+          <li>コーポレートサイト・採用サイトの企画・制作</li>
+          <li>業務アプリケーション・社内ツールの開発</li>
+          <li>コンテンツ更新・保守・改善の伴走支援</li>
+        </ul>
+      </article>
+
+      <article class="about-block">
+        <h2>沿革</h2>
+        <dl class="about-timeline">
+          <dt>2018年</dt>
+          <dd>東京都内で創業。地域企業向け Web 制作を開始</dd>
+          <dt>2021年</dt>
+          <dd>業務システム開発部門を設立</dd>
+          <dt>2024年</dt>
+          <dd>運用サポートサービスを本格展開</dd>
+        </dl>
+      </article>
+
+      <article class="about-block">
+        <h2>所在地</h2>
+        <p>〒100-0001 東京都千代田区千代田 1-1（架空）</p>
+        <p>営業時間: 平日 9:00–18:00</p>
+      </article>
+    </div>
+  </section>
+{% endblock %}

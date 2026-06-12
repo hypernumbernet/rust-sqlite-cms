@@ -2,46 +2,13 @@
 
 {% block title %}サンプル{% endblock %}
 {% block nav_samples %}active{% endblock %}
-{% block heading %}サンプルデータ{% endblock %}
+{% block heading %}サンプル{% endblock %}
 
 {% block content %}
-<div class="panel">
-  <h2>開発用サンプルデータ</h2>
-  <p>管理画面の動作確認や開発に便利なテストデータを投入できます。将来的には複数のサンプルセットを切り替えて適用できるようになります。</p>
-</div>
-
-<div class="panel">
-  <h3>基本テストデータを追加</h3>
-  <div class="callout-info">
-    既存のデータベースと work/ ディレクトリは<strong>そのまま保持</strong>し、基本テストデータを追加します。
-    プレースホルダー名・投稿スラッグ・メディアファイル名のいずれかが既にある場合は、<strong>追加を中止</strong>します（上書きしません）。
-    サーバーの再起動は不要です。
-  </div>
-  <form method="post" action="/admin/samples" data-confirm="基本テストデータを既存データに追加しますか？同名のデータがある場合は追加されません。">
-    <input type="hidden" name="sample" value="basic">
-    <input type="hidden" name="action" value="append">
-    <button type="submit" class="button primary">
-      基本テストデータを追加する
-    </button>
-  </form>
-</div>
-
-<div class="panel-danger panel-danger--spaced">
-  <h3>⚠️ 危険な操作</h3>
-  <div class="callout-warning">
-    <strong>注意：</strong> この操作を実行すると、<strong>現在のデータベースと work/ ディレクトリの中身が完全に削除</strong>されます。
-    公開ページや管理画面で作成したすべてのデータが失われます。サーバーの再起動は不要です。
-  </div>
-
-  <form method="post" action="/admin/samples" data-confirm="本当にすべてのデータを削除して基本テストデータを適用しますか？この操作は元に戻せません。">
-    <input type="hidden" name="sample" value="basic">
-    <input type="hidden" name="action" value="reset">
-    <button type="submit" class="button danger">
-      基本テストデータを適用する（全体リセット）
-    </button>
-    <a href="/admin" class="button secondary ml-12">キャンセル</a>
-  </form>
-</div>
+<section class="welcome">
+  <h2>すぐに使えるサンプル</h2>
+  <p>レイアウトセットと DBテーブルセットを、既存データに影響を与えずに追加できます。同名のデータがある場合は安全のためインストールを中止します。</p>
+</section>
 
 {% if !message.is_empty() %}
 <div class="success">{{ message }}</div>
@@ -52,32 +19,94 @@
 {% endif %}
 
 {% if let Some(result) = last_result %}
-<div class="callout-success callout-success--mt-lg">
-  <h3>{{ result_heading }}</h3>
+<div class="callout-success callout-success--mt-lg sample-install-result">
+  <h3>インストール完了</h3>
   <p><strong>{{ result.message }}</strong></p>
-  <ul>
-    <li>プレースホルダー数: {{ result.placeholders_count }}</li>
-    <li>投稿数: {{ result.posts_count }}</li>
-    <li>メディア数: {{ result.media_count }}</li>
-    <li>ページ数: {{ result.pages_count }}</li>
+  {% if result.result_kind == "layout" %}
+  <ul class="sample-install-stats">
+    <li><span class="kind">レイアウト</span> {{ result.layout_key }}</li>
+    <li><span class="kind">プレースホルダー</span> {{ result.placeholders_count }}</li>
+    <li><span class="kind">投稿</span> {{ result.posts_count }}</li>
+    <li><span class="kind">メディア</span> {{ result.media_count }}</li>
+    <li><span class="kind">ページ</span> {{ result.pages_count }}</li>
   </ul>
-  {% if show_restart_notice %}
-  <p class="text-emphasis-danger">
-    このページを閉じて、サーバーを再起動してください。
+  <p>
+    <a href="{{ result.preview_path }}" target="_blank" rel="noopener" class="button">サンプルサイトを見る</a>
+  </p>
+  {% else %}
+  <ul class="sample-install-stats">
+    <li><span class="kind">テーブル</span> {{ result.tables_count }}</li>
+    <li><span class="kind">ビュー</span> {{ result.views_count }}</li>
+    <li><span class="kind">行数</span> {{ result.rows_count }}</li>
+  </ul>
+  <p>
+    <a href="/admin/database" class="button">DB管理で確認する</a>
   </p>
   {% endif %}
 </div>
 {% endif %}
 
-<div class="panel mt-32">
-  <h3>今後追加予定のサンプル</h3>
-  <ul class="list-muted">
-    <li>最小構成（空の状態）</li>
-    <li>Eコマース風サンプル</li>
-    <li>ブログ特化サンプル</li>
-  </ul>
-  <p class="text-muted">
-    現在は「基本テストデータ」のみ利用可能です。
-  </p>
+<h2 class="sample-section-title">レイアウトセット</h2>
+<div class="card-grid card-grid--wide sample-set-grid">
+  {% for set in layout_sets %}
+  <article class="card--pick sample-set-card">
+    <div class="sample-set-card__head">
+      <h3>{{ set.label }}</h3>
+      <span class="kind">{{ set.layout_key }}</span>
+    </div>
+    <p>{{ set.description }}</p>
+    <div class="sample-set-card__tags">
+      {% for tag in set.tags %}
+      <span class="kind">{{ tag }}</span>
+      {% endfor %}
+    </div>
+    <p class="sample-set-card__preview">
+      プレビュー: <a href="{{ set.preview_path }}" target="_blank" rel="noopener">{{ set.preview_path }}</a>
+    </p>
+    <div class="sample-set-card__actions">
+      <form method="post" action="/admin/samples" data-confirm="「{{ set.label }}」をインストールしますか？同名のデータがある場合は追加されません。">
+        <input type="hidden" name="sample" value="{{ set.key }}">
+        <input type="hidden" name="action" value="install">
+        <button type="submit" class="button">インストール</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+
+<p class="text-muted sample-set-note">サンプルサイトはプレビュー URL（例: <code>/corporate</code>）で公開されます。<code>/</code> のトップページとは別ページです。既定レイアウトの設定は新規ページの初期レイアウトに反映されますが、<code>/</code> の表示先は自動では切り替わりません。</p>
+
+<h2 class="sample-section-title">DBテーブルセット</h2>
+<div class="card-grid card-grid--wide sample-set-grid">
+  {% for set in table_sets %}
+  <article class="card--pick sample-set-card">
+    <div class="sample-set-card__head">
+      <h3>{{ set.label }}</h3>
+      <span class="kind">DB</span>
+    </div>
+    <p>{{ set.description }}</p>
+    <div class="sample-set-card__tags">
+      {% for tag in set.tags %}
+      <span class="kind">{{ tag }}</span>
+      {% endfor %}
+    </div>
+    <p class="sample-set-card__preview">
+      テーブル:
+      {% for name in set.table_names %}
+      <code>{{ name }}</code>{% if !loop.last %}, {% endif %}
+      {% endfor %}
+    </p>
+    <p class="sample-set-card__preview">
+      確認先: <a href="/admin/database">DB管理</a>
+    </p>
+    <div class="sample-set-card__actions">
+      <form method="post" action="/admin/samples" data-confirm="「{{ set.label }}」をインストールしますか？同名のテーブルがある場合は追加されません。">
+        <input type="hidden" name="sample" value="{{ set.key }}">
+        <input type="hidden" name="action" value="install">
+        <button type="submit" class="button">インストール</button>
+      </form>
+    </div>
+  </article>
+  {% endfor %}
 </div>
 {% endblock %}

@@ -745,7 +745,7 @@ async fn build_image_entry_list(state: &AppState, placeholder_id: i64) -> AppRes
         let (thumbnail_url, has_thumbnail) = if let Some(id_str) = media_id.as_deref() {
             if let Ok(media_id) = id_str.parse::<i64>() {
                 if let Ok(item) = media::find(&state.pool(), media_id).await {
-                    (item.public_url(), item.is_image())
+                    (item.resolved_public_url(), item.is_image())
                 } else {
                     (String::new(), false)
                 }
@@ -798,7 +798,7 @@ async fn build_carousel_entry_list(state: &AppState, placeholder_id: i64) -> App
         let (thumbnail_url, has_thumbnail) = if let Some(id_str) = media_id.as_deref() {
             if let Ok(media_id) = id_str.parse::<i64>() {
                 if let Ok(item) = media::find(&state.pool(), media_id).await {
-                    (item.public_url(), item.is_image())
+                    (item.resolved_public_url(), item.is_image())
                 } else {
                     (String::new(), false)
                 }
@@ -874,7 +874,7 @@ async fn image_entry_form_template(
         .map(|item| MediaFormItem {
             id: item.id,
             title: item.title.clone(),
-            public_url: item.public_url(),
+            public_url: item.resolved_public_url(),
             selected: selected_media_id == item.id.to_string(),
         })
         .collect::<Vec<_>>();
@@ -1015,7 +1015,7 @@ async fn carousel_entry_form_template(
         .map(|item| MediaFormItem {
             id: item.id,
             title: item.title.clone(),
-            public_url: item.public_url(),
+            public_url: item.resolved_public_url(),
             selected: selected_media_id == item.id.to_string(),
         })
         .collect::<Vec<_>>();

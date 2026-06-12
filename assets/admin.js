@@ -592,74 +592,6 @@
     });
   }
 
-  function initMediaPicker() {
-    const hidden = document.getElementById('favicon_media_id');
-    const preview = document.getElementById('favicon-preview');
-    const openBtn = document.getElementById('favicon-open-btn');
-    const clearBtn = document.getElementById('favicon-clear-btn');
-    const dialog = document.getElementById('favicon-dialog');
-    const closeBtn = document.getElementById('favicon-dialog-close');
-    const grid = document.getElementById('favicon-picker-grid');
-    if (!hidden || !preview || !openBtn || !clearBtn || !dialog || !closeBtn || !grid) return;
-
-    function updateClearButton() {
-      clearBtn.disabled = !hidden.value;
-    }
-
-    function highlightSelected() {
-      const current = hidden.value;
-      grid.querySelectorAll('.media-picker-item').forEach(function (btn) {
-        btn.classList.toggle('is-selected', btn.dataset.mediaId === current);
-      });
-    }
-
-    function setPreview(id, title, url, showPreview) {
-      hidden.value = id;
-      if (!id) {
-        preview.innerHTML = '<span class="favicon-picker-empty">未設定</span>';
-      } else {
-        const img = showPreview
-          ? '<img src="' + escapeHtml(url) + '" alt="">'
-          : '';
-        preview.innerHTML =
-          img +
-          '<div class="meta"><strong>' + escapeHtml(title) + '</strong>' +
-          '<span>ID ' + escapeHtml(id) + '</span></div>';
-      }
-      updateClearButton();
-      highlightSelected();
-    }
-
-    openBtn.addEventListener('click', function () {
-      highlightSelected();
-      dialog.showModal();
-    });
-
-    closeBtn.addEventListener('click', function () {
-      dialog.close();
-    });
-
-    dialog.addEventListener('click', function (e) {
-      if (e.target === dialog) dialog.close();
-    });
-
-    grid.addEventListener('click', function (e) {
-      const btn = e.target.closest('.media-picker-item');
-      if (!btn) return;
-      setPreview(
-        btn.dataset.mediaId,
-        btn.dataset.title,
-        btn.dataset.publicUrl,
-        btn.dataset.showPreview === '1'
-      );
-      dialog.close();
-    });
-
-    clearBtn.addEventListener('click', function () {
-      setPreview('', '', '', false);
-    });
-  }
-
   function initTableData() {
     const panel = document.getElementById('db-table-data-panel');
     if (!panel) return;
@@ -2896,7 +2828,6 @@
   function initPageModules() {
     initTemplateRepeater();
     initSeedForm();
-    initMediaPicker();
     initTableData();
     initWidgetConfig();
     initDatabaseIndex();

@@ -1,0 +1,69 @@
+{% extends "bicycle/shell.html" %}
+{% block title %}ホーム - {{ blogname }}{% endblock %}
+{% block content %}
+    <section class="hero">
+      <div class="container hero-grid">
+        <div>
+          <div class="eyebrow">Local Bike Shop</div>
+          <h1>街の暮らしを、自転車でもっと楽しく。</h1>
+          <p class="lead">{{ blogdescription }}</p>
+          <a class="button" href="/bicycle/news">最新のお知らせを見る</a>
+        </div>
+        <div class="hero-card">
+          <h2>今日の空気は、走るのにちょうどいい。</h2>
+          <p>新車・中古車の販売から点検・修理、レンタルまで。地域のライダーに寄り添うお店です。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="hero-visual">
+      <div class="container">
+        {{ bicycle_hero_html | safe }}
+      </div>
+    </section>
+
+    <section id="carousel" class="carousel-section">
+      <div class="container">
+        {{ bicycle_main_carousel_html | safe }}
+      </div>
+    </section>
+
+    <section id="services">
+      <div class="container">
+        <h2 class="section-title">お店のサービス</h2>
+        <div class="cards">
+          <article class="card">
+            <h3>自転車販売</h3>
+            <p>街乗りからロード・電動アシストまで、ライフスタイルに合わせてご提案します。</p>
+          </article>
+          <article class="card">
+            <h3>修理・メンテナンス</h3>
+            <p>パンク修理からオーバーホールまで。事前予約でスムーズに対応します。</p>
+          </article>
+          <article class="card">
+            <h3>レンタサイクル</h3>
+            <p>観光やお買い物に。1時間から借りられる気軽なプランをご用意しています。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="news">
+      <div class="container">
+        <h2 class="section-title">お知らせ</h2>
+        <div class="news-list">
+          {{ bicycle_news_html | safe }}
+        </div>
+      </div>
+    </section>
+
+    <section id="shop">
+      <div class="container">
+        <h2 class="section-title">店舗について</h2>
+        <div class="profile">
+          <p>駅前の小路にある小さな自転車屋です。通勤・通学の相談から、週末ライドの楽しみ方まで、顔の見えるお店でお手伝いします。</p>
+          <p><a href="/bicycle/about">店舗紹介を見る</a></p>
+        </div>
+      </div>
+    </section>
+{% endblock %}

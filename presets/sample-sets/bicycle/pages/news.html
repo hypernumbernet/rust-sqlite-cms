@@ -1,0 +1,26 @@
+{% extends "bicycle/shell.html" %}
+{% block title %}お知らせ - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container page-grid">
+      <div class="page-main">
+        <h1>お知らせ</h1>
+        <p class="lead">新車入荷・イベント・営業時間など、お店からの最新情報です。</p>
+        <div class="news-list">
+          {{ bicycle_news_html | safe }}
+        </div>
+
+        <h2 class="section-title section-title--spaced">店舗からのお知らせ</h2>
+        <div class="news-list">
+          {{ bicycle_announcements_html | safe }}
+        </div>
+      </div>
+      <aside class="page-sidebar">
+        <h2 class="sidebar-title">ライドのヒント</h2>
+        <div class="sidebar-list">
+          {{ bicycle_sidebar_html | safe }}
+        </div>
+      </aside>
+    </div>
+  </section>
+{% endblock %}

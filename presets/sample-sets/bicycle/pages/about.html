@@ -1,0 +1,43 @@
+{% extends "bicycle/shell.html" %}
+{% block title %}店舗紹介 - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container" style="max-width:820px;padding:64px 0">
+      <h1>店舗紹介</h1>
+      <p class="lead">{{ blogdescription }}</p>
+
+      <article class="about-block">
+        <h2>ペダルスについて</h2>
+        <p>2015年、駅前の小路に小さな自転車屋として開店しました。通勤や買い物、週末の河川敷ライドまで、街の移動を自転車でもっと楽しくするお手伝いを続けています。</p>
+      </article>
+
+      <article class="about-block">
+        <h2>できること</h2>
+        <ul class="about-list">
+          <li>クロスバイク・ミニベロ・電動アシストの販売・相談</li>
+          <li>パンク修理、ブレーキ調整、オーバーホール</li>
+          <li>日曜グループライド・安全講習会の開催</li>
+          <li>レンタサイクル（要予約）</li>
+        </ul>
+      </article>
+
+      <article class="about-block">
+        <h2>営業時間</h2>
+        <dl class="about-timeline">
+          <dt>平日</dt>
+          <dd>10:00 – 19:00</dd>
+          <dt>土日祝</dt>
+          <dd>9:00 – 18:00</dd>
+          <dt>定休日</dt>
+          <dd>毎週水曜日</dd>
+        </dl>
+      </article>
+
+      <article class="about-block">
+        <h2>アクセス</h2>
+        <p>〒150-0001 東京都渋谷区神宮前 2-14-3 ペダルスビル 1F（架空）</p>
+        <p>最寄り駅から徒歩5分。店前に自転車置き場あり。</p>
+      </article>
+    </div>
+  </section>
+{% endblock %}

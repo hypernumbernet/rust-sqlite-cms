@@ -21,7 +21,6 @@ async fn create_test_layout_with_page(app: &common::TestApp) -> (i64, String) {
         key: "export-src".to_string(),
         name: "エクスポート元".to_string(),
         is_default: false,
-        favicon_media_id: None,
     };
     let layout_id = layouts_service::create_layout_with_defaults(&pool, config, &input)
         .await

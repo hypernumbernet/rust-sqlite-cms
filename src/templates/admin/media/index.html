@@ -6,7 +6,7 @@
 
 {% block extra_styles %}
 <style>
-  .toolbar p { max-width: 560px; }
+  .toolbar p { max-width: 640px; }
   .panel {
     padding: 16px;
     margin-bottom: 16px;
@@ -58,7 +58,11 @@
     word-break: break-all;
   }
   .meta { margin: 0; color: var(--muted); font-size: 12px; }
-  .url-row { display: flex; gap: 6px; }
+  .url-row {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+  }
   .url-row input {
     flex: 1;
     min-width: 0;
@@ -66,8 +70,9 @@
     padding: 6px 8px;
     border: 1px solid var(--border);
     border-radius: 4px;
-    background: #f6f7f7;
+    background: #fff;
   }
+  .url-row button { white-space: nowrap; }
   .ops { display: flex; gap: 8px; margin-top: auto; }
   .ops form { margin: 0; }
 </style>
@@ -75,7 +80,7 @@
 
 {% block content %}
 <div class="toolbar">
-  <p>画像や PDF をアップロードして管理します。公開 URL をコピーしてテンプレートやページから参照できます。</p>
+  <p>画像や PDF をアップロードして管理します。各メディアに公開 URL を設定でき、テンプレートやページから参照できます。favicon に使う場合は、画像または ICO をアップロードし、公開 URL を <code>/favicon.ico</code> に設定してください。</p>
 </div>
 
 {% if !error_message.is_empty() %}
@@ -87,7 +92,7 @@
 
 <section class="panel">
   <form class="upload-form" method="post" action="/admin/media/upload" enctype="multipart/form-data">
-    <input type="file" name="file" accept="image/*,.pdf,.svg" required>
+    <input type="file" name="file" accept="image/*,.pdf,.svg,.ico" required>
     <button class="button" type="submit">アップロード</button>
   </form>
 </section>
@@ -106,10 +111,10 @@
     <div class="card-body">
       <h3 class="card-title">{{ item.title }}</h3>
       <p class="meta">{{ item.file_size_label }} · {{ item.updated_at }}</p>
-      <div class="url-row">
-        <input type="text" value="{{ item.public_url }}" readonly id="url-{{ item.id }}">
-        <button class="button secondary" type="button" data-copy-target="#url-{{ item.id }}">コピー</button>
-      </div>
+      <form method="post" action="/admin/media/{{ item.id }}/public-url" class="url-row">
+        <input type="text" name="public_url" value="{{ item.public_url }}" aria-label="公開 URL">
+        <button class="button secondary" type="submit">保存</button>
+      </form>
       <div class="ops">
         <a class="button secondary" href="{{ item.public_url }}" target="_blank" rel="noopener">表示</a>
         <form method="post" action="/admin/media/{{ item.id }}/delete" data-confirm="このメディアを削除しますか？">

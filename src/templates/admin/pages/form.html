@@ -37,7 +37,7 @@
       </select>
       {% if is_home %}
       <input type="hidden" name="layout_id" value="{{ selected_layout_id }}">
-      <p class="help">トップページのレイアウト変更は shell 編集で行います。</p>
+      <p class="help">トップページのレイアウトは作成時に固定され、ここからは変更できません。shell や CSS の編集は <a href="/admin/layouts">レイアウト管理</a> から行います。</p>
       {% else %}
       <p class="help"><a href="/admin/layouts">レイアウト管理</a>のファイル一覧から shell.html や site.css を編集できます。</p>
       {% endif %}

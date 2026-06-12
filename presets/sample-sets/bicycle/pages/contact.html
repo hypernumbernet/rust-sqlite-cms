@@ -1,0 +1,11 @@
+{% extends "bicycle/shell.html" %}
+{% block title %}お問い合わせ - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container" style="max-width:720px;padding:64px 0">
+      <h1>お問い合わせ・ご予約</h1>
+      <p class="lead">修理のご予約、新車のご相談、レンタルのお問い合わせはこちらからどうぞ。</p>
+      {{ bicycle_contact_html | safe }}
+    </div>
+  </section>
+{% endblock %}

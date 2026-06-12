@@ -440,7 +440,7 @@ async fn resolve_placeholder(
             );
 
             let item = ImageItem {
-                image_url: attachment.public_url(),
+                image_url: attachment.resolved_public_url(),
                 alt: entry.title,
                 link_url: entry.content,
                 float,
@@ -536,7 +536,7 @@ async fn resolve_placeholder(
                 };
 
                 slides.push(CarouselSlide {
-                    image_url: attachment.public_url(),
+                    image_url: attachment.resolved_public_url(),
                     alt,
                     link_url,
                 });

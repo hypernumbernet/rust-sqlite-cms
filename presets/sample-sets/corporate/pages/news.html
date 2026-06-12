@@ -1,0 +1,26 @@
+{% extends "corporate/shell.html" %}
+{% block title %}お知らせ - {{ blogname }}{% endblock %}
+{% block content %}
+  <section>
+    <div class="container page-grid">
+      <div class="page-main">
+        <h1>お知らせ</h1>
+        <p class="lead">{{ blogname }} からの最新情報</p>
+        <div class="news-list">
+          {{ corporate_news_html | safe }}
+        </div>
+
+        <h2 class="section-title section-title--spaced">更新情報</h2>
+        <div class="news-list">
+          {{ corporate_announcements_html | safe }}
+        </div>
+      </div>
+      <aside class="page-sidebar">
+        <h2 class="sidebar-title">更新のヒント</h2>
+        <div class="sidebar-list">
+          {{ corporate_sidebar_html | safe }}
+        </div>
+      </aside>
+    </div>
+  </section>
+{% endblock %}

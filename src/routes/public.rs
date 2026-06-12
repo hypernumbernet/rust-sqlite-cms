@@ -15,7 +15,8 @@ use std::path::Path as FsPath;
 use crate::error::{AppError, AppResult, DomainError};
 use crate::models::page::Page;
 use crate::page_render::{self, RenderPageOptions};
-use crate::repos::{layouts, media as media_repo, pages, placeholders, widget_types};
+use crate::models::media::Media;
+use crate::repos::{media as media_repo, pages, placeholders, widget_types};
 use crate::services::contact_form::{self, ContactFormSubmission};
 use crate::session;
 use crate::state::AppState;
@@ -44,38 +45,13 @@ pub fn router() -> Router<AppState> {
         .route("/contact/{placeholder_id}", post(submit_contact_form))
 }
 
-/// 既定レイアウトの favicon を `/favicon.ico` で配信する。
+/// `public_url = /favicon.ico` のメディアを配信する。
 async fn serve_favicon(State(state): State<AppState>) -> Result<Response, AppError> {
-    let layout = layouts::find_default(&state.pool())
+    let attachment = media_repo::find_by_public_url(&state.pool(), "/favicon.ico")
         .await
-        .map_err(|_| AppError::NotFound)?;
-    let media_id = layout
-        .favicon_media_id
+        .map_err(|_| AppError::NotFound)?
         .ok_or(AppError::NotFound)?;
-    let attachment = media_repo::find(&state.pool(), media_id)
-        .await
-        .map_err(|_| AppError::NotFound)?;
-    if !attachment.is_favicon_suitable() {
-        return Err(AppError::NotFound);
-    }
-    let relative = attachment
-        .file_path
-        .as_deref()
-        .ok_or(AppError::NotFound)?;
-    let full = FsPath::new(&state.config.paths.uploads_dir).join(relative);
-    let bytes = fs::read(&full).await.map_err(|_| AppError::NotFound)?;
-    let content_type = attachment
-        .mime_type
-        .as_deref()
-        .filter(|m| !m.is_empty())
-        .unwrap_or("application/octet-stream");
-
-    Ok(Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, "public, max-age=3600")
-        .body(Body::from(bytes))
-        .unwrap())
+    serve_media_file(&state, &attachment).await
 }
 
 async fn home(
@@ -118,18 +94,25 @@ pub async fn serve_fallback(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
     Query(query): Query<ContactQueryParams>,
-) -> AppResult<impl IntoResponse> {
+) -> AppResult<Response> {
     let path = normalize_path(uri.path());
 
     if is_reserved_public_path(&path) {
         return Err(AppError::NotFound);
     }
 
+    if let Some(media) = media_repo::find_by_public_url(&state.pool(), &path)
+        .await?
+        .filter(|m| m.has_custom_public_url())
+    {
+        return serve_media_file(&state, &media).await;
+    }
+
     let page = pages::find_published_by_path(&state.pool(), &path)
         .await?
         .ok_or(AppError::NotFound)?;
 
-    render_public_page(&state, &page, query).await
+    Ok(render_public_page(&state, &page, query).await?.into_response())
 }
 
 async fn render_public_page(
@@ -241,6 +224,27 @@ fn extract_local_path(referer: &str) -> Option<String> {
         return None;
     }
     Some(path.to_string())
+}
+
+async fn serve_media_file(state: &AppState, media: &Media) -> Result<Response, AppError> {
+    let relative = media
+        .file_path
+        .as_deref()
+        .ok_or(AppError::NotFound)?;
+    let full = FsPath::new(&state.config.paths.uploads_dir).join(relative);
+    let bytes = fs::read(&full).await.map_err(|_| AppError::NotFound)?;
+    let content_type = media
+        .mime_type
+        .as_deref()
+        .filter(|m| !m.is_empty())
+        .unwrap_or("application/octet-stream");
+
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "public, max-age=3600")
+        .body(Body::from(bytes))
+        .unwrap())
 }
 
 fn is_reserved_public_path(path: &str) -> bool {

@@ -9,6 +9,8 @@ pub struct Media {
     pub file_size: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// 公開 URL（postmeta `public_url`）。未設定時は `/uploads/{file_path}` を導出する。
+    pub public_url: Option<String>,
 }
 
 /// メディア作成時にリポジトリへ渡す入力値。
@@ -22,7 +24,11 @@ pub struct MediaInput {
 }
 
 impl Media {
-    pub fn public_url(&self) -> String {
+    /// 公開 URL。postmeta が無ければ `/uploads/{file_path}` を返す。
+    pub fn resolved_public_url(&self) -> String {
+        if let Some(url) = self.public_url.as_deref().filter(|u| !u.is_empty()) {
+            return url.to_string();
+        }
         let path = self.file_path.as_deref().unwrap_or("");
         format!("/uploads/{path}")
     }
@@ -34,7 +40,7 @@ impl Media {
             .unwrap_or(false)
     }
 
-    /// favicon として選択可能か（画像または `.ico`）。
+    /// favicon（`/favicon.ico`）として設定可能か（画像または `.ico`）。
     pub fn is_favicon_suitable(&self) -> bool {
         self.mime_type
             .as_deref()
@@ -47,5 +53,11 @@ impl Media {
             .as_deref()
             .and_then(|s| s.parse().ok())
             .unwrap_or(0)
+    }
+
+    /// カスタム alias（`/uploads/` 以外の public_url）かどうか。
+    pub fn has_custom_public_url(&self) -> bool {
+        let url = self.resolved_public_url();
+        !url.starts_with("/uploads/")
     }
 }

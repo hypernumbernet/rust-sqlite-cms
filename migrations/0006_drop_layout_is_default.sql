@@ -1,1 +1,0 @@
-ALTER TABLE layouts DROP COLUMN is_default;

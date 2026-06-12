@@ -61,13 +61,11 @@ CREATE TABLE IF NOT EXISTS options (
 
 -- レイアウト（公開サイトの shell / pages / static の単位） --------------------
 CREATE TABLE IF NOT EXISTS layouts (
-    id               INTEGER PRIMARY KEY,
-    key              TEXT    NOT NULL UNIQUE,
-    name             TEXT    NOT NULL DEFAULT '',
-    is_default       INTEGER NOT NULL DEFAULT 0,
-    favicon_media_id INTEGER,
-    created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    updated_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+    id         INTEGER PRIMARY KEY,
+    key        TEXT    NOT NULL UNIQUE,
+    name       TEXT    NOT NULL DEFAULT '',
+    created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 -- ページ（テンプレート / 固定ページ。本文は work/layouts/{key}/ 配下、DB にはメタ情報のみ） --
@@ -97,9 +95,17 @@ CREATE TABLE IF NOT EXISTS users (
 );
 CREATE INDEX IF NOT EXISTS idx_users_login ON users(login);
 
+-- DB 管理画面の列幅・ソート設定（CMS コアテーブル） -------------------------
+CREATE TABLE IF NOT EXISTS user_table_meta (
+    table_name          TEXT PRIMARY KEY NOT NULL,
+    column_widths_json  TEXT NOT NULL DEFAULT '{}',
+    sort_json           TEXT NOT NULL DEFAULT '[]',
+    updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
 -- 初期シードデータ ---------------------------------------------------------
-INSERT INTO layouts (key, name, is_default)
-VALUES ('default', '既定', 1);
+INSERT INTO layouts (key, name)
+VALUES ('default', '既定');
 
 -- テンプレート（presets/index.html など）が参照する "news" プレースホルダー
 INSERT INTO widget_types (type_key, label, description, config, html_template, config_schema)

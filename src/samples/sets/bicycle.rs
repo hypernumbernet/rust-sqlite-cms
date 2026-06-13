@@ -75,35 +75,24 @@ const MEDIA_FILES: &[&str] = &[
     "bicycle-carousel-3.png",
 ];
 
-const PAGE_URL_PATHS: &[&str] = &[
-    "/bicycle",
-    "/bicycle/news",
-    "/bicycle/about",
-    "/bicycle/contact",
-];
-
 const PAGES: &[PageSpec] = &[
     PageSpec {
         name: "トップページ",
-        url_path: "/bicycle",
         file_name: "pages/home.html",
         content: HOME_PAGE_HTML,
     },
     PageSpec {
         name: "お知らせ",
-        url_path: "/bicycle/news",
         file_name: "pages/news.html",
         content: NEWS_PAGE_HTML,
     },
     PageSpec {
         name: "店舗紹介",
-        url_path: "/bicycle/about",
         file_name: "pages/about.html",
         content: ABOUT_PAGE_HTML,
     },
     PageSpec {
         name: "お問い合わせ",
-        url_path: "/bicycle/contact",
         file_name: "pages/contact.html",
         content: CONTACT_PAGE_HTML,
     },
@@ -114,12 +103,10 @@ const SPEC: LayoutSetSpec = LayoutSetSpec {
     layout_name: "街の自転車屋さん（サンプル）",
     shell_html: SHELL_HTML,
     site_css: SITE_CSS,
-    preview_path: "/bicycle",
     success_message: "「街の自転車屋さん」のサンプルレイアウトセットをインストールしました。",
     placeholders: PLACEHOLDERS,
     post_slugs: POST_SLUGS,
     media_files: MEDIA_FILES,
-    page_url_paths: PAGE_URL_PATHS,
     pages: PAGES,
 };
 

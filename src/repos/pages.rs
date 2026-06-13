@@ -85,6 +85,82 @@ pub async fn find_by_layout_file(
     .await?)
 }
 
+/// 公開サイト差し替えの統計。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LiveLayoutSwapStats {
+    pub published_count: usize,
+    pub demoted_count: i64,
+    pub demoted_layout_keys: Vec<String>,
+}
+
+/// 公開サイトを指定レイアウトに差し替える（1 トランザクション）。
+pub async fn swap_live_layout(pool: &SqlitePool, layout_id: i64) -> AppResult<LiveLayoutSwapStats> {
+    let mut tx = pool.begin().await?;
+
+    let demoted_layout_keys: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT l.key
+         FROM pages p
+         INNER JOIN layouts l ON l.id = p.layout_id
+         WHERE p.is_published = 1
+         ORDER BY l.key",
+    )
+    .fetch_all(&mut *tx)
+    .await?;
+
+    let demoted_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM pages WHERE is_published = 1")
+            .fetch_one(&mut *tx)
+            .await?;
+
+    sqlx::query(
+        "UPDATE pages
+         SET is_published = 0,
+             url_path = NULL,
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+         WHERE is_published = 1",
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    let publish_result = sqlx::query(
+        "UPDATE pages
+         SET url_path = CASE file_name
+             WHEN 'pages/home.html' THEN '/'
+             WHEN 'pages/index.html' THEN '/'
+             WHEN 'pages/news.html' THEN '/news'
+             WHEN 'pages/about.html' THEN '/about'
+             WHEN 'pages/contact.html' THEN '/contact'
+         END,
+         is_published = 1,
+         updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+         WHERE layout_id = ?
+           AND file_name IN (
+             'pages/home.html', 'pages/index.html', 'pages/news.html',
+             'pages/about.html', 'pages/contact.html'
+           )",
+    )
+    .bind(layout_id)
+    .execute(&mut *tx)
+    .await?;
+
+    let published_count = publish_result.rows_affected() as usize;
+    if published_count == 0 {
+        tx.rollback().await?;
+        return Err(AppError::Conflict(
+            "公開できるページがありません。home / news / about / contact のいずれかが必要です。"
+                .to_string(),
+        ));
+    }
+
+    tx.commit().await?;
+
+    Ok(LiveLayoutSwapStats {
+        published_count,
+        demoted_count,
+        demoted_layout_keys,
+    })
+}
+
 /// 公開サイト向けに、公開済みかつ URL が一致するページを取得する。
 pub async fn find_published_by_path(pool: &SqlitePool, path: &str) -> AppResult<Option<Page>> {
     Ok(sqlx::query_as::<_, Page>(

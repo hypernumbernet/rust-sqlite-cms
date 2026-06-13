@@ -14,7 +14,6 @@ pub struct SampleLayoutSetMeta {
     pub description: &'static str,
     pub layout_key: &'static str,
     pub tags: &'static [&'static str],
-    pub preview_path: &'static str,
 }
 
 /// 管理画面に表示する DBテーブルセットのメタ情報。
@@ -35,7 +34,6 @@ pub const SAMPLE_LAYOUT_SETS: &[SampleLayoutSetMeta] = &[
         description: "企業向けのトップページ・お知らせ・会社概要・お問い合わせを含むサイト構成です。",
         layout_key: "corporate",
         tags: &["レイアウト", "4ページ", "6ウィジェット", "投稿・画像"],
-        preview_path: "/corporate",
     },
     SampleLayoutSetMeta {
         key: "bicycle",
@@ -43,7 +41,6 @@ pub const SAMPLE_LAYOUT_SETS: &[SampleLayoutSetMeta] = &[
         description: "地域の自転車屋向け。販売・修理・レンタルの紹介とお知らせ、店舗情報ページ付きです。",
         layout_key: "bicycle",
         tags: &["レイアウト", "4ページ", "6ウィジェット", "投稿・画像"],
-        preview_path: "/bicycle",
     },
 ];
 
@@ -62,7 +59,6 @@ pub enum InstallResult {
     Layout {
         message: String,
         layout_key: String,
-        preview_path: String,
         placeholders_count: i64,
         posts_count: i64,
         media_count: i64,

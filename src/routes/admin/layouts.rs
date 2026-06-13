@@ -61,6 +61,8 @@ struct LayoutListItem {
     name: String,
     page_count: i64,
     updated_at: String,
+    status_label: String,
+    can_publish: bool,
     can_delete: bool,
 }
 
@@ -153,6 +155,7 @@ pub fn router() -> Router<AppState> {
         .route("/admin/layouts/new", get(new_form))
         .route("/admin/layouts/{id}/edit", get(edit).post(update))
         .route("/admin/layouts/{id}/delete", post(destroy))
+        .route("/admin/layouts/{id}/publish", post(publish))
         .route("/admin/layouts/{id}/static/upload", post(upload_static))
         .route("/admin/layouts/{id}/static/delete", post(delete_static))
         .route(
@@ -174,19 +177,24 @@ async fn index(
     State(state): State<AppState>,
     Query(query): Query<LayoutIndexQuery>,
 ) -> AppResult<impl IntoResponse> {
-    let rows = layouts_repo::list_all(&state.pool()).await?;
-    let mut layouts = Vec::with_capacity(rows.len());
-    for row in rows {
-        let page_count = layouts_repo::count_pages(&state.pool(), row.id).await?;
-        layouts.push(LayoutListItem {
-            id: row.id,
-            key: row.key,
-            name: row.name,
-            page_count,
-            updated_at: format_updated_at(&row.updated_at),
-            can_delete: page_count == 0,
-        });
-    }
+    let rows = layouts_repo::list_admin_summaries(&state.pool()).await?;
+    let layouts = rows
+        .into_iter()
+        .map(|row| {
+            let status_label = row.status_label().to_string();
+            let can_publish = row.can_publish();
+            LayoutListItem {
+                id: row.id,
+                key: row.key,
+                name: row.name,
+                page_count: row.page_count,
+                updated_at: format_updated_at(&row.updated_at),
+                status_label,
+                can_publish,
+                can_delete: row.page_count == 0,
+            }
+        })
+        .collect();
 
     let html = LayoutIndexTemplate {
         layout: admin_layout::AdminLayoutCtx::new(&auth),
@@ -669,6 +677,31 @@ async fn delete_static(
     Ok(redirect_layout_edit(id, None))
 }
 
+async fn publish(State(state): State<AppState>, AxumPath(id): AxumPath<i64>) -> AppResult<Redirect> {
+    let layout = layouts_repo::find(&state.pool(), id).await?;
+    match services::layout_publish::publish_layout_set(&state.pool(), id).await {
+        Ok(result) => {
+            let demoted = if result.demoted_layout_keys.is_empty() {
+                "なし".to_string()
+            } else {
+                result.demoted_layout_keys.join(", ")
+            };
+            let message = format!(
+                "「{}」を公開サイトに差し替えました（公開 {published} ページ / 非公開化 {demoted} ページ）。旧レイアウト: {old}",
+                layout.name,
+                published = result.published_count,
+                demoted = result.demoted_count,
+                old = demoted,
+            );
+            Ok(redirect_layout_index(Some(&message), None))
+        }
+        Err(err) => Ok(redirect_layout_index(
+            None,
+            Some(&format!("公開に失敗しました: {err}")),
+        )),
+    }
+}
+
 async fn destroy(State(state): State<AppState>, AxumPath(id): AxumPath<i64>) -> AppResult<Redirect> {
     services::layouts::delete_layout(&state.pool(), &state.config, id).await?;
     Ok(Redirect::to("/admin/layouts"))
@@ -797,6 +830,22 @@ fn admin_file_to_row(layout_id: i64, file: &LayoutAdminFile) -> LayoutFileRow {
         is_deletable: file.is_deletable,
         delete_path: file.delete_path.clone().unwrap_or_default(),
     }
+}
+
+fn redirect_layout_index(success: Option<&str>, error: Option<&str>) -> Redirect {
+    let mut params = Vec::new();
+    if let Some(message) = success {
+        params.push(format!("success_message={}", urlencoding::encode(message)));
+    }
+    if let Some(message) = error {
+        params.push(format!("error_message={}", urlencoding::encode(message)));
+    }
+    let url = if params.is_empty() {
+        "/admin/layouts".to_string()
+    } else {
+        format!("/admin/layouts?{}", params.join("&"))
+    };
+    Redirect::to(&url)
 }
 
 fn redirect_layout_edit(id: i64, error: Option<&str>) -> Redirect {

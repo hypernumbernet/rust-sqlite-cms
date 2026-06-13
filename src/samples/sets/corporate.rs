@@ -75,35 +75,24 @@ const MEDIA_FILES: &[&str] = &[
     "corporate-carousel-3.png",
 ];
 
-const PAGE_URL_PATHS: &[&str] = &[
-    "/corporate",
-    "/corporate/news",
-    "/corporate/about",
-    "/corporate/contact",
-];
-
 const PAGES: &[PageSpec] = &[
     PageSpec {
         name: "トップページ",
-        url_path: "/corporate",
         file_name: "pages/home.html",
         content: HOME_PAGE_HTML,
     },
     PageSpec {
         name: "お知らせ",
-        url_path: "/corporate/news",
         file_name: "pages/news.html",
         content: NEWS_PAGE_HTML,
     },
     PageSpec {
         name: "会社概要",
-        url_path: "/corporate/about",
         file_name: "pages/about.html",
         content: ABOUT_PAGE_HTML,
     },
     PageSpec {
         name: "お問い合わせ",
-        url_path: "/corporate/contact",
         file_name: "pages/contact.html",
         content: CONTACT_PAGE_HTML,
     },
@@ -114,12 +103,10 @@ const SPEC: LayoutSetSpec = LayoutSetSpec {
     layout_name: "コーポレートサイト（サンプル）",
     shell_html: SHELL_HTML,
     site_css: SITE_CSS,
-    preview_path: "/corporate",
     success_message: "コーポレートサイトのサンプルレイアウトセットをインストールしました。",
     placeholders: PLACEHOLDERS,
     post_slugs: POST_SLUGS,
     media_files: MEDIA_FILES,
-    page_url_paths: PAGE_URL_PATHS,
     pages: PAGES,
 };
 

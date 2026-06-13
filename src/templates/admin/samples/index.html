@@ -31,7 +31,8 @@
     <li><span class="kind">ページ</span> {{ result.pages_count }}</li>
   </ul>
   <p>
-    <a href="{{ result.preview_path }}" target="_blank" rel="noopener" class="button">サンプルサイトを見る</a>
+    <a href="/admin/pages" class="button">ページ一覧でプレビュー</a>
+    <a href="/admin/layouts" class="button secondary">レイアウト一覧で公開</a>
   </p>
   {% else %}
   <ul class="sample-install-stats">
@@ -60,9 +61,6 @@
       <span class="kind">{{ tag }}</span>
       {% endfor %}
     </div>
-    <p class="sample-set-card__preview">
-      プレビュー: <a href="{{ set.preview_path }}" target="_blank" rel="noopener">{{ set.preview_path }}</a>
-    </p>
     <div class="sample-set-card__actions">
       <form method="post" action="/admin/samples" data-confirm="「{{ set.label }}」をインストールしますか？同名のデータがある場合は追加されません。">
         <input type="hidden" name="sample" value="{{ set.key }}">
@@ -74,7 +72,7 @@
   {% endfor %}
 </div>
 
-<p class="text-muted sample-set-note">サンプルサイトはプレビュー URL（例: <code>/corporate</code>）で公開されます。<code>/</code> のトップページとは別ページです。トップページは各ページの URL 設定で <code>/</code> に変更できます。</p>
+<p class="text-muted sample-set-note">インストール直後は非公開です。ページ一覧のプレビューで内容を確認し、整備後にレイアウト一覧の「サイトに公開」で公開サイト（<code>/</code>、<code>/news</code> 等）に差し替えられます。</p>
 
 <h2 class="sample-section-title">DBテーブルセット</h2>
 <div class="card-grid card-grid--wide sample-set-grid">

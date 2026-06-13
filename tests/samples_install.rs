@@ -15,7 +15,6 @@ async fn install_corporate_sample_set_succeeds() {
 
     let InstallResult::Layout {
         layout_key,
-        preview_path,
         placeholders_count,
         pages_count,
         ..
@@ -25,7 +24,6 @@ async fn install_corporate_sample_set_succeeds() {
     };
 
     assert_eq!(layout_key, "corporate");
-    assert_eq!(preview_path, "/corporate");
     assert_eq!(placeholders_count, 6);
     assert_eq!(pages_count, 4);
 
@@ -35,13 +33,14 @@ async fn install_corporate_sample_set_succeeds() {
         .expect("corporate layout");
     assert_eq!(layout_key, "corporate");
 
-    let home_published: i64 = sqlx::query_scalar(
-        "SELECT is_published FROM pages WHERE url_path = '/corporate'",
+    let (home_published, home_url): (i64, Option<String>) = sqlx::query_as(
+        "SELECT is_published, url_path FROM pages WHERE file_name = 'pages/home.html' AND layout_id = (SELECT id FROM layouts WHERE key = 'corporate')",
     )
     .fetch_one(&app.state.pool())
     .await
     .expect("corporate home page");
-    assert_eq!(home_published, 1);
+    assert_eq!(home_published, 0);
+    assert!(home_url.is_none());
 
     let placeholder_exists: Option<i32> = sqlx::query_scalar(
         "SELECT 1 FROM placeholders WHERE name = 'corporate_news'",
@@ -317,7 +316,6 @@ async fn install_bicycle_sample_set_succeeds() {
 
     let InstallResult::Layout {
         layout_key,
-        preview_path,
         placeholders_count,
         pages_count,
         ..
@@ -327,12 +325,11 @@ async fn install_bicycle_sample_set_succeeds() {
     };
 
     assert_eq!(layout_key, "bicycle");
-    assert_eq!(preview_path, "/bicycle");
     assert_eq!(placeholders_count, 6);
     assert_eq!(pages_count, 4);
 
     let about_name: String = sqlx::query_scalar(
-        "SELECT name FROM pages WHERE url_path = '/bicycle/about'",
+        "SELECT name FROM pages WHERE file_name = 'pages/about.html' AND layout_id = (SELECT id FROM layouts WHERE key = 'bicycle')",
     )
     .fetch_one(&app.state.pool())
     .await

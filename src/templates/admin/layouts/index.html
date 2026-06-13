@@ -25,6 +25,7 @@
       <tr>
         <th>名前</th>
         <th>key</th>
+        <th>状態</th>
         <th>ページ数</th>
         <th>更新日</th>
         <th>操作</th>
@@ -35,10 +36,16 @@
       <tr>
         <td>{{ row.name }}</td>
         <td><code>{{ row.key }}</code></td>
+        <td><span class="status {% if row.status_label == "公開中" %}published{% endif %}">{{ row.status_label }}</span></td>
         <td>{{ row.page_count }}</td>
         <td>{{ row.updated_at }}</td>
         <td>
           <div class="op-actions">
+            {% if row.can_publish %}
+            <form method="post" action="/admin/layouts/{{ row.id }}/publish" data-confirm="このレイアウトを公開サイトに差し替えますか？現在公開中のページはすべて非公開になり、URL が解除されます。">
+              <button type="submit" class="button">サイトに公開</button>
+            </form>
+            {% endif %}
             <a class="button secondary" href="/admin/layouts/{{ row.id }}/edit">編集</a>
             <a class="button secondary" href="/admin/layouts/{{ row.id }}/export">エクスポート</a>
             {% if row.can_delete %}

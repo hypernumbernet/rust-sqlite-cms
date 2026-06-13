@@ -59,3 +59,33 @@ pub struct LayoutInput {
     pub key: String,
     pub name: String,
 }
+
+/// 管理画面レイアウト一覧用の集計行。
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct LayoutAdminSummary {
+    pub id: i64,
+    pub key: String,
+    pub name: String,
+    pub updated_at: String,
+    pub page_count: i64,
+    pub published_count: i64,
+    pub publishable_count: i64,
+}
+
+impl LayoutAdminSummary {
+    pub fn is_live(&self) -> bool {
+        self.published_count > 0
+    }
+
+    pub fn can_publish(&self) -> bool {
+        !self.is_live() && self.publishable_count > 0
+    }
+
+    pub fn status_label(&self) -> &'static str {
+        if self.is_live() {
+            "公開中"
+        } else {
+            "下書き"
+        }
+    }
+}

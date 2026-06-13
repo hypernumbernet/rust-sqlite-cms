@@ -20,7 +20,6 @@ pub struct PlaceholderSpec {
 /// ページ定義。
 pub struct PageSpec {
     pub name: &'static str,
-    pub url_path: &'static str,
     pub file_name: &'static str,
     pub content: &'static str,
 }
@@ -31,12 +30,10 @@ pub struct LayoutSetSpec {
     pub layout_name: &'static str,
     pub shell_html: &'static str,
     pub site_css: &'static str,
-    pub preview_path: &'static str,
     pub success_message: &'static str,
     pub placeholders: &'static [PlaceholderSpec],
     pub post_slugs: &'static [&'static str],
     pub media_files: &'static [&'static str],
-    pub page_url_paths: &'static [&'static str],
     pub pages: &'static [PageSpec],
 }
 
@@ -92,7 +89,6 @@ pub async fn install(state: &AppState, spec: &LayoutSetSpec) -> AppResult<super:
     Ok(super::super::InstallResult::Layout {
         message: spec.success_message.to_string(),
         layout_key: spec.layout_key.to_string(),
-        preview_path: spec.preview_path.to_string(),
         placeholders_count: spec.placeholders.len() as i64,
         posts_count: spec.post_slugs.len() as i64,
         media_count: spec.media_files.len() as i64,
@@ -121,7 +117,7 @@ async fn check_conflicts(
 ) -> Result<(), Vec<String>> {
     let placeholder_names: Vec<&str> = spec.placeholders.iter().map(|p| p.name).collect();
 
-    let (layout_exists, placeholders, slugs, media_files, pages) = tokio::join!(
+    let (layout_exists, placeholders, slugs, media_files) = tokio::join!(
         async {
             crate::repos::layouts::find_by_key(pool, spec.layout_key)
                 .await
@@ -131,7 +127,6 @@ async fn check_conflicts(
         conflict::existing_values(pool, "placeholders", "name", &placeholder_names),
         conflict::existing_active_post_slugs(pool, spec.post_slugs),
         conflict::existing_attachment_file_paths(pool, spec.media_files),
-        conflict::existing_values(pool, "pages", "url_path", spec.page_url_paths),
     );
 
     let mut db_errors = Vec::new();
@@ -139,7 +134,6 @@ async fn check_conflicts(
     let placeholders = merge_db_result(&mut db_errors, placeholders, Vec::new());
     let slugs = merge_db_result(&mut db_errors, slugs, Vec::new());
     let media_files = merge_db_result(&mut db_errors, media_files, Vec::new());
-    let pages = merge_db_result(&mut db_errors, pages, Vec::new());
     if !db_errors.is_empty() {
         return Err(db_errors);
     }
@@ -156,7 +150,6 @@ async fn check_conflicts(
         &media_files,
     ));
     conflicts.extend(conflict::format_labeled("メディアファイル", media_files));
-    conflicts.extend(conflict::format_labeled("ページ URL", pages));
 
     if conflicts.is_empty() {
         Ok(())
@@ -205,11 +198,10 @@ async fn insert_pages(
         sqlx::query(
             r#"
             INSERT INTO pages (name, url_path, file_name, layout_id, is_published)
-            SELECT ?, ?, ?, id, 1 FROM layouts WHERE key = ?
+            SELECT ?, NULL, ?, id, 0 FROM layouts WHERE key = ?
             "#,
         )
         .bind(spec.name)
-        .bind(spec.url_path)
         .bind(spec.file_name)
         .bind(layout_key)
         .execute(&mut **tx)

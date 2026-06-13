@@ -1,7 +1,7 @@
 use sqlx::SqlitePool;
 
 use crate::error::{AppError, AppResult};
-use crate::models::layout::{Layout, LayoutInput};
+use crate::models::layout::{Layout, LayoutAdminSummary, LayoutInput};
 
 /// 全レイアウトを key 順で取得する。
 pub async fn list_all(pool: &SqlitePool) -> AppResult<Vec<Layout>> {
@@ -118,6 +118,25 @@ pub async fn delete(pool: &SqlitePool, id: i64) -> AppResult<()> {
     }
 
     Ok(())
+}
+
+/// 管理画面向けにレイアウト一覧とページ集計をまとめて取得する。
+pub async fn list_admin_summaries(pool: &SqlitePool) -> AppResult<Vec<LayoutAdminSummary>> {
+    Ok(sqlx::query_as::<_, LayoutAdminSummary>(
+        "SELECT l.id, l.key, l.name, l.updated_at,
+                COUNT(p.id) AS page_count,
+                COALESCE(SUM(CASE WHEN p.is_published = 1 THEN 1 ELSE 0 END), 0) AS published_count,
+                COALESCE(SUM(CASE WHEN p.file_name IN (
+                    'pages/home.html', 'pages/index.html', 'pages/news.html',
+                    'pages/about.html', 'pages/contact.html'
+                ) THEN 1 ELSE 0 END), 0) AS publishable_count
+         FROM layouts l
+         LEFT JOIN pages p ON p.layout_id = l.id
+         GROUP BY l.id
+         ORDER BY l.key ASC",
+    )
+    .fetch_all(pool)
+    .await?)
 }
 
 /// レイアウトに紐づくページ件数。

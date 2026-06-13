@@ -232,6 +232,11 @@ async fn database_create_user_table_and_view() {
     assert!(html.contains(r#"name="name" type="text" maxlength="120" value="custom_notes_view" readonly"#));
     assert!(html.contains("view-form-tabs"));
     assert!(html.contains("view-tab-ui"));
+    assert!(html.contains("ビジュアル編集"));
+    assert!(!html.contains("UI編集"));
+    assert!(html.contains(r#"class="active" data-view-tab="ui""#));
+    assert!(html.contains(r#"id="view-tab-ui""#));
+    assert!(html.contains(r#"id="view-tab-sql" hidden"#));
     assert!(html.contains(r#""base_table":"custom_notes""#));
     assert!(html.contains(r#""name":"body""#));
 
@@ -291,6 +296,11 @@ async fn database_view_form_ui_builder() {
     assert!(html.contains("view-form-tabs"));
     assert!(html.contains(r#"data-view-tab="sql""#));
     assert!(html.contains(r#"data-view-tab="ui""#));
+    assert!(html.contains("ビジュアル編集"));
+    assert!(!html.contains("UI編集"));
+    assert!(html.contains(r#"class="active" data-view-tab="ui""#));
+    assert!(html.contains(r#"id="view-tab-ui""#));
+    assert!(html.contains(r#"id="view-tab-sql" hidden"#));
     assert!(html.contains("view-ui-base-table"));
     assert!(html.contains(r#"<option value="custom_notes">custom_notes</option>"#));
     assert!(html.contains(r#"<script type="application/json" id="view-ui-initial">null</script>"#));
@@ -356,6 +366,47 @@ async fn database_view_form_ui_builder() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["columns"], serde_json::json!(["id", "body"]));
+}
+
+#[tokio::test]
+async fn database_view_form_unsupported_visual_editing_notice() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=join_src&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=join_view&definition=SELECT+%22id%22+FROM+%22join_src%22+WHERE+%22body%22+IS+NOT+NULL"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/join_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("ビジュアル編集"));
+    assert!(html.contains(r#"class="active" data-view-tab="ui""#));
+    assert!(html.contains("この定義はビジュアル編集に対応していません"));
+    assert!(html.contains(r#"<script type="application/json" id="view-ui-initial">null</script>"#));
 }
 
 #[tokio::test]

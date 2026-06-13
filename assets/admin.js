@@ -3351,6 +3351,7 @@
     const baseTableSelect = document.getElementById('view-ui-base-table');
     const columnsList = document.getElementById('view-ui-columns');
     const unsupportedNotice = document.getElementById('view-ui-unsupported');
+    const builderEl = document.getElementById('view-ui-builder');
     const uiError = document.getElementById('view-ui-error');
     const loadingEl = document.getElementById('view-ui-loading');
     const emptyEl = document.getElementById('view-ui-empty');
@@ -3358,8 +3359,14 @@
 
     if (!form || !definitionInput || !tabButtons.length || !sqlPanel || !uiPanel) return;
 
-    let activeTab = 'sql';
+    let activeTab = 'ui';
     let dragSourceItem = null;
+    let lastReorderTarget = null;
+    let lastReorderBefore = null;
+    let emptyDragImage = null;
+    const prefersReducedMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     function quoteSqlIdentifier(name) {
       return '"' + String(name).replace(/"/g, '""') + '"';
@@ -3473,6 +3480,17 @@
       uiError.hidden = false;
     }
 
+    function isVisualEditingSupported() {
+      const trimmed = definitionInput.value.trim();
+      if (!trimmed) return true;
+      return parseSimpleSelect(trimmed) !== null;
+    }
+
+    function setVisualBuilderVisible(visible) {
+      if (builderEl) builderEl.hidden = !visible;
+      if (unsupportedNotice) unsupportedNotice.hidden = visible;
+    }
+
     function setActiveTab(tab) {
       activeTab = tab;
       tabButtons.forEach(function (btn) {
@@ -3563,43 +3581,118 @@
       return result;
     }
 
+    function captureColumnItemTops(items) {
+      const tops = new Map();
+      items.forEach(function (item) {
+        tops.set(item, item.getBoundingClientRect().top);
+      });
+      return tops;
+    }
+
+    function clearColumnItemMotionStyles(item) {
+      item.style.transform = '';
+      item.style.transition = '';
+    }
+
+    function dragLiftOffset(item) {
+      return item.classList.contains('is-dragging') ? -3 : 0;
+    }
+
+    function animateColumnReorder(items, oldTops) {
+      if (prefersReducedMotion) return;
+      const duration = '240ms';
+      const easing = 'cubic-bezier(0.25, 0.8, 0.25, 1)';
+      items.forEach(function (item) {
+        const oldTop = oldTops.get(item);
+        if (oldTop == null) return;
+        const delta = oldTop - item.getBoundingClientRect().top;
+        if (Math.abs(delta) < 0.5) return;
+        const lift = dragLiftOffset(item);
+        const restingTransform = lift ? 'translateY(' + lift + 'px)' : '';
+        clearColumnItemMotionStyles(item);
+        item.style.transform = 'translateY(' + (delta + lift) + 'px)';
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () {
+            item.style.transition = 'transform ' + duration + ' ' + easing;
+            item.style.transform = restingTransform;
+            item.addEventListener(
+              'transitionend',
+              function onTransitionEnd(event) {
+                if (event.propertyName !== 'transform') return;
+                item.removeEventListener('transitionend', onTransitionEnd);
+                if (restingTransform) {
+                  item.style.transform = restingTransform;
+                  item.style.transition = '';
+                } else {
+                  clearColumnItemMotionStyles(item);
+                }
+              }
+            );
+          });
+        });
+      });
+    }
+
+    function moveDraggedColumn(targetItem, before) {
+      if (!dragSourceItem || !columnsList || dragSourceItem === targetItem) return false;
+      const referenceNode = before ? targetItem : targetItem.nextSibling;
+      if (dragSourceItem === referenceNode) return false;
+      const items = Array.from(columnsList.querySelectorAll('.view-ui-column-item'));
+      const oldTops = captureColumnItemTops(items);
+      columnsList.insertBefore(dragSourceItem, referenceNode);
+      animateColumnReorder(items, oldTops);
+      return true;
+    }
+
+    function resetDragReorderState() {
+      lastReorderTarget = null;
+      lastReorderBefore = null;
+    }
+
+    function hideNativeDragImage(event) {
+      if (!emptyDragImage) {
+        emptyDragImage = new Image();
+        emptyDragImage.src =
+          'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+      }
+      event.dataTransfer.setDragImage(emptyDragImage, 0, 0);
+    }
+
     function bindDragHandlers() {
       if (!columnsList) return;
       columnsList.querySelectorAll('.view-ui-column-item').forEach(function (item) {
         item.addEventListener('dragstart', function (event) {
           dragSourceItem = item;
+          resetDragReorderState();
           item.classList.add('is-dragging');
+          columnsList.classList.add('is-drag-active');
+          hideNativeDragImage(event);
           event.dataTransfer.effectAllowed = 'move';
           event.dataTransfer.setData('text/plain', item.dataset.columnName || '');
         });
         item.addEventListener('dragover', function (event) {
           event.preventDefault();
           event.dataTransfer.dropEffect = 'move';
-          if (dragSourceItem && dragSourceItem !== item) {
-            item.classList.add('is-drop-target');
+          if (!dragSourceItem || dragSourceItem === item) return;
+          const rect = item.getBoundingClientRect();
+          const before = event.clientY < rect.top + rect.height / 2;
+          if (lastReorderTarget === item && lastReorderBefore === before) return;
+          if (moveDraggedColumn(item, before)) {
+            lastReorderTarget = item;
+            lastReorderBefore = before;
           }
-        });
-        item.addEventListener('dragleave', function () {
-          item.classList.remove('is-drop-target');
         });
         item.addEventListener('drop', function (event) {
           event.preventDefault();
-          item.classList.remove('is-drop-target');
-          if (!dragSourceItem || dragSourceItem === item || !columnsList) return;
-          const rect = item.getBoundingClientRect();
-          const before = event.clientY < rect.top + rect.height / 2;
-          if (before) {
-            columnsList.insertBefore(dragSourceItem, item);
-          } else {
-            columnsList.insertBefore(dragSourceItem, item.nextSibling);
-          }
         });
         item.addEventListener('dragend', function () {
           item.classList.remove('is-dragging');
+          columnsList.classList.remove('is-drag-active');
           columnsList.querySelectorAll('.view-ui-column-item').forEach(function (row) {
-            row.classList.remove('is-drop-target');
+            clearColumnItemMotionStyles(row);
           });
           dragSourceItem = null;
+          resetDragReorderState();
         });
       });
     }
@@ -3751,18 +3844,23 @@
       return loadColumnsForTable(spec.base_table, spec.columns || []);
     }
 
-    function switchToUiTab() {
-      if (unsupportedNotice) unsupportedNotice.hidden = true;
-      const parsed = parseSimpleSelect(definitionInput.value.trim());
-      if (!parsed) {
-        if (unsupportedNotice) unsupportedNotice.hidden = false;
-        return false;
-      }
+    function refreshVisualTabState() {
       setActiveTab('ui');
-      applyParsedUiState(parsed).catch(function (err) {
-        showUiError(err.message || 'UI 状態の復元に失敗しました');
-      });
-      return true;
+      if (!isVisualEditingSupported()) {
+        setVisualBuilderVisible(false);
+        return;
+      }
+      setVisualBuilderVisible(true);
+      const parsed = parseSimpleSelect(definitionInput.value.trim());
+      if (parsed) {
+        applyParsedUiState(parsed).catch(function (err) {
+          showUiError(err.message || 'ビジュアル編集状態の復元に失敗しました');
+        });
+      }
+    }
+
+    function switchToUiTab() {
+      refreshVisualTabState();
     }
 
     function switchToSqlTab() {
@@ -3775,9 +3873,7 @@
       btn.addEventListener('click', function () {
         const tab = btn.dataset.viewTab;
         if (tab === 'ui') {
-          if (!switchToUiTab()) {
-            setActiveTab('sql');
-          }
+          switchToUiTab();
         } else {
           switchToSqlTab();
         }
@@ -3793,7 +3889,7 @@
     }
 
     form.addEventListener('submit', function (event) {
-      if (activeTab !== 'ui') return;
+      if (activeTab !== 'ui' || !isVisualEditingSupported()) return;
       hideUiError();
       const table = baseTableSelect ? baseTableSelect.value : '';
       if (!table) {
@@ -3816,12 +3912,20 @@
       try {
         const initial = JSON.parse(initialEl.textContent);
         if (initial && initial.base_table) {
-          applyUiSpec(initial);
+          setActiveTab('ui');
+          if (isVisualEditingSupported()) {
+            setVisualBuilderVisible(true);
+            applyUiSpec(initial);
+          } else {
+            setVisualBuilderVisible(false);
+          }
+          return;
         }
       } catch (_err) {
         /* ignore invalid initial state */
       }
     }
+    refreshVisualTabState();
   }
 
   function initDatabaseIndex() {

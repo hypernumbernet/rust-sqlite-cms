@@ -40,9 +40,11 @@
         <td>{{ item.trashed_at }}</td>
         <td>
           <div class="op-actions">
+            {% if item.can_restore %}
             <form method="post" action="/admin/posts/trash/{{ item.id }}/restore">
               <button class="button secondary" type="submit">復元</button>
             </form>
+            {% endif %}
             <form method="post" action="/admin/posts/trash/{{ item.id }}/purge" data-confirm="完全に削除すると元に戻せません。続行しますか？">
               <button class="button danger" type="submit">完全に削除</button>
             </form>

@@ -60,6 +60,144 @@ async fn install_corporate_sample_set_succeeds() {
     assert!(post_count >= 10);
 }
 
+struct CorporateManualCleanup {
+    trashed_count: i64,
+}
+
+async fn prepare_corporate_manual_cleanup(
+    pool: &sqlx::SqlitePool,
+    uploads_dir: &str,
+    delete_media: bool,
+) -> CorporateManualCleanup {
+    use rust_sqlite_cms::repos::{layouts, media, pages, placeholders, posts};
+
+    let layout = layouts::find_by_key(pool, "corporate")
+        .await
+        .expect("find layout")
+        .expect("corporate layout");
+
+    let corporate_posts: Vec<(i64,)> = sqlx::query_as(
+        "SELECT id FROM posts WHERE post_type = 'post' AND post_name LIKE 'corporate-%'",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("list corporate posts");
+
+    for (id,) in corporate_posts {
+        posts::delete(pool, id).await.expect("trash post");
+    }
+
+    for placeholder in placeholders::list_all(pool).await.expect("placeholders") {
+        if placeholder.name.starts_with("corporate_") {
+            placeholders::delete(pool, placeholder.id)
+                .await
+                .expect("delete placeholder");
+        }
+    }
+
+    for page in pages::list_by_layout(pool, layout.id)
+        .await
+        .expect("list pages")
+    {
+        pages::delete(pool, page.id).await.expect("delete page");
+    }
+
+    layouts::delete(pool, layout.id)
+        .await
+        .expect("delete layout");
+
+    if delete_media {
+        for item in media::list_all(pool).await.expect("list media") {
+            let Some(file_path) = item.file_path.as_deref() else {
+                continue;
+            };
+            if !file_path.starts_with("corporate-") {
+                continue;
+            }
+            let _ = rust_sqlite_cms::media::delete_file(uploads_dir, file_path);
+            media::delete(pool, item.id)
+                .await
+                .expect("delete media attachment");
+        }
+    }
+
+    let trashed_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM posts WHERE post_type = 'post' AND post_status = 'trash' AND post_name LIKE 'corporate-%'",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("trashed count");
+
+    CorporateManualCleanup { trashed_count }
+}
+
+#[tokio::test]
+async fn reinstall_corporate_after_trashing_posts_succeeds() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+    let uploads_dir = &app.state.config.paths.uploads_dir;
+
+    samples::install_sample_set(&app.state, "corporate")
+        .await
+        .expect("first install");
+
+    let cleanup = prepare_corporate_manual_cleanup(&pool, uploads_dir, true).await;
+    assert!(
+        cleanup.trashed_count > 0,
+        "posts should remain in trash before reinstall"
+    );
+
+    samples::install_sample_set(&app.state, "corporate")
+        .await
+        .expect("reinstall after manual cleanup should succeed");
+
+    let trashed_after: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM posts WHERE post_type = 'post' AND post_status = 'trash' AND post_name LIKE 'corporate-%'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("trashed count after reinstall");
+    assert_eq!(
+        cleanup.trashed_count, trashed_after,
+        "trashed posts should be preserved across reinstall"
+    );
+
+    let active_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM posts WHERE post_type = 'post' AND post_status != 'trash' AND post_name LIKE 'corporate-%'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("active count");
+    assert!(active_count >= 10);
+}
+
+#[tokio::test]
+async fn reinstall_corporate_conflicts_when_media_remains() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+    let uploads_dir = &app.state.config.paths.uploads_dir;
+
+    samples::install_sample_set(&app.state, "corporate")
+        .await
+        .expect("first install");
+
+    prepare_corporate_manual_cleanup(&pool, uploads_dir, false).await;
+
+    let err = samples::install_sample_set(&app.state, "corporate")
+        .await
+        .expect_err("reinstall should conflict when media remains");
+
+    match err {
+        AppError::Conflict(msg) => {
+            assert!(
+                msg.contains("corporate-hero.png"),
+                "expected media conflict, got: {msg}"
+            );
+        }
+        other => panic!("expected Conflict, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn install_corporate_sample_set_conflicts_on_second_install() {
     let app = common::TestApp::new().await;

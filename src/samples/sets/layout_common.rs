@@ -119,72 +119,59 @@ async fn check_conflicts(
     spec: &LayoutSetSpec,
     uploads_dir: &str,
 ) -> Result<(), Vec<String>> {
-    let mut conflicts = Vec::new();
+    let placeholder_names: Vec<&str> = spec.placeholders.iter().map(|p| p.name).collect();
 
-    if crate::repos::layouts::find_by_key(pool, spec.layout_key)
-        .await
-        .map_err(|e| vec![e.to_string()])?
-        .is_some()
-    {
+    let (layout_exists, placeholders, slugs, media_files, pages) = tokio::join!(
+        async {
+            crate::repos::layouts::find_by_key(pool, spec.layout_key)
+                .await
+                .map(|opt| opt.is_some())
+                .map_err(|e| e.to_string())
+        },
+        conflict::existing_values(pool, "placeholders", "name", &placeholder_names),
+        conflict::existing_active_post_slugs(pool, spec.post_slugs),
+        conflict::existing_attachment_file_paths(pool, spec.media_files),
+        conflict::existing_values(pool, "pages", "url_path", spec.page_url_paths),
+    );
+
+    let mut db_errors = Vec::new();
+    let layout_exists = merge_db_result(&mut db_errors, layout_exists, false);
+    let placeholders = merge_db_result(&mut db_errors, placeholders, Vec::new());
+    let slugs = merge_db_result(&mut db_errors, slugs, Vec::new());
+    let media_files = merge_db_result(&mut db_errors, media_files, Vec::new());
+    let pages = merge_db_result(&mut db_errors, pages, Vec::new());
+    if !db_errors.is_empty() {
+        return Err(db_errors);
+    }
+
+    let mut conflicts = Vec::new();
+    if layout_exists {
         conflicts.push(format!(r#"レイアウト "{}""#, spec.layout_key));
     }
-
-    let placeholder_names: Vec<&str> = spec.placeholders.iter().map(|p| p.name).collect();
-    for name in conflict::existing_values(pool, "placeholders", "name", &placeholder_names)
-        .await
-        .map_err(|e| vec![e])?
-    {
-        conflicts.push(format!(r#"プレースホルダー "{}""#, name));
-    }
-
-    for slug in conflict::existing_values(pool, "posts", "post_name", spec.post_slugs)
-        .await
-        .map_err(|e| vec![e])?
-    {
-        conflicts.push(format!(r#"投稿スラッグ "{}""#, slug));
-    }
-
-    if !spec.media_files.is_empty() {
-        let mut builder = sqlx::QueryBuilder::new(
-            r#"
-            SELECT pm.meta_value
-            FROM postmeta pm
-            JOIN posts p ON p.id = pm.post_id
-            WHERE p.post_type = 'attachment'
-              AND pm.meta_key = 'file_path'
-              AND pm.meta_value IN (
-            "#,
-        );
-        let mut separated = builder.separated(", ");
-        for file in spec.media_files {
-            separated.push_bind(file);
-        }
-        builder.push(")");
-
-        for file in builder
-            .build_query_scalar::<String>()
-            .fetch_all(pool)
-            .await
-            .map_err(|e| vec![e.to_string()])?
-        {
-            conflicts.push(format!(r#"メディアファイル "{}""#, file));
-        }
-    }
-
-    conflicts.extend(conflict::existing_upload_files(uploads_dir, spec.media_files));
-
-    let page_paths: Vec<&str> = spec.page_url_paths.to_vec();
-    for path in conflict::existing_values(pool, "pages", "url_path", &page_paths)
-        .await
-        .map_err(|e| vec![e])?
-    {
-        conflicts.push(format!(r#"ページ URL "{}""#, path));
-    }
+    conflicts.extend(conflict::format_labeled("プレースホルダー", placeholders));
+    conflicts.extend(conflict::format_labeled("投稿スラッグ", slugs));
+    conflicts.extend(conflict::existing_upload_files_excluding(
+        uploads_dir,
+        spec.media_files,
+        &media_files,
+    ));
+    conflicts.extend(conflict::format_labeled("メディアファイル", media_files));
+    conflicts.extend(conflict::format_labeled("ページ URL", pages));
 
     if conflicts.is_empty() {
         Ok(())
     } else {
         Err(conflicts)
+    }
+}
+
+fn merge_db_result<T>(errors: &mut Vec<String>, result: Result<T, String>, default: T) -> T {
+    match result {
+        Ok(value) => value,
+        Err(message) => {
+            errors.push(message);
+            default
+        }
     }
 }
 

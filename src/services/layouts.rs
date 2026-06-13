@@ -15,7 +15,7 @@ use crate::models::layout::{
 };
 use crate::models::page::PageInput;
 use crate::presets;
-use crate::repos::{layouts as layouts_repo, pages as pages_repo, url_paths};
+use crate::repos::{layouts as layouts_repo, pages as pages_repo};
 use crate::theme::{self, StaticFileEntry, StaticFileKind};
 
 /// 管理画面のレイアウトファイル一覧行。
@@ -455,17 +455,6 @@ pub async fn import_layout_zip(
         ));
     }
 
-    for page in &manifest.pages {
-        let exclude = if let Some(ref layout) = existing {
-            pages_repo::find_by_layout_file(pool, layout.id, &page.file_name)
-                .await?
-                .map(|p| p.id)
-        } else {
-            None
-        };
-        url_paths::ensure_url_available(pool, page.url_path.as_deref(), exclude).await?;
-    }
-
     let action = if let Some(layout) = existing {
         let input = LayoutInput {
             key: layout.key.clone(),
@@ -608,10 +597,10 @@ async fn apply_layout_package(
 
         let page_input = PageInput {
             name: page_meta.name.trim().to_string(),
-            url_path: page_meta.url_path.clone(),
+            url_path: None,
             content: body.clone(),
             layout_id,
-            is_published: page_meta.is_published,
+            is_published: false,
         };
 
         if let Some(existing) =
@@ -733,24 +722,7 @@ fn remap_layout_package(
         remapped_files.insert(new_path, new_bytes);
     }
 
-    for page in &mut remapped_manifest.pages {
-        page.url_path = prefix_url_path_for_rename_import(target_key, &page.url_path);
-    }
-
     (remapped_manifest, remapped_files)
-}
-
-/// 別名インポート時に layout key を URL パスの先頭へ 1 段追加する。
-/// `/` は `/{target_key}`、それ以外は `/{target_key}{元のパス}` になる。
-fn prefix_url_path_for_rename_import(target_key: &str, url_path: &Option<String>) -> Option<String> {
-    let Some(path) = url_path.as_deref().map(str::trim).filter(|p| !p.is_empty()) else {
-        return None;
-    };
-    if path == "/" {
-        Some(format!("/{target_key}"))
-    } else {
-        Some(format!("/{target_key}{path}"))
-    }
 }
 
 fn rewrite_layout_key_in_text(bytes: &[u8], source_key: &str, target_key: &str) -> Vec<u8> {
@@ -806,28 +778,4 @@ fn validate_layout_key(key: &str) -> DomainResult<()> {
     }
 }
 
-#[cfg(test)]
-mod rename_import_tests {
-    use super::prefix_url_path_for_rename_import;
 
-    #[test]
-    fn prefix_url_path_maps_home_to_layout_key() {
-        assert_eq!(
-            prefix_url_path_for_rename_import("corp-copy", &Some("/".to_string())),
-            Some("/corp-copy".to_string())
-        );
-    }
-
-    #[test]
-    fn prefix_url_path_prepends_key_segment() {
-        assert_eq!(
-            prefix_url_path_for_rename_import("corp-copy", &Some("/about".to_string())),
-            Some("/corp-copy/about".to_string())
-        );
-    }
-
-    #[test]
-    fn prefix_url_path_keeps_none_as_none() {
-        assert_eq!(prefix_url_path_for_rename_import("corp-copy", &None), None);
-    }
-}

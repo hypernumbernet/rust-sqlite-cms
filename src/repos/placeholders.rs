@@ -69,28 +69,38 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PlaceholderInput) -> App
     Ok(())
 }
 
-/// プレースホルダーを削除する。配下に投稿がある場合は `Conflict`。
+/// プレースホルダーを削除する。配下の投稿はゴミ箱へ移動し、プレースホルダー参照を切り離す。
 pub async fn delete(pool: &SqlitePool, id: i64) -> AppResult<()> {
-    let count: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM posts
+    let placeholder = find(pool, id).await?;
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(
+        "UPDATE posts
+         SET post_status = 'trash',
+             updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
          WHERE placeholder_id = ? AND post_type = 'post' AND post_status != 'trash'",
     )
     .bind(id)
-    .fetch_one(pool)
+    .execute(&mut *tx)
     .await?;
 
-    if count.0 > 0 {
-        return Err(AppError::Conflict(
-            "投稿が紐付いているプレースホルダーは削除できません".to_string(),
-        ));
-    }
-
-    let mut tx = pool.begin().await?;
-
-    // ゴミ箱の投稿は FK 参照が残るため物理削除（postmeta は CASCADE）
     sqlx::query(
-        "DELETE FROM posts
-         WHERE placeholder_id = ? AND post_type = 'post' AND post_status = 'trash'",
+        "INSERT INTO postmeta (post_id, meta_key, meta_value)
+         SELECT id, '_deleted_placeholder_name', ?
+         FROM posts
+         WHERE placeholder_id = ? AND post_type = 'post'
+           AND NOT EXISTS (
+             SELECT 1 FROM postmeta pm
+             WHERE pm.post_id = posts.id AND pm.meta_key = '_deleted_placeholder_name'
+           )",
+    )
+    .bind(&placeholder.name)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        "UPDATE posts SET placeholder_id = NULL WHERE placeholder_id = ? AND post_type = 'post'",
     )
     .bind(id)
     .execute(&mut *tx)

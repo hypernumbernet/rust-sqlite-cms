@@ -161,6 +161,13 @@ pub async fn list_trashed(pool: &SqlitePool) -> AppResult<Vec<Post>> {
 
 /// ゴミ箱から復元する。`published_at` があれば公開、なければ下書きに戻す。
 pub async fn restore(pool: &SqlitePool, id: i64) -> AppResult<()> {
+    let post = find(pool, id).await?;
+    if post.placeholder_id.is_none() {
+        return Err(AppError::Conflict(
+            "プレースホルダーが削除されているため復元できません".to_string(),
+        ));
+    }
+
     let result = sqlx::query(
         "UPDATE posts
          SET post_status = CASE WHEN published_at IS NOT NULL THEN 'publish' ELSE 'draft' END,

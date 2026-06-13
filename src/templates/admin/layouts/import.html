@@ -6,7 +6,7 @@
 
 {% block content %}
 <section class="panel">
-  <p class="help mb-12">ZIP パッケージ（<code>format_version: 1</code>）をアップロードすると、新しいレイアウトの登録または既存レイアウトの更新ができます。ウィジェット・プレースホルダーは含まれません。</p>
+  <p class="help mb-12">ZIP パッケージ（<code>format_version: 1</code>）をアップロードすると、新しいレイアウトの登録または既存レイアウトの更新ができます。ウィジェット・プレースホルダーは含まれません。インポート直後のページは URL 未設定・非公開です。公開するには管理画面のページ編集から URL を設定してください。</p>
   <form method="post" action="/admin/layouts/import" enctype="multipart/form-data">
     <div class="field">
       <label for="package">パッケージファイル（.zip）</label>
@@ -27,7 +27,7 @@
     <div class="field">
       <label for="target_key">インポート先 layout key</label>
       <input id="target_key" name="target_key" type="text" placeholder="例: corporate-copy">
-      <p class="help">「別の key でインポートする」を選んだときに指定してください。英数字・ハイフン・アンダースコアのみ。別名インポート時は各ページの URL に <code>/{key}</code> が先頭へ付与されます（例: <code>/about</code> → <code>/corporate-copy/about</code>）。</p>
+      <p class="help">「別の key でインポートする」を選んだときに指定してください。英数字・ハイフン・アンダースコアのみ。</p>
     </div>
     <div class="actions">
       <button class="button" type="submit">インポート</button>

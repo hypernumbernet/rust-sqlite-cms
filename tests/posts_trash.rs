@@ -9,6 +9,50 @@ use rust_sqlite_cms::{
 };
 
 #[tokio::test]
+async fn restore_orphaned_post_is_blocked() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+
+    let news_type = widget_types::find_by_key(&pool, "news")
+        .await
+        .expect("news widget type");
+
+    let placeholder_id = placeholders::insert(
+        &pool,
+        &PlaceholderInput {
+            name: "orphan_restore_test".to_string(),
+            widget_type_id: news_type.id,
+            config: "{}".to_string(),
+        },
+    )
+    .await
+    .expect("insert placeholder");
+
+    let post_id = posts::insert(
+        &pool,
+        &PostInput {
+            placeholder_id,
+            title: "孤立投稿".to_string(),
+            content: "".to_string(),
+            excerpt: "".to_string(),
+            post_status: "draft".to_string(),
+            post_name: "orphan".to_string(),
+        },
+    )
+    .await
+    .expect("insert post");
+
+    placeholders::delete(&pool, placeholder_id)
+        .await
+        .expect("delete placeholder");
+
+    let err = posts::restore(&pool, post_id)
+        .await
+        .expect_err("orphaned post should not restore");
+    assert!(err.to_string().contains("プレースホルダーが削除されている"));
+}
+
+#[tokio::test]
 async fn trashed_post_appears_in_list_trashed() {
     let app = common::TestApp::new().await;
     let pool = app.state.pool();

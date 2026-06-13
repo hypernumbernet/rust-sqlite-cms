@@ -102,6 +102,7 @@ struct TrashListItem {
     placeholder_name: String,
     type_label: String,
     trashed_at: String,
+    can_restore: bool,
 }
 
 #[derive(Template)]
@@ -361,26 +362,67 @@ async fn build_trash_list(state: &AppState) -> AppResult<Vec<TrashListItem>> {
         .collect();
 
     let trashed = posts::list_trashed(&state.pool()).await?;
-    Ok(trashed
-        .into_iter()
-        .filter_map(|post| {
-            let placeholder_id = post.placeholder_id?;
-            let placeholder = placeholder_by_id.get(&placeholder_id)?;
-            let type_key = type_map
-                .get(&placeholder.widget_type_id)
-                .map(String::as_str)
-                .unwrap_or("unknown");
-            let post_name = post.post_name.unwrap_or_default();
-            Some(TrashListItem {
-                id: post.id,
-                title: post.title,
-                post_name,
-                placeholder_name: placeholder.name.clone(),
-                type_label: widgets::type_label(type_key).to_string(),
-                trashed_at: super::format_updated_at(&post.updated_at),
-            })
-        })
-        .collect())
+    let mut items = Vec::with_capacity(trashed.len());
+    for post in trashed {
+        let post_name = post.post_name.unwrap_or_default();
+        let trashed_at = super::format_updated_at(&post.updated_at);
+        let item = match post.placeholder_id {
+            Some(placeholder_id) => {
+                let Some(placeholder) = placeholder_by_id.get(&placeholder_id) else {
+                    let placeholder_name = postmeta::get(
+                        &state.pool(),
+                        post.id,
+                        "_deleted_placeholder_name",
+                    )
+                    .await?
+                    .unwrap_or_else(|| "（プレースホルダー削除済み）".to_string());
+                    items.push(TrashListItem {
+                        id: post.id,
+                        title: post.title,
+                        post_name,
+                        placeholder_name,
+                        type_label: "—".to_string(),
+                        trashed_at,
+                        can_restore: false,
+                    });
+                    continue;
+                };
+                let type_key = type_map
+                    .get(&placeholder.widget_type_id)
+                    .map(String::as_str)
+                    .unwrap_or("unknown");
+                TrashListItem {
+                    id: post.id,
+                    title: post.title,
+                    post_name,
+                    placeholder_name: placeholder.name.clone(),
+                    type_label: widgets::type_label(type_key).to_string(),
+                    trashed_at,
+                    can_restore: true,
+                }
+            }
+            None => {
+                let placeholder_name = postmeta::get(
+                    &state.pool(),
+                    post.id,
+                    "_deleted_placeholder_name",
+                )
+                .await?
+                .unwrap_or_else(|| "（プレースホルダー削除済み）".to_string());
+                TrashListItem {
+                    id: post.id,
+                    title: post.title,
+                    post_name,
+                    placeholder_name,
+                    type_label: "—".to_string(),
+                    trashed_at,
+                    can_restore: false,
+                }
+            }
+        };
+        items.push(item);
+    }
+    Ok(items)
 }
 
 async fn placeholder_new(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {

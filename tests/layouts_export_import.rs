@@ -169,6 +169,16 @@ async fn import_creates_new_layout() {
         .expect("imported layout");
     assert_eq!(imported.name, "エクスポート元");
 
+    let imported_pages = pages::list_by_layout(&pool, imported.id)
+        .await
+        .expect("imported pages");
+    let about = imported_pages
+        .iter()
+        .find(|p| p.name == "About")
+        .expect("about page");
+    assert!(about.url_path.is_none());
+    assert!(!about.is_published);
+
     let shell = theme::read_shell(&config.paths.work_dir, "imported-new").expect("shell");
     assert!(shell.contains("custom shell"));
 }
@@ -199,6 +209,20 @@ async fn import_overwrite_updates_layout() {
         .expect("import overwrite");
     assert_eq!(action, LayoutImportAction::Updated);
 
+    let layout = layouts::find_by_key(&pool, &layout_key)
+        .await
+        .expect("lookup")
+        .expect("layout");
+    let layout_pages = pages::list_by_layout(&pool, layout.id)
+        .await
+        .expect("layout pages");
+    let about = layout_pages
+        .iter()
+        .find(|p| p.name == "About")
+        .expect("about page");
+    assert!(about.url_path.is_none());
+    assert!(!about.is_published);
+
     let shell = theme::read_shell(&config.paths.work_dir, &layout_key).expect("shell");
     assert!(shell.contains("custom shell"));
     assert!(!shell.contains("old shell on disk"));
@@ -226,73 +250,6 @@ async fn import_skip_leaves_layout_unchanged() {
 
     let shell = theme::read_shell(&config.paths.work_dir, &layout_key).expect("shell");
     assert!(shell.contains("kept shell"));
-}
-
-#[tokio::test]
-async fn import_rejects_url_path_conflict() {
-    let app = common::TestApp::new().await;
-    let pool = app.state.pool();
-    let config = app.state.config.as_ref();
-
-    let default_layout = layouts::find_bootstrap_layout(&pool)
-        .await
-        .expect("bootstrap layout");
-    let page_input = PageInput {
-        name: "衝突ページ".to_string(),
-        url_path: Some("/conflict-url".to_string()),
-        content: "body".to_string(),
-        layout_id: default_layout.id,
-        is_published: false,
-    };
-    pages::insert(&pool, &page_input).await.expect("seed page");
-
-    let (layout_id, _) = create_test_layout_with_page(&app).await;
-    let mut exported = layouts_service::export_layout_zip(&pool, config, layout_id)
-        .await
-        .expect("export");
-
-    let mut manifest = read_zip_manifest(&exported);
-    for page in &mut manifest.pages {
-        if page.url_path.as_deref() == Some("/export-src-about") {
-            page.url_path = Some("/conflict-url".to_string());
-        }
-    }
-    let manifest_json = serde_json::to_string_pretty(&manifest).expect("serialize");
-
-    let cursor = Cursor::new(&exported);
-    let mut archive = ZipArchive::new(cursor).expect("zip");
-    let mut out = Vec::new();
-    {
-        let mut writer = zip::ZipWriter::new(Cursor::new(&mut out));
-        let options = zip::write::SimpleFileOptions::default()
-            .compression_method(zip::CompressionMethod::Deflated);
-        for i in 0..archive.len() {
-            let mut file = archive.by_index(i).expect("entry");
-            let name = file.name().replace('\\', "/");
-            if name == "manifest.json" {
-                writer.start_file("manifest.json", options).expect("start");
-                writer.write_all(manifest_json.as_bytes()).expect("write");
-                continue;
-            }
-            let mut data = Vec::new();
-            file.read_to_end(&mut data).expect("read");
-            writer.start_file(&name, options).expect("start file");
-            writer.write_all(&data).expect("write file");
-        }
-        writer.finish().expect("finish");
-    }
-    exported = out;
-
-    let err = layouts_service::import_layout_zip(
-        &pool,
-        config,
-        &exported,
-        LayoutImportMode::Overwrite,
-        None,
-    )
-    .await
-    .expect_err("url conflict");
-    assert!(err.to_string().contains("conflict-url"));
 }
 
 #[tokio::test]
@@ -331,8 +288,10 @@ async fn import_rename_creates_layout_with_rewritten_references() {
     let pages = pages::list_by_layout(&pool, imported.id).await.expect("pages");
     let about = pages
         .iter()
-        .find(|p| p.url_path.as_deref() == Some("/renamed-layout/export-src-about"))
+        .find(|p| p.name == "About")
         .expect("about page");
+    assert!(about.url_path.is_none());
+    assert!(!about.is_published);
     let body = theme::read_page_body(&config.paths.work_dir, "renamed-layout", &about.file_name)
         .expect("page body");
     assert!(body.contains("renamed-layout/shell.html"));
@@ -340,7 +299,7 @@ async fn import_rename_creates_layout_with_rewritten_references() {
 }
 
 #[tokio::test]
-async fn import_rename_on_same_site_prefixes_urls_to_avoid_conflict() {
+async fn import_rename_on_same_site_imports_unpublished_pages_without_urls() {
     let app = common::TestApp::new().await;
     let pool = app.state.pool();
     let config = app.state.config.as_ref();
@@ -365,12 +324,13 @@ async fn import_rename_on_same_site_prefixes_urls_to_avoid_conflict() {
         .await
         .expect("lookup")
         .expect("copied layout");
-    let pages = pages::list_by_layout(&pool, copied.id).await.expect("pages");
-    let about = pages
+    let copied_pages = pages::list_by_layout(&pool, copied.id).await.expect("pages");
+    let copied_about = copied_pages
         .iter()
-        .find(|p| p.url_path.as_deref() == Some("/layout-copy/export-src-about"))
-        .expect("prefixed url");
-    assert!(about.is_published);
+        .find(|p| p.name == "About")
+        .expect("copied about page");
+    assert!(copied_about.url_path.is_none());
+    assert!(!copied_about.is_published);
 
     let original = pages::list_by_layout(&pool, layout_id)
         .await
@@ -378,5 +338,54 @@ async fn import_rename_on_same_site_prefixes_urls_to_avoid_conflict() {
         .into_iter()
         .find(|p| p.url_path.as_deref() == Some("/export-src-about"))
         .expect("original page still exists");
-    assert_ne!(about.id, original.id);
+    assert_ne!(copied_about.id, original.id);
+}
+
+#[tokio::test]
+async fn import_overwrite_clears_existing_page_urls() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+    let config = app.state.config.as_ref();
+
+    let (layout_id, layout_key) = create_test_layout_with_page(&app).await;
+    let original_pages = pages::list_by_layout(&pool, layout_id)
+        .await
+        .expect("original pages");
+    let original_about = original_pages
+        .iter()
+        .find(|p| p.name == "About")
+        .expect("original about");
+    assert_eq!(
+        original_about.url_path.as_deref(),
+        Some("/export-src-about")
+    );
+    assert!(original_about.is_published);
+
+    let exported = layouts_service::export_layout_zip(&pool, config, layout_id)
+        .await
+        .expect("export");
+
+    let (action, _) = layouts_service::import_layout_zip(
+        &pool,
+        config,
+        &exported,
+        LayoutImportMode::Overwrite,
+        None,
+    )
+    .await
+    .expect("import overwrite");
+    assert_eq!(action, LayoutImportAction::Updated);
+
+    let updated_pages = pages::list_by_layout(&pool, layout_id)
+        .await
+        .expect("updated pages");
+    let updated_about = updated_pages
+        .iter()
+        .find(|p| p.id == original_about.id)
+        .expect("updated about");
+    assert!(updated_about.url_path.is_none());
+    assert!(!updated_about.is_published);
+
+    let shell = theme::read_shell(&config.paths.work_dir, &layout_key).expect("shell");
+    assert!(shell.contains("custom shell"));
 }

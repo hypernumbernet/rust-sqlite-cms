@@ -1,6 +1,6 @@
 //! レイアウト管理サービス。
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{Cursor, Read, Write};
 
 use sqlx::SqlitePool;
@@ -13,9 +13,13 @@ use crate::models::layout::{
     Layout, LayoutExportManifest, LayoutExportMeta, LayoutExportPageMeta, LayoutImportAction,
     LayoutImportMode, LayoutInput,
 };
+use crate::models::placeholder::{self as placeholder_model, PlaceholderInput};
 use crate::models::page::PageInput;
 use crate::presets;
-use crate::repos::{layouts as layouts_repo, pages as pages_repo};
+use crate::repos::{
+    layouts as layouts_repo, pages as pages_repo, placeholders as placeholders_repo,
+    postmeta as postmeta_repo, posts as posts_repo,
+};
 use crate::theme::{self, StaticFileEntry, StaticFileKind};
 
 /// 管理画面のレイアウトファイル一覧行。
@@ -413,6 +417,367 @@ pub async fn export_layout_zip(
     Ok(cursor.into_inner())
 }
 
+/// レイアウトを別の key に複製する（shell / static / 所属ページをコピー）。
+pub async fn duplicate_layout(
+    pool: &SqlitePool,
+    config: &AppConfig,
+    source_id: i64,
+    target_key: &str,
+    include_posts: bool,
+) -> DomainResult<String> {
+    let source = layouts_repo::find(pool, source_id).await?;
+    let target_key = target_key.trim();
+    validate_layout_key(target_key)?;
+
+    if target_key == source.key {
+        return Err(DomainError::Validation(
+            "複製先の layout key は元の key と異なる必要があります".to_string(),
+        )
+        .into());
+    }
+
+    if layouts_repo::find_by_key(pool, target_key).await?.is_some() {
+        return Err(AppError::Conflict(format!(
+            "レイアウト key「{target_key}」は既に使われています"
+        ))
+        .into());
+    }
+
+    let bytes = export_layout_zip(pool, config, source_id).await?;
+    let (action, _) = import_layout_zip(
+        pool,
+        config,
+        &bytes,
+        LayoutImportMode::Rename,
+        Some(target_key),
+    )
+    .await?;
+
+    if action != LayoutImportAction::Created {
+        return Err(AppError::Other(anyhow::anyhow!(
+            "レイアウトの複製に失敗しました（予期しないインポート結果）"
+        ))
+        .into());
+    }
+
+    let mut message = format!(
+        "レイアウト「{}」を「{}」として複製しました",
+        source.name, target_key
+    );
+
+    if include_posts {
+        let target_layout = layouts_repo::find_by_key(pool, target_key)
+            .await?
+            .ok_or(AppError::NotFound)?;
+        match copy_posts_for_layout(
+            pool,
+            config,
+            &target_layout,
+            &source.key,
+            target_key,
+        )
+        .await
+        {
+            Ok(summary) => {
+                if summary.placeholder_count == 0 {
+                    message.push_str("（投稿対象のプレースホルダーは見つかりませんでした）");
+                } else {
+                    message.push_str(&format!(
+                        "（プレースホルダー {} 件・投稿 {} 件をコピー）",
+                        summary.placeholder_count, summary.post_count
+                    ));
+                }
+            }
+            Err(err) => {
+                let _ = delete_layout(pool, config, target_layout.id).await;
+                return Err(err);
+            }
+        }
+    }
+
+    Ok(message)
+}
+
+struct CopyPostsSummary {
+    placeholder_count: usize,
+    post_count: usize,
+}
+
+struct PlaceholderRemap {
+    source: crate::models::placeholder::Placeholder,
+    new_name: String,
+}
+
+enum LayoutTextTarget {
+    Shell,
+    Page(String),
+    Static(String),
+}
+
+struct LayoutTextFile {
+    target: LayoutTextTarget,
+    content: String,
+}
+
+async fn copy_posts_for_layout(
+    pool: &SqlitePool,
+    config: &AppConfig,
+    target_layout: &Layout,
+    source_key: &str,
+    target_key: &str,
+) -> DomainResult<CopyPostsSummary> {
+    let work_dir = &config.paths.work_dir;
+    let mut text_files =
+        load_layout_text_files(pool, work_dir, target_layout.id, target_key).await?;
+    let layout_text = text_files
+        .iter()
+        .map(|file| file.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let all_placeholders = placeholders_repo::list_all(pool).await?;
+    let remaps = build_placeholder_remaps(&layout_text, &all_placeholders, source_key, target_key)?;
+    if remaps.is_empty() {
+        return Ok(CopyPostsSummary {
+            placeholder_count: 0,
+            post_count: 0,
+        });
+    }
+
+    let rewrite_pairs = build_placeholder_rewrite_pairs(&remaps);
+    let target_token = layout_key_to_placeholder_token(target_key);
+    let mut created_placeholder_ids = Vec::with_capacity(remaps.len());
+    let mut reserved_slugs = HashSet::new();
+    let mut post_count = 0usize;
+
+    for remap in &remaps {
+        let input = PlaceholderInput {
+            name: remap.new_name.clone(),
+            widget_type_id: remap.source.widget_type_id,
+            config: remap.source.config.clone(),
+        };
+        let new_placeholder_id = placeholders_repo::insert(pool, &input).await?;
+        created_placeholder_ids.push(new_placeholder_id);
+
+        for source_post in posts_repo::list_all_for_placeholder(pool, remap.source.id).await? {
+            let original_slug = source_post.post_name.as_deref().unwrap_or("post");
+            let slug = unique_copy_post_slug(
+                pool,
+                &target_token,
+                original_slug,
+                &mut reserved_slugs,
+            )
+            .await?;
+            let new_post_id =
+                posts_repo::insert_copy(pool, new_placeholder_id, source_post.id, &slug).await?;
+            postmeta_repo::copy_for_post(pool, source_post.id, new_post_id).await?;
+            post_count += 1;
+        }
+    }
+
+    for file in &mut text_files {
+        file.content = rewrite_placeholder_refs(&file.content, &rewrite_pairs);
+    }
+
+    if let Err(err) = save_layout_text_files(work_dir, target_key, &text_files) {
+        rollback_created_placeholders(pool, &created_placeholder_ids).await?;
+        return Err(err);
+    }
+
+    Ok(CopyPostsSummary {
+        placeholder_count: remaps.len(),
+        post_count,
+    })
+}
+
+async fn load_layout_text_files(
+    pool: &SqlitePool,
+    work_dir: &str,
+    layout_id: i64,
+    layout_key: &str,
+) -> DomainResult<Vec<LayoutTextFile>> {
+    let mut files = Vec::new();
+
+    if let Ok(shell) = theme::read_shell(work_dir, layout_key) {
+        files.push(LayoutTextFile {
+            target: LayoutTextTarget::Shell,
+            content: shell,
+        });
+    }
+
+    for page in pages_repo::list_by_layout(pool, layout_id).await? {
+        if let Ok(body) = theme::read_page_body(work_dir, layout_key, &page.file_name) {
+            files.push(LayoutTextFile {
+                target: LayoutTextTarget::Page(page.file_name),
+                content: body,
+            });
+        }
+    }
+
+    for entry in theme::list_static_files(work_dir, layout_key).map_err(AppError::from)? {
+        if entry.kind == StaticFileKind::Text {
+            if let Ok(text) = theme::read_static_text(work_dir, layout_key, &entry.relative_path) {
+                files.push(LayoutTextFile {
+                    target: LayoutTextTarget::Static(entry.relative_path),
+                    content: text,
+                });
+            }
+        }
+    }
+
+    Ok(files)
+}
+
+fn save_layout_text_files(
+    work_dir: &str,
+    layout_key: &str,
+    files: &[LayoutTextFile],
+) -> DomainResult<()> {
+    for file in files {
+        match &file.target {
+            LayoutTextTarget::Shell => {
+                theme::write_shell(work_dir, layout_key, &file.content).map_err(AppError::from)?;
+            }
+            LayoutTextTarget::Page(file_name) => {
+                theme::write_page_body(work_dir, layout_key, file_name, &file.content)
+                    .map_err(AppError::from)?;
+            }
+            LayoutTextTarget::Static(relative_path) => {
+                theme::write_static_text(work_dir, layout_key, relative_path, &file.content)
+                    .map_err(AppError::from)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn build_placeholder_remaps(
+    layout_text: &str,
+    all_placeholders: &[crate::models::placeholder::Placeholder],
+    source_key: &str,
+    target_key: &str,
+) -> DomainResult<Vec<PlaceholderRemap>> {
+    let source_token = layout_key_to_placeholder_token(source_key);
+    let target_token = layout_key_to_placeholder_token(target_key);
+
+    let mut remaps: Vec<PlaceholderRemap> = all_placeholders
+        .iter()
+        .filter(|placeholder| placeholder_used_in_text(layout_text, &placeholder.name))
+        .map(|placeholder| {
+            let new_name = remap_placeholder_name(&source_token, &target_token, &placeholder.name);
+            PlaceholderRemap {
+                source: placeholder.clone(),
+                new_name,
+            }
+        })
+        .collect();
+
+    remaps.sort_by(|a, b| b.source.name.len().cmp(&a.source.name.len()));
+    for remap in &remaps {
+        placeholder_model::validate_name(&remap.new_name).map_err(DomainError::Validation)?;
+    }
+    Ok(remaps)
+}
+
+fn build_placeholder_rewrite_pairs(remaps: &[PlaceholderRemap]) -> Vec<(String, String)> {
+    let mut pairs = Vec::with_capacity(remaps.len() * 2);
+    for remap in remaps {
+        pairs.push((
+            format!("{}_html", remap.source.name),
+            format!("{}_html", remap.new_name),
+        ));
+        pairs.push((
+            format!("has_{}", remap.source.name),
+            format!("has_{}", remap.new_name),
+        ));
+    }
+    pairs
+}
+
+fn placeholder_used_in_text(text: &str, name: &str) -> bool {
+    let marker = format!("{name}_html");
+    let mut start = 0;
+    while let Some(pos) = text[start..].find(&marker) {
+        let abs_pos = start + pos;
+        if abs_pos == 0 || !is_placeholder_name_char(text.as_bytes()[abs_pos - 1]) {
+            return true;
+        }
+        start = abs_pos + 1;
+    }
+    false
+}
+
+fn is_placeholder_name_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn layout_key_to_placeholder_token(key: &str) -> String {
+    key.replace('-', "_")
+}
+
+fn remap_placeholder_name(source_token: &str, target_token: &str, name: &str) -> String {
+    let prefix = format!("{source_token}_");
+    if let Some(suffix) = name.strip_prefix(&prefix) {
+        format!("{target_token}_{suffix}")
+    } else {
+        format!("{target_token}_{name}")
+    }
+}
+
+async fn unique_copy_post_slug(
+    pool: &SqlitePool,
+    target_token: &str,
+    original_slug: &str,
+    reserved: &mut HashSet<String>,
+) -> DomainResult<String> {
+    let base = format!("{target_token}-{original_slug}");
+    let mut candidate = base.clone();
+    let mut suffix = 2i64;
+    while reserved.contains(&candidate) || active_post_slug_exists(pool, &candidate).await? {
+        candidate = format!("{base}-{suffix}");
+        suffix += 1;
+    }
+    reserved.insert(candidate.clone());
+    Ok(candidate)
+}
+
+async fn active_post_slug_exists(pool: &SqlitePool, slug: &str) -> DomainResult<bool> {
+    let exists: Option<i32> = sqlx::query_scalar(
+        "SELECT 1 FROM posts WHERE post_type = 'post' AND post_status != 'trash' AND post_name = ? LIMIT 1",
+    )
+    .bind(slug)
+    .fetch_optional(pool)
+    .await
+    .map_err(AppError::from)?;
+    Ok(exists.is_some())
+}
+
+async fn rollback_created_placeholders(pool: &SqlitePool, placeholder_ids: &[i64]) -> DomainResult<()> {
+    for id in placeholder_ids {
+        sqlx::query("DELETE FROM posts WHERE placeholder_id = ?")
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(AppError::from)?;
+        sqlx::query("DELETE FROM placeholders WHERE id = ?")
+            .bind(id)
+            .execute(pool)
+            .await
+            .map_err(AppError::from)?;
+    }
+    Ok(())
+}
+
+fn rewrite_placeholder_refs(text: &str, pairs: &[(String, String)]) -> String {
+    let mut result = text.to_string();
+    for (old, new) in pairs {
+        if result.contains(old) {
+            result = result.replace(old, new);
+        }
+    }
+    result
+}
+
 /// ZIP パッケージからレイアウトをインポートする。
 pub async fn import_layout_zip(
     pool: &SqlitePool,
@@ -775,6 +1140,43 @@ fn validate_layout_key(key: &str) -> DomainResult<()> {
             "レイアウト key は英数字・ハイフン・アンダースコアのみ（先頭に _ は不可）".into(),
         )
         .into())
+    }
+}
+
+#[cfg(test)]
+mod duplicate_posts_tests {
+    use super::*;
+
+    #[test]
+    fn placeholder_used_in_text_rejects_partial_name_match() {
+        let text = "{{ export_src_news_html | safe }}";
+        assert!(!placeholder_used_in_text(text, "news"));
+        assert!(placeholder_used_in_text(text, "export_src_news"));
+    }
+
+    #[test]
+    fn remap_placeholder_name_replaces_source_prefix() {
+        assert_eq!(
+            remap_placeholder_name("corporate", "corporate_v2", "corporate_news"),
+            "corporate_v2_news"
+        );
+        assert_eq!(
+            remap_placeholder_name("corporate", "corporate_v2", "news"),
+            "corporate_v2_news"
+        );
+    }
+
+    #[test]
+    fn rewrite_placeholder_refs_updates_html_and_has_prefix() {
+        let pairs = vec![
+            ("corporate_news_html".to_string(), "corporate_v2_news_html".to_string()),
+            ("has_corporate_news".to_string(), "has_corporate_v2_news".to_string()),
+        ];
+        let text = "{{ corporate_news_html | safe }}{% if has_corporate_news %}";
+        let rewritten = rewrite_placeholder_refs(text, &pairs);
+        assert!(rewritten.contains("corporate_v2_news_html"));
+        assert!(rewritten.contains("has_corporate_v2_news"));
+        assert!(!rewritten.contains("corporate_news_html"));
     }
 }
 

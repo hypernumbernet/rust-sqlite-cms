@@ -47,6 +47,11 @@
             </form>
             {% endif %}
             <a class="button secondary" href="/admin/layouts/{{ row.id }}/edit">編集</a>
+            <button type="button" class="button secondary"
+              data-layout-duplicate
+              data-layout-id="{{ row.id }}"
+              data-layout-key="{{ row.key }}"
+              data-layout-name="{{ row.name }}">複製</button>
             <a class="button secondary" href="/admin/layouts/{{ row.id }}/export">エクスポート</a>
             {% if row.can_delete %}
             <form method="post" action="/admin/layouts/{{ row.id }}/delete" data-confirm="削除しますか？">
@@ -60,4 +65,33 @@
     </tbody>
   </table>
 </section>
+
+<dialog id="layout-duplicate-dialog" class="layout-duplicate-dialog">
+  <div class="layout-duplicate-dialog-inner">
+    <div class="layout-duplicate-dialog-header">
+      <h2>レイアウトを複製</h2>
+    </div>
+    <form id="layout-duplicate-form" class="layout-duplicate-dialog-body" method="post" action="">
+      <p class="help" id="layout-duplicate-source"></p>
+      <div class="field">
+        <label for="layout-duplicate-target-key">新しい layout key</label>
+        <input id="layout-duplicate-target-key" name="target_key" type="text" required
+          placeholder="例: corporate-copy" pattern="[A-Za-z0-9_-]+" maxlength="64"
+          title="英数字・ハイフン・アンダースコアのみ（先頭に _ は不可）">
+        <p class="help">英数字・ハイフン・アンダースコアのみ。shell / static / ページをコピーします（複製先ページは非公開・URL 未設定）。</p>
+      </div>
+      <div class="field">
+        <label class="label-option">
+          <input type="checkbox" id="layout-duplicate-include-posts" name="include_posts" value="1">
+          投稿内容も含めて複製
+        </label>
+        <p class="help">ON にすると、レイアウト内で参照しているプレースホルダーと投稿も複製し、複製先テンプレートの参照名を新 key 用に書き換えます。投稿の公開状態は元のままコピーされます。</p>
+      </div>
+      <div class="layout-duplicate-dialog-actions">
+        <button type="submit" class="button">複製</button>
+        <button type="button" class="button secondary" id="layout-duplicate-cancel">キャンセル</button>
+      </div>
+    </form>
+  </div>
+</dialog>
 {% endblock %}

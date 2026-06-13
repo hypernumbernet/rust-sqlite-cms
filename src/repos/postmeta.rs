@@ -4,6 +4,19 @@ use sqlx::SqlitePool;
 
 use crate::error::AppResult;
 
+/// 指定 post の postmeta を別 post へ一括コピーする。
+pub async fn copy_for_post(pool: &SqlitePool, source_id: i64, target_id: i64) -> AppResult<()> {
+    sqlx::query(
+        "INSERT INTO postmeta (post_id, meta_key, meta_value)
+         SELECT ?, meta_key, meta_value FROM postmeta WHERE post_id = ?",
+    )
+    .bind(target_id)
+    .bind(source_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// 指定 post の meta_key に対応する値を取得する。
 pub async fn get(pool: &SqlitePool, post_id: i64, meta_key: &str) -> AppResult<Option<String>> {
     let row: Option<(String,)> = sqlx::query_as(

@@ -54,6 +54,12 @@ struct StaticDeleteForm {
     relative_path: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct LayoutDuplicateForm {
+    target_key: String,
+    include_posts: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 struct LayoutListItem {
     id: i64,
@@ -155,6 +161,7 @@ pub fn router() -> Router<AppState> {
         .route("/admin/layouts/new", get(new_form))
         .route("/admin/layouts/{id}/edit", get(edit).post(update))
         .route("/admin/layouts/{id}/delete", post(destroy))
+        .route("/admin/layouts/{id}/duplicate", post(duplicate))
         .route("/admin/layouts/{id}/publish", post(publish))
         .route("/admin/layouts/{id}/static/upload", post(upload_static))
         .route("/admin/layouts/{id}/static/delete", post(delete_static))
@@ -705,6 +712,25 @@ async fn publish(State(state): State<AppState>, AxumPath(id): AxumPath<i64>) -> 
 async fn destroy(State(state): State<AppState>, AxumPath(id): AxumPath<i64>) -> AppResult<Redirect> {
     services::layouts::delete_layout(&state.pool(), &state.config, id).await?;
     Ok(Redirect::to("/admin/layouts"))
+}
+
+async fn duplicate(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<i64>,
+    Form(form): Form<LayoutDuplicateForm>,
+) -> AppResult<Response> {
+    match services::layouts::duplicate_layout(
+        &state.pool(),
+        &state.config,
+        id,
+        &form.target_key,
+        form.include_posts.is_some(),
+    )
+    .await
+    {
+        Ok(message) => Ok(redirect_index_with_success(&message)),
+        Err(err) => Ok(redirect_index_with_error(&err.to_string())),
+    }
 }
 
 async fn build_layout_form(

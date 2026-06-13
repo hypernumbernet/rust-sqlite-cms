@@ -6,7 +6,9 @@ use rust_sqlite_cms::models::layout::{
     LayoutExportManifest, LayoutImportAction, LayoutImportMode, LayoutInput,
 };
 use rust_sqlite_cms::models::page::PageInput;
-use rust_sqlite_cms::repos::{layouts, pages};
+use rust_sqlite_cms::models::placeholder::PlaceholderInput;
+use rust_sqlite_cms::models::post::PostInput;
+use rust_sqlite_cms::repos::{layouts, pages, placeholders, posts, widget_types};
 use rust_sqlite_cms::services::layouts as layouts_service;
 use rust_sqlite_cms::theme;
 use zip::ZipArchive;
@@ -388,4 +390,176 @@ async fn import_overwrite_clears_existing_page_urls() {
 
     let shell = theme::read_shell(&config.paths.work_dir, &layout_key).expect("shell");
     assert!(shell.contains("custom shell"));
+}
+
+#[tokio::test]
+async fn duplicate_layout_copies_to_new_key() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+    let config = app.state.config.as_ref();
+
+    let (layout_id, _) = create_test_layout_with_page(&app).await;
+
+    let message = layouts_service::duplicate_layout(&pool, config, layout_id, "layout-dup", false)
+        .await
+        .expect("duplicate");
+    assert!(message.contains("layout-dup"));
+
+    let copied = layouts::find_by_key(&pool, "layout-dup")
+        .await
+        .expect("lookup")
+        .expect("copied layout");
+    assert_eq!(copied.name, "エクスポート元");
+
+    let copied_pages = pages::list_by_layout(&pool, copied.id).await.expect("pages");
+    let copied_about = copied_pages
+        .iter()
+        .find(|p| p.name == "About")
+        .expect("copied about page");
+    assert!(copied_about.url_path.is_none());
+    assert!(!copied_about.is_published);
+
+    let body = theme::read_page_body(&config.paths.work_dir, "layout-dup", &copied_about.file_name)
+        .expect("page body");
+    assert!(body.contains("layout-dup/shell.html"));
+    assert!(!body.contains("export-src/shell.html"));
+
+    let original = pages::list_by_layout(&pool, layout_id)
+        .await
+        .expect("original pages")
+        .into_iter()
+        .find(|p| p.url_path.as_deref() == Some("/export-src-about"))
+        .expect("original page still exists");
+    assert_eq!(original.url_path.as_deref(), Some("/export-src-about"));
+    assert!(original.is_published);
+}
+
+#[tokio::test]
+async fn duplicate_layout_rejects_same_or_existing_key() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+    let config = app.state.config.as_ref();
+
+    let (layout_id, _) = create_test_layout_with_page(&app).await;
+
+    let same_key_err =
+        layouts_service::duplicate_layout(&pool, config, layout_id, "export-src", false)
+            .await
+            .expect_err("same key");
+    assert!(same_key_err.to_string().contains("異なる必要があります"));
+
+    layouts_service::duplicate_layout(&pool, config, layout_id, "layout-dup", false)
+        .await
+        .expect("first duplicate");
+
+    let existing_err =
+        layouts_service::duplicate_layout(&pool, config, layout_id, "layout-dup", false)
+            .await
+            .expect_err("existing key");
+    assert!(existing_err.to_string().contains("既に使われています"));
+}
+
+async fn create_test_layout_with_placeholder_post(app: &common::TestApp) -> (i64, i64, i64) {
+    let pool = app.state.pool();
+    let config = app.state.config.as_ref();
+
+    let (layout_id, _) = create_test_layout_with_page(app).await;
+
+    let news_type = widget_types::find_by_key(&pool, "news")
+        .await
+        .expect("news widget type");
+    let placeholder_id = placeholders::insert(
+        &pool,
+        &PlaceholderInput {
+            name: "export_src_news".to_string(),
+            widget_type_id: news_type.id,
+            config: "{}".to_string(),
+        },
+    )
+    .await
+    .expect("insert placeholder");
+
+    let post_id = posts::insert(
+        &pool,
+        &PostInput {
+            placeholder_id,
+            title: "複製元お知らせ".to_string(),
+            content: "本文".to_string(),
+            excerpt: "抜粋".to_string(),
+            post_status: "publish".to_string(),
+            post_name: "export-src-post".to_string(),
+        },
+    )
+    .await
+    .expect("insert post");
+
+    let about = pages::list_by_layout(&pool, layout_id)
+        .await
+        .expect("pages")
+        .into_iter()
+        .find(|p| p.name == "About")
+        .expect("about page");
+    let content = format!(
+        "{{% extends \"export-src/shell.html\" %}}\n{{% block content %}}<div>{{{{ export_src_news_html | safe }}}}</div>{{% endblock %}}"
+    );
+    theme::write_page_body(&config.paths.work_dir, "export-src", &about.file_name, &content)
+        .expect("write page body");
+
+    (layout_id, placeholder_id, post_id)
+}
+
+#[tokio::test]
+async fn duplicate_layout_copies_posts_when_requested() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+    let config = app.state.config.as_ref();
+
+    let (layout_id, _placeholder_id, original_post_id) =
+        create_test_layout_with_placeholder_post(&app).await;
+
+    let message =
+        layouts_service::duplicate_layout(&pool, config, layout_id, "export-src-dup", true)
+            .await
+            .expect("duplicate with posts");
+    assert!(message.contains("プレースホルダー 1 件"));
+    assert!(message.contains("投稿 1 件"));
+
+    let copied_layout = layouts::find_by_key(&pool, "export-src-dup")
+        .await
+        .expect("lookup")
+        .expect("copied layout");
+    let copied_about = pages::list_by_layout(&pool, copied_layout.id)
+        .await
+        .expect("pages")
+        .into_iter()
+        .find(|p| p.name == "About")
+        .expect("about page");
+    let body = theme::read_page_body(
+        &config.paths.work_dir,
+        "export-src-dup",
+        &copied_about.file_name,
+    )
+    .expect("page body");
+    assert!(body.contains("export_src_dup_news_html"));
+    assert!(!body.contains("export_src_news_html"));
+
+    let new_placeholder = sqlx::query_as::<_, (i64,)>(
+        "SELECT id FROM placeholders WHERE name = 'export_src_dup_news'",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("new placeholder");
+
+    let copied_posts = posts::list_all_for_placeholder(&pool, new_placeholder.0)
+        .await
+        .expect("copied posts");
+    assert_eq!(copied_posts.len(), 1);
+    assert_eq!(copied_posts[0].post_status, "publish");
+    assert!(copied_posts[0].published_at.is_some());
+    assert_ne!(copied_posts[0].id, original_post_id);
+
+    let original_post = posts::find(&pool, original_post_id)
+        .await
+        .expect("original post");
+    assert_eq!(original_post.post_status, "publish");
 }

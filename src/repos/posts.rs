@@ -85,6 +85,32 @@ pub async fn find_in_placeholder(
     .ok_or(AppError::NotFound)
 }
 
+/// 既存投稿を複製する（公開状態・`published_at`・`menu_order` を維持）。
+pub async fn insert_copy(
+    pool: &SqlitePool,
+    placeholder_id: i64,
+    source_id: i64,
+    post_name: &str,
+) -> AppResult<i64> {
+    let row: (i64,) = sqlx::query_as(
+        "INSERT INTO posts (
+            post_type, placeholder_id, post_status, post_name, title, content, excerpt,
+            menu_order, published_at
+         )
+         SELECT 'post', ?, post_status, ?, title, content, excerpt, menu_order, published_at
+         FROM posts
+         WHERE id = ?
+         RETURNING id",
+    )
+    .bind(placeholder_id)
+    .bind(post_name)
+    .bind(source_id)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(row.0)
+}
+
 /// お知らせを作成する。
 pub async fn insert(pool: &SqlitePool, input: &PostInput) -> AppResult<i64> {
     let row: (i64,) = sqlx::query_as(

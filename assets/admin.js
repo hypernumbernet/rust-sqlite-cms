@@ -2925,6 +2925,51 @@
     }
   }
 
+  function initLayoutDuplicate() {
+    const dialog = document.getElementById('layout-duplicate-dialog');
+    const form = document.getElementById('layout-duplicate-form');
+    const sourceEl = document.getElementById('layout-duplicate-source');
+    const targetKeyInput = document.getElementById('layout-duplicate-target-key');
+    const cancelBtn = document.getElementById('layout-duplicate-cancel');
+    if (!dialog || !form || !sourceEl || !targetKeyInput) return;
+
+    function closeDialog() {
+      if (dialog.open) {
+        dialog.close();
+      }
+    }
+
+    document.querySelectorAll('[data-layout-duplicate]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const layoutId = btn.dataset.layoutId;
+        const layoutKey = btn.dataset.layoutKey || '';
+        const layoutName = btn.dataset.layoutName || layoutKey;
+        if (!layoutId) return;
+
+        form.action = '/admin/layouts/' + layoutId + '/duplicate';
+        sourceEl.textContent =
+          '複製元: ' + layoutName + '（key: ' + layoutKey + '）';
+        targetKeyInput.value = layoutKey ? layoutKey + '-copy' : '';
+        dialog.showModal();
+        targetKeyInput.focus();
+        targetKeyInput.select();
+      });
+    });
+
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', closeDialog);
+    }
+
+    dialog.addEventListener('cancel', function (event) {
+      event.preventDefault();
+      closeDialog();
+    });
+
+    dialog.addEventListener('close', function () {
+      form.reset();
+    });
+  }
+
   function initDatabaseIndex() {
     const checkbox = document.getElementById('db-show-system-tables');
     const emptyEl = document.getElementById('db-tables-empty');
@@ -2969,6 +3014,7 @@
     initTableData();
     initWidgetConfig();
     initDatabaseIndex();
+    initLayoutDuplicate();
   }
 
   window.Admin = {

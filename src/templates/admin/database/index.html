@@ -115,6 +115,9 @@
               {% endif %}
               {% if item.can_edit %}
               <a class="button secondary" href="{{ item.edit_url }}">編集</a>
+              <button type="button" class="button secondary"
+                data-view-duplicate
+                data-view-name="{{ item.name }}">複製</button>
               {% endif %}
             </div>
             {% else %}
@@ -131,12 +134,14 @@
   </section>
 </div>
 
-<dialog id="table-duplicate-dialog" class="table-duplicate-dialog">
-  <div class="table-duplicate-dialog-inner">
-    <div class="table-duplicate-dialog-header">
+<script type="application/json" id="db-duplicate-payloads">{{ duplicate_payloads_json | safe }}</script>
+
+<dialog id="table-duplicate-dialog" class="admin-duplicate-dialog admin-duplicate-dialog-wide">
+  <div class="admin-duplicate-dialog-inner">
+    <div class="admin-duplicate-dialog-header">
       <h2>テーブルを複製</h2>
     </div>
-    <form id="table-duplicate-form" class="table-duplicate-dialog-body" method="post" action="">
+    <form id="table-duplicate-form" class="admin-duplicate-dialog-body" method="post" action="">
       <p class="help" id="table-duplicate-source"></p>
       <div class="field">
         <label for="table-duplicate-target-name">複製先テーブル名</label>
@@ -170,9 +175,34 @@
         </label>
         <p class="help">ON にすると、複製先の列定義と名前が一致する列のデータをコピーします。</p>
       </div>
-      <div class="table-duplicate-dialog-actions">
+      <div class="admin-duplicate-dialog-actions">
         <button type="submit" class="button">複製</button>
         <button type="button" class="button secondary" id="table-duplicate-cancel">キャンセル</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<dialog id="view-duplicate-dialog" class="admin-duplicate-dialog admin-duplicate-dialog-medium">
+  <div class="admin-duplicate-dialog-inner">
+    <div class="admin-duplicate-dialog-header">
+      <h2>ビューを複製</h2>
+    </div>
+    <form id="view-duplicate-form" class="admin-duplicate-dialog-body" method="post" action="">
+      <p class="help" id="view-duplicate-source"></p>
+      <div class="field">
+        <label for="view-duplicate-target-name">複製先ビュー名</label>
+        <input id="view-duplicate-target-name" name="name" type="text" maxlength="120" required>
+        <p class="help">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。</p>
+      </div>
+      <div class="field">
+        <label for="view-duplicate-definition">SELECT 文</label>
+        <textarea id="view-duplicate-definition" name="definition" rows="8" required></textarea>
+        <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
+      </div>
+      <div class="admin-duplicate-dialog-actions">
+        <button type="submit" class="button">複製</button>
+        <button type="button" class="button secondary" id="view-duplicate-cancel">キャンセル</button>
       </div>
     </form>
   </div>

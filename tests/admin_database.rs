@@ -1931,26 +1931,31 @@ async fn create_dup_source_table(app: &common::TestApp) {
 }
 
 #[tokio::test]
-async fn table_columns_json_returns_column_definitions() {
+async fn database_index_embeds_duplicate_payloads() {
     let app = common::TestApp::new().await;
     create_dup_source_table(&app).await;
+    create_dup_source_view(&app).await;
 
-    let response = app
-        .admin_request(
-            "GET",
-            "/admin/database/tables/dup_source/columns",
-            None,
-            None,
-        )
-        .await;
+    let response = app.admin_request("GET", "/admin/database", None, None).await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert_eq!(json["name"], "dup_source");
-    assert_eq!(json["columns"].as_array().unwrap().len(), 1);
-    assert_eq!(json["columns"][0]["name"], "body");
-    assert_eq!(json["columns"][0]["type_key"], "text");
-    assert_eq!(json["columns"][0]["nullable"], true);
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains(r#"id="db-duplicate-payloads""#));
+
+    let script = html
+        .split(r#"id="db-duplicate-payloads""#)
+        .nth(1)
+        .and_then(|chunk| chunk.split("</script>").next())
+        .unwrap_or("");
+    let json_start = script.find('>').map(|idx| idx + 1).unwrap_or(0);
+    let json: serde_json::Value = serde_json::from_str(script[json_start..].trim()).unwrap();
+    assert_eq!(json["tables"]["dup_source"][0]["name"], "body");
+    assert_eq!(json["tables"]["dup_source"][0]["type_key"], "text");
+    assert_eq!(json["tables"]["dup_source"][0]["nullable"], true);
+    assert_eq!(
+        json["views"]["dup_view_src_view"],
+        "SELECT id, body FROM dup_view_src"
+    );
 }
 
 #[tokio::test]
@@ -2064,6 +2069,130 @@ async fn duplicate_user_table_rejects_same_or_existing_name() {
         .unwrap_or("");
     assert!(location.contains("error_message="));
     assert!(urlencoding::decode(location).unwrap().contains("既に存在します"));
+}
+
+async fn create_dup_source_view(app: &common::TestApp) {
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=dup_view_src&col_name=body&col_type=text&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=dup_view_src_view&definition=SELECT+id%2C+body+FROM+dup_view_src"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn duplicate_user_view_copies_definition() {
+    let app = common::TestApp::new().await;
+    create_dup_source_view(&app).await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/dup_view_src_view/duplicate",
+            Some(
+                "name=dup_view_copy&definition=SELECT+id%2C+body+FROM+dup_view_src+WHERE+body+IS+NOT+NULL",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(location.contains("tab=views"));
+    assert!(location.contains("success_message="));
+
+    let sql: String = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = 'dup_view_copy'",
+    )
+    .fetch_one(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(sql.contains("dup_view_copy"));
+    assert!(sql.contains("WHERE body IS NOT NULL"));
+}
+
+#[tokio::test]
+async fn duplicate_user_view_rejects_same_or_existing_name() {
+    let app = common::TestApp::new().await;
+    create_dup_source_view(&app).await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/dup_view_src_view/duplicate",
+            Some("name=dup_view_src_view&definition=SELECT+id+FROM+dup_view_src"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(location.contains("tab=views"));
+    assert!(location.contains("error_message="));
+    assert!(urlencoding::decode(location).unwrap().contains("異なる必要があります"));
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/dup_view_src_view/duplicate",
+            Some("name=dup_view_existing&definition=SELECT+id+FROM+dup_view_src"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/dup_view_src_view/duplicate",
+            Some("name=dup_view_existing&definition=SELECT+id+FROM+dup_view_src"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(location.contains("error_message="));
+    assert!(urlencoding::decode(location).unwrap().contains("既に存在します"));
+}
+
+#[tokio::test]
+async fn database_index_shows_duplicate_button_for_user_views() {
+    let app = common::TestApp::new().await;
+    create_dup_source_view(&app).await;
+
+    let response = app
+        .admin_request("GET", "/admin/database?tab=views", None, None)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+
+    let view_row = html.split("dup_view_src_view</span>").nth(1).unwrap_or("");
+    assert!(view_row.contains("data-view-duplicate"));
+    assert!(view_row.contains("複製"));
 }
 
 #[tokio::test]

@@ -1,5 +1,7 @@
 //! データベーススキーマのイントロスペクションとユーザー定義オブジェクトの管理。
 
+use std::collections::{HashMap, HashSet};
+
 use chrono::{DateTime, Duration, FixedOffset, Local, NaiveDateTime, TimeZone};
 use futures_util::future::try_join_all;
 use rand::rngs::OsRng;
@@ -212,6 +214,61 @@ pub struct TableDataView {
     /// offset=0 のときのみ。列メタデータ（PK・型・NULL 可）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub column_meta: Option<Vec<TableDataColumnMeta>>,
+}
+
+/// 一覧画面の複製ダイアログ向けカラム JSON。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TableColumnDuplicateJson {
+    pub name: String,
+    pub type_key: String,
+    pub nullable: bool,
+}
+
+/// 一覧画面の複製ダイアログ向けペイロード。
+#[derive(Debug, Clone, serde::Serialize, Default)]
+pub struct DatabaseDuplicatePayloads {
+    pub tables: HashMap<String, Vec<TableColumnDuplicateJson>>,
+    pub views: HashMap<String, String>,
+}
+
+/// 一覧取得済みの SQL から複製ダイアログ用ペイロードを組み立てる。
+pub fn build_duplicate_payloads(
+    tables: &[DbObjectItem],
+    views: &[DbObjectItem],
+) -> DatabaseDuplicatePayloads {
+    let mut payloads = DatabaseDuplicatePayloads::default();
+
+    for item in tables {
+        if !is_db_admin_editable(&item.name) {
+            continue;
+        }
+        let Ok(columns) = parse_user_columns_from_create_sql(&item.sql) else {
+            continue;
+        };
+        payloads.tables.insert(
+            item.name.clone(),
+            columns
+                .into_iter()
+                .map(|column| TableColumnDuplicateJson {
+                    name: column.name,
+                    type_key: column.type_key,
+                    nullable: column.nullable,
+                })
+                .collect(),
+        );
+    }
+
+    for item in views {
+        if !is_db_admin_editable(&item.name) {
+            continue;
+        }
+        let Ok(definition) = extract_view_select_from_create_sql(&item.sql) else {
+            continue;
+        };
+        payloads.views.insert(item.name.clone(), definition);
+    }
+
+    payloads
 }
 
 /// `sqlite_master` から取得したテーブルまたはビューの一覧項目。
@@ -788,20 +845,16 @@ pub async fn duplicate_user_table(
         .await?;
 
     if include_data {
-        let source_columns = load_user_table_columns(pool, source).await?;
-        let dest_names: std::collections::HashSet<String> = columns
+        let dest_names: HashSet<&str> = columns
             .iter()
             .filter(|column| !column.name.trim().is_empty())
-            .map(|column| column.name.clone())
+            .map(|column| column.name.as_str())
             .collect();
-
-        let mut copy_cols = vec!["id".to_string()];
-        for src_col in &source_columns {
-            if dest_names.contains(&src_col.name) {
-                copy_cols.push(src_col.name.clone());
-            }
-        }
-
+        let copy_cols: Vec<String> = table_column_names(pool, source)
+            .await?
+            .into_iter()
+            .filter(|name| name == "id" || dest_names.contains(name.as_str()))
+            .collect();
         let quoted_cols: Vec<String> = copy_cols
             .iter()
             .map(|name| quote_sql_identifier(name))
@@ -869,6 +922,28 @@ fn column_definition_sql(name: &str, column: &TableColumnInput) -> DomainResult<
         "{} {sql_type}{null_clause}",
         quote_sql_identifier(name)
     ))
+}
+
+/// ユーザー定義ビューを別名で複製する。
+pub async fn duplicate_user_view(
+    pool: &SqlitePool,
+    source: &str,
+    target: &str,
+    definition: &str,
+) -> DomainResult<()> {
+    let source = ensure_editable_user_table(source)?;
+
+    if source == target {
+        return Err(DomainError::Validation(
+            "複製先のビュー名は複製元と異なる必要があります".to_string(),
+        ));
+    }
+
+    if !object_name_exists(pool, source, "view").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    create_user_view(pool, target, definition).await
 }
 
 pub async fn create_user_view(
@@ -2755,6 +2830,36 @@ mod tests {
         assert!(!is_db_admin_editable("user_table_meta"));
         assert!(!is_db_admin_editable("_sqlx_migrations"));
         assert!(is_db_admin_editable("my_custom_table"));
+    }
+
+    #[test]
+    fn build_duplicate_payloads_extracts_editable_objects_only() {
+        let payloads = build_duplicate_payloads(
+            &[DbObjectItem {
+                name: "custom_notes".to_string(),
+                sql: r#"CREATE TABLE "custom_notes" (id INTEGER PRIMARY KEY, "body" TEXT NOT NULL)"#
+                    .to_string(),
+                sql_preview: String::new(),
+                is_system: false,
+                row_count: Some(0),
+            }],
+            &[DbObjectItem {
+                name: "custom_notes_view".to_string(),
+                sql: r#"CREATE VIEW "custom_notes_view" AS SELECT id, body FROM custom_notes"#
+                    .to_string(),
+                sql_preview: String::new(),
+                is_system: false,
+                row_count: None,
+            }],
+        );
+
+        assert_eq!(payloads.tables["custom_notes"].len(), 1);
+        assert_eq!(payloads.tables["custom_notes"][0].name, "body");
+        assert_eq!(
+            payloads.views["custom_notes_view"],
+            "SELECT id, body FROM custom_notes"
+        );
+        assert!(!payloads.tables.contains_key("posts"));
     }
 
     #[test]

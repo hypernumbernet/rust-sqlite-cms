@@ -3129,6 +3129,49 @@
     }
   }
 
+  function readDbDuplicatePayloads() {
+    const el = document.getElementById('db-duplicate-payloads');
+    if (!el) {
+      return { tables: {}, views: {} };
+    }
+    try {
+      const payload = JSON.parse(el.textContent || '{}');
+      return {
+        tables: payload.tables || {},
+        views: payload.views || {},
+      };
+    } catch (_err) {
+      return { tables: {}, views: {} };
+    }
+  }
+
+  function duplicateDefaultName(name) {
+    return name ? name + '-copy' : '';
+  }
+
+  function wireAdminDuplicateDialog(dialog, cancelBtn, onClose) {
+    function closeDialog() {
+      if (dialog.open) {
+        dialog.close();
+      }
+    }
+
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', closeDialog);
+    }
+
+    dialog.addEventListener('cancel', function (event) {
+      event.preventDefault();
+      closeDialog();
+    });
+
+    if (onClose) {
+      dialog.addEventListener('close', onClose);
+    }
+
+    return closeDialog;
+  }
+
   function initTableDuplicate() {
     const dialog = document.getElementById('table-duplicate-dialog');
     const form = document.getElementById('table-duplicate-form');
@@ -3141,11 +3184,12 @@
     const includeDataCheckbox = document.getElementById('table-duplicate-include-data');
     if (!dialog || !form || !sourceEl || !targetNameInput || !rowsEl || !template) return;
 
-    function closeDialog() {
-      if (dialog.open) {
-        dialog.close();
-      }
-    }
+    const duplicatePayloads = readDbDuplicatePayloads();
+
+    wireAdminDuplicateDialog(dialog, cancelBtn, function () {
+      form.reset();
+      rowsEl.replaceChildren();
+    });
 
     function bindRow(row) {
       const removeBtn = row.querySelector('.column-remove-btn');
@@ -3199,50 +3243,57 @@
         form.action =
           '/admin/database/tables/' + encodeURIComponent(tableName) + '/duplicate';
         sourceEl.textContent = '複製元: ' + tableName;
-        targetNameInput.value = tableName + '-copy';
+        targetNameInput.value = duplicateDefaultName(tableName);
         rowsEl.replaceChildren();
         if (includeDataCheckbox) {
           includeDataCheckbox.checked = false;
         }
 
-        fetch('/admin/database/tables/' + encodeURIComponent(tableName) + '/columns')
-          .then(function (response) {
-            if (!response.ok) {
-              throw new Error('列定義の取得に失敗しました');
-            }
-            return response.json();
-          })
-          .then(function (payload) {
-            const columns = Array.isArray(payload.columns) ? payload.columns : [];
-            if (columns.length === 0) {
-              addColumnRow(null);
-            } else {
-              columns.forEach(function (column) {
-                addColumnRow(column);
-              });
-            }
-            dialog.showModal();
-            targetNameInput.focus();
-            targetNameInput.select();
-          })
-          .catch(function () {
-            alert('列定義の取得に失敗しました');
+        const columns = duplicatePayloads.tables[tableName] || [];
+        if (columns.length === 0) {
+          addColumnRow(null);
+        } else {
+          columns.forEach(function (column) {
+            addColumnRow(column);
           });
+        }
+        dialog.showModal();
+        targetNameInput.focus();
+        targetNameInput.select();
       });
     });
+  }
 
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', closeDialog);
-    }
+  function initViewDuplicate() {
+    const dialog = document.getElementById('view-duplicate-dialog');
+    const form = document.getElementById('view-duplicate-form');
+    const sourceEl = document.getElementById('view-duplicate-source');
+    const targetNameInput = document.getElementById('view-duplicate-target-name');
+    const definitionInput = document.getElementById('view-duplicate-definition');
+    const cancelBtn = document.getElementById('view-duplicate-cancel');
+    if (!dialog || !form || !sourceEl || !targetNameInput || !definitionInput) return;
 
-    dialog.addEventListener('cancel', function (event) {
-      event.preventDefault();
-      closeDialog();
+    const duplicatePayloads = readDbDuplicatePayloads();
+
+    wireAdminDuplicateDialog(dialog, cancelBtn, function () {
+      form.reset();
+      definitionInput.value = '';
     });
 
-    dialog.addEventListener('close', function () {
-      form.reset();
-      rowsEl.replaceChildren();
+    document.querySelectorAll('[data-view-duplicate]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const viewName = btn.dataset.viewName || '';
+        if (!viewName) return;
+
+        form.action =
+          '/admin/database/views/' + encodeURIComponent(viewName) + '/duplicate';
+        sourceEl.textContent = '複製元: ' + viewName;
+        targetNameInput.value = duplicateDefaultName(viewName);
+        definitionInput.value = duplicatePayloads.views[viewName] || '';
+        dialog.showModal();
+        targetNameInput.focus();
+        targetNameInput.select();
+      });
     });
   }
 
@@ -3336,6 +3387,7 @@
     initWidgetConfig();
     initDatabaseIndex();
     initTableDuplicate();
+    initViewDuplicate();
     initLayoutDuplicate();
   }
 

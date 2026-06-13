@@ -146,6 +146,7 @@ struct DatabaseTemplate {
     new_url: String,
     success_message: String,
     error_message: String,
+    duplicate_payloads_json: String,
 }
 
 #[derive(Debug, Clone)]
@@ -233,33 +234,6 @@ struct DatabaseQuery {
 }
 
 #[derive(Debug, Deserialize, Default)]
-struct TableDuplicateForm {
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    col_name: Vec<String>,
-    #[serde(default)]
-    col_type: Vec<String>,
-    #[serde(default)]
-    col_nullable: Vec<String>,
-    #[serde(default)]
-    include_data: Option<String>,
-}
-
-#[derive(serde::Serialize)]
-struct TableColumnJson {
-    name: String,
-    type_key: String,
-    nullable: bool,
-}
-
-#[derive(serde::Serialize)]
-struct TableColumnsJsonResponse {
-    name: String,
-    columns: Vec<TableColumnJson>,
-}
-
-#[derive(Debug, Deserialize, Default)]
 struct TableCreateForm {
     #[serde(default)]
     name: String,
@@ -271,6 +245,8 @@ struct TableCreateForm {
     col_nullable: Vec<String>,
     #[serde(default)]
     col_orig_name: Vec<String>,
+    #[serde(default)]
+    include_data: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -291,10 +267,6 @@ pub fn router() -> Router<AppState> {
         .route(
             "/admin/database/tables/{name}/edit",
             get(edit_table_form).post(update_table),
-        )
-        .route(
-            "/admin/database/tables/{name}/columns",
-            get(table_columns_json),
         )
         .route(
             "/admin/database/tables/{name}/duplicate",
@@ -333,6 +305,10 @@ pub fn router() -> Router<AppState> {
             "/admin/database/views/{name}/edit",
             get(edit_view_form).post(update_view),
         )
+        .route(
+            "/admin/database/views/{name}/duplicate",
+            post(duplicate_view),
+        )
         .route("/admin/database/views/{name}/data", get(view_data))
         .route(
             "/admin/database/views/{name}/data/rows",
@@ -358,8 +334,11 @@ async fn index(
     Query(query): Query<DatabaseQuery>,
 ) -> AppResult<impl IntoResponse> {
     let pool = state.pool();
-    let (table_items, views) =
+    let (table_items, view_items) =
         tokio::try_join!(database::list_tables(&pool), database::list_views(&pool))?;
+    let duplicate_payloads_json =
+        serde_json::to_string(&database::build_duplicate_payloads(&table_items, &view_items))
+            .unwrap_or_else(|_| r#"{"tables":{},"views":{}}"#.to_string());
     let mut has_user_tables = false;
     let tables = table_items
         .into_iter()
@@ -370,7 +349,10 @@ async fn index(
             table_list_item(item)
         })
         .collect::<Vec<_>>();
-    let views = views.into_iter().map(view_list_item).collect::<Vec<_>>();
+    let views = view_items
+        .into_iter()
+        .map(view_list_item)
+        .collect::<Vec<_>>();
     let is_views_tab = query.tab == "views";
     let new_url = if is_views_tab {
         "/admin/database/views/new".to_string()
@@ -389,31 +371,11 @@ async fn index(
         new_url,
         success_message: query.success_message,
         error_message: query.error_message,
+        duplicate_payloads_json,
     }
     .render()?;
 
     Ok(Html(html))
-}
-
-async fn table_columns_json(
-    State(state): State<AppState>,
-    Path(name): Path<String>,
-) -> AppResult<impl IntoResponse> {
-    match database::load_user_table_columns(&state.pool(), &name).await {
-        Ok(columns) => Ok(Json(TableColumnsJsonResponse {
-            name: name.clone(),
-            columns: columns
-                .into_iter()
-                .map(|column| TableColumnJson {
-                    name: column.name,
-                    type_key: column.type_key,
-                    nullable: column.nullable,
-                })
-                .collect(),
-        })),
-        Err(DomainError::NotFound) => Err(AppError::NotFound),
-        Err(err) => Err(err.into()),
-    }
 }
 
 async fn duplicate_table(
@@ -421,12 +383,12 @@ async fn duplicate_table(
     Path(source): Path<String>,
     body: Bytes,
 ) -> AppResult<Response> {
-    let form = match parse_table_duplicate_form(&body) {
+    let form = match parse_table_create_form(&body) {
         Ok(form) => form,
-        Err(message) => return Ok(redirect_index_with_error(&message)),
+        Err(message) => return Ok(redirect_database_tab("", None, Some(&message))),
     };
 
-    let columns = duplicate_form_to_columns(&form);
+    let columns = table_form_to_columns(&form);
     let include_data = form.include_data.is_some();
     match database::duplicate_user_table(
         &state.pool(),
@@ -437,22 +399,75 @@ async fn duplicate_table(
     )
     .await
     {
-        Ok(()) => Ok(redirect_index_with_success(&format!(
-            "テーブル「{source}」を「{}」として複製しました",
-            form.name
-        ))),
-        Err(err) => Ok(redirect_index_with_error(&domain_error_message(&err))),
+        Ok(()) => Ok(redirect_database_tab(
+            "",
+            Some(&format!(
+                "テーブル「{source}」を「{}」として複製しました",
+                form.name
+            )),
+            None,
+        )),
+        Err(err) => Ok(redirect_database_tab("", None, Some(&domain_error_message(&err)))),
     }
 }
 
-fn redirect_index_with_success(message: &str) -> Response {
-    let encoded = urlencoding::encode(message);
-    Redirect::to(&format!("/admin/database?success_message={encoded}")).into_response()
+fn redirect_database_tab(tab: &str, success_message: Option<&str>, error_message: Option<&str>) -> Response {
+    let mut params = Vec::new();
+    if !tab.is_empty() {
+        params.push(format!("tab={tab}"));
+    }
+    if let Some(message) = success_message.filter(|message| !message.is_empty()) {
+        params.push(format!(
+            "success_message={}",
+            urlencoding::encode(message)
+        ));
+    }
+    if let Some(message) = error_message.filter(|message| !message.is_empty()) {
+        params.push(format!(
+            "error_message={}",
+            urlencoding::encode(message)
+        ));
+    }
+    let query = if params.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", params.join("&"))
+    };
+    Redirect::to(&format!("/admin/database{query}")).into_response()
 }
 
-fn redirect_index_with_error(message: &str) -> Response {
-    let encoded = urlencoding::encode(message);
-    Redirect::to(&format!("/admin/database?error_message={encoded}")).into_response()
+async fn duplicate_view(
+    State(state): State<AppState>,
+    Path(source): Path<String>,
+    body: Bytes,
+) -> AppResult<Response> {
+    let form = match parse_html_form::<ViewCreateForm>(&body) {
+        Ok(form) => form,
+        Err(message) => return Ok(redirect_database_tab("views", None, Some(&message))),
+    };
+
+    match database::duplicate_user_view(
+        &state.pool(),
+        &source,
+        &form.name,
+        &form.definition,
+    )
+    .await
+    {
+        Ok(()) => Ok(redirect_database_tab(
+            "views",
+            Some(&format!(
+                "ビュー「{source}」を「{}」として複製しました",
+                form.name
+            )),
+            None,
+        )),
+        Err(err) => Ok(redirect_database_tab(
+            "views",
+            None,
+            Some(&domain_error_message(&err)),
+        )),
+    }
 }
 
 async fn new_table_form(auth: AuthUser) -> AppResult<Response> {
@@ -1196,23 +1211,15 @@ fn table_seed_form_template(
 }
 
 fn parse_table_create_form(body: &Bytes) -> Result<TableCreateForm, String> {
-    let body = std::str::from_utf8(body).map_err(|_| "フォームデータの形式が不正です".to_string())?;
-    serde_html_form::from_str(body).map_err(|err| format!("フォームデータの解析に失敗しました: {err}"))
+    parse_html_form(body)
 }
 
-fn parse_table_duplicate_form(body: &Bytes) -> Result<TableDuplicateForm, String> {
+fn parse_html_form<T>(body: &Bytes) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned,
+{
     let body = std::str::from_utf8(body).map_err(|_| "フォームデータの形式が不正です".to_string())?;
     serde_html_form::from_str(body).map_err(|err| format!("フォームデータの解析に失敗しました: {err}"))
-}
-
-fn duplicate_form_to_columns(form: &TableDuplicateForm) -> Vec<TableColumnInput> {
-    table_form_to_columns(&TableCreateForm {
-        name: form.name.clone(),
-        col_name: form.col_name.clone(),
-        col_type: form.col_type.clone(),
-        col_nullable: form.col_nullable.clone(),
-        col_orig_name: Vec::new(),
-    })
 }
 
 fn table_form_to_columns(form: &TableCreateForm) -> Vec<TableColumnInput> {

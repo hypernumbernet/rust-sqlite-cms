@@ -1341,30 +1341,46 @@ tr:last-child td { border-bottom: 0; }
   gap: 8px;
   margin-top: 16px;
 }
-.table-duplicate-dialog {
+.admin-duplicate-dialog {
   border: none;
   border-radius: 8px;
   padding: 0;
-  width: min(720px, calc(100vw - 32px));
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
 }
-.table-duplicate-dialog::backdrop {
+.admin-duplicate-dialog-wide {
+  width: min(720px, calc(100vw - 32px));
+}
+.admin-duplicate-dialog-medium {
+  width: min(640px, calc(100vw - 32px));
+}
+.admin-duplicate-dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
 }
-.table-duplicate-dialog-inner {
+.admin-duplicate-dialog-inner {
   display: flex;
   flex-direction: column;
 }
-.table-duplicate-dialog-header {
+.admin-duplicate-dialog-header {
   padding: 16px 18px;
   border-bottom: 1px solid var(--border);
 }
-.table-duplicate-dialog-header h2 {
+.admin-duplicate-dialog-header h2 {
   margin: 0;
   font-size: 16px;
 }
-.table-duplicate-dialog-body {
+.admin-duplicate-dialog-body {
   padding: 16px 18px;
+}
+.admin-duplicate-dialog-body textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-mono, monospace);
+}
+.admin-duplicate-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
 }
 .table-duplicate-column-builder {
   margin-top: 8px;
@@ -1380,12 +1396,6 @@ tr:last-child td { border-bottom: 0; }
 }
 .table-duplicate-column-actions {
   margin-top: 12px;
-}
-.table-duplicate-dialog-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 16px;
 }
 
 .db-cell-edit-dialog,

@@ -1,0 +1,1 @@
+ALTER TABLE user_table_meta ADD COLUMN filter_json TEXT NOT NULL DEFAULT '[]';

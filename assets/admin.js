@@ -196,25 +196,47 @@
     return width;
   }
 
-  function dbHeaderCellHtml(columnName, sortEntry, sortPriority, showPriority, isPrimaryKey) {
+  function dbHeaderCellHtml(
+    columnName,
+    sortEntry,
+    sortPriority,
+    showPriority,
+    isPrimaryKey,
+    filterText
+  ) {
     let thClass = '';
-    let sortIndicatorHtml = '';
+    let badgeHtml = '';
     let triggerClass = 'db-col-sort-trigger';
     let ariaSort = 'none';
+    const hasFilter = !!(filterText && String(filterText).length);
+
+    if (hasFilter) {
+      triggerClass += ' has-filter-state';
+      badgeHtml +=
+        '<span class="db-col-filter-mark" title="フィルター: ' +
+        escapeHtml(filterText) +
+        '" aria-hidden="true">■</span>';
+    }
 
     if (sortEntry) {
-      thClass =
+      thClass +=
         sortEntry.direction === 'asc' ? ' is-sorted-asc' : ' is-sorted-desc';
       ariaSort = sortEntry.direction === 'asc' ? 'ascending' : 'descending';
       triggerClass += ' has-sort-state';
-      sortIndicatorHtml =
+      badgeHtml +=
         '<span class="db-col-sort-arrow" aria-hidden="true">' +
         (sortEntry.direction === 'asc' ? '▲' : '▼') +
         '</span>';
       if (showPriority && sortPriority > 0) {
-        sortIndicatorHtml +=
-          '<span class="db-col-sort-priority">' + sortPriority + '</span>';
+        badgeHtml += '<span class="db-col-sort-priority">' + sortPriority + '</span>';
       }
+    }
+
+    let actionLabel = ' のソート';
+    if (hasFilter && sortEntry) {
+      actionLabel = ' のソートとフィルター';
+    } else if (hasFilter) {
+      actionLabel = ' のフィルター';
     }
 
     return (
@@ -228,8 +250,9 @@
       triggerClass +
       '" role="button" tabindex="0" aria-haspopup="menu" aria-expanded="false" aria-label="' +
       escapeHtml(columnName) +
-      ' のソート">' +
-      sortIndicatorHtml +
+      actionLabel +
+      '">' +
+      badgeHtml +
       '<span class="db-col-sort-icon" aria-hidden="true"></span></span><span class="db-col-resize-handle" role="separator" aria-orientation="vertical" aria-label="' +
       escapeHtml(columnName) +
       ' 列幅変更"></span></th>'
@@ -616,6 +639,9 @@
     const sortIndicatorEl = document.getElementById('db-data-sort-indicator');
     const sortIndicatorLabelEl = document.getElementById('db-data-sort-indicator-label');
     const sortClearBtn = document.getElementById('db-data-sort-clear');
+    const filterIndicatorEl = document.getElementById('db-data-filter-indicator');
+    const filterIndicatorLabelEl = document.getElementById('db-data-filter-indicator-label');
+    const filterClearBtn = document.getElementById('db-data-filter-clear');
     const rowGotoDialog = document.getElementById('db-row-goto-dialog');
     const rowGotoForm = document.getElementById('db-row-goto-form');
     const rowGotoInput = document.getElementById('db-row-goto-input');
@@ -644,6 +670,7 @@
     }
     const columnWidthsUrl = dataApiPath('/column-widths');
     const sortUrl = dataApiPath('/sort');
+    const filterUrl = dataApiPath('/filter');
     const cellsUrl = dataApiPath('/cells');
     const chunkSize = parseInt(panel.dataset.chunkSize || '1000', 10);
     const overscan = parseInt(panel.dataset.overscan || '3', 10);
@@ -685,6 +712,7 @@
     let columnWidths = [];
     let activeResize = null;
     let sortStack = [];
+    let filterStack = [];
     let sortMenuEl = null;
     let sortMenuColumn = null;
     let sortMenuAnchor = null;
@@ -761,7 +789,7 @@
 
     function updateViewStatus() {
       if (totalCount === 0) {
-        setStatus('empty', 'データがありません', false);
+        setStatus('empty', emptyDataStatusText(), false);
         return;
       }
       if (hasMissingVisibleChunks()) {
@@ -1060,6 +1088,15 @@
       if (activeResize) onResizeMouseUp();
     }
 
+    function stackEntryForColumn(stack, column) {
+      for (let i = 0; i < stack.length; i++) {
+        if (stack[i].column === column) {
+          return { entry: stack[i], index: i };
+        }
+      }
+      return null;
+    }
+
     function sortIndexMap() {
       const map = new Map();
       for (let i = 0; i < sortStack.length; i++) {
@@ -1068,23 +1105,55 @@
       return map;
     }
 
-    function sortEntryForColumn(column) {
-      for (let i = 0; i < sortStack.length; i++) {
-        if (sortStack[i].column === column) {
-          return { entry: sortStack[i], index: i };
-        }
+    function activeFilterEntries() {
+      const active = [];
+      for (let i = 0; i < filterStack.length; i++) {
+        if (filterStack[i].text) active.push(filterStack[i]);
       }
-      return null;
+      return active;
     }
 
-    function sortQueryString() {
-      if (!sortStack.length) return '';
-      const encoded = sortStack
-        .map(function (entry) {
-          return encodeURIComponent(entry.column) + ':' + entry.direction;
-        })
-        .join(',');
-      return '&sort=' + encoded;
+    function filterIndexMap() {
+      const map = new Map();
+      const active = activeFilterEntries();
+      for (let i = 0; i < active.length; i++) {
+        map.set(active[i].column, active[i]);
+      }
+      return map;
+    }
+
+    function dataViewQueryString() {
+      let query = '';
+      if (sortStack.length) {
+        query +=
+          '&sort=' +
+          sortStack
+            .map(function (entry) {
+              return encodeURIComponent(entry.column) + ':' + entry.direction;
+            })
+            .join(',');
+      }
+      const activeFilters = activeFilterEntries();
+      if (activeFilters.length) {
+        query +=
+          '&filter=' +
+          activeFilters
+            .map(function (entry) {
+              return (
+                encodeURIComponent(entry.column) + ':' + encodeURIComponent(entry.text)
+              );
+            })
+            .join(',');
+      }
+      return query;
+    }
+
+    function hasActiveFilters() {
+      return activeFilterEntries().length > 0;
+    }
+
+    function emptyDataStatusText() {
+      return hasActiveFilters() ? '一致するデータがありません' : 'データがありません';
     }
 
     function invalidateHeader() {
@@ -1107,6 +1176,22 @@
       sortIndicatorEl.hidden = false;
     }
 
+    function updateFilterIndicator() {
+      if (!filterIndicatorEl || !filterIndicatorLabelEl) return;
+      const active = activeFilterEntries();
+      if (!active.length) {
+        filterIndicatorEl.hidden = true;
+        filterIndicatorLabelEl.textContent = '';
+        return;
+      }
+      filterIndicatorLabelEl.textContent = active
+        .map(function (entry) {
+          return entry.column + ': ' + entry.text;
+        })
+        .join(', ');
+      filterIndicatorEl.hidden = false;
+    }
+
     function ensureSortMenu() {
       if (sortMenuEl) return sortMenuEl;
 
@@ -1117,8 +1202,45 @@
       sortMenuEl.innerHTML =
         '<button type="button" class="db-col-sort-menu-item" data-action="asc" role="menuitem">昇順</button>' +
         '<button type="button" class="db-col-sort-menu-item" data-action="desc" role="menuitem">降順</button>' +
-        '<button type="button" class="db-col-sort-menu-item" data-action="clear" role="menuitem">この列のソートを解除</button>';
+        '<button type="button" class="db-col-sort-menu-item" data-action="clear" role="menuitem">この列のソートを解除</button>' +
+        '<div class="db-col-filter-section">' +
+        '<label class="db-col-filter-label" for="db-col-filter-input">フィルター</label>' +
+        '<div class="db-col-filter-row">' +
+        '<input type="text" class="db-col-filter-input" id="db-col-filter-input" placeholder="部分一致" autocomplete="off">' +
+        '<button type="button" class="db-col-filter-clear" data-action="clear-filter">クリア</button>' +
+        '</div></div>';
       document.body.appendChild(sortMenuEl);
+
+      const filterInput = sortMenuEl.querySelector('.db-col-filter-input');
+      const filterClearBtn = sortMenuEl.querySelector('.db-col-filter-clear');
+      const filterSection = sortMenuEl.querySelector('.db-col-filter-section');
+
+      if (filterSection) {
+        filterSection.addEventListener('click', function (e) {
+          e.stopPropagation();
+        });
+      }
+
+      if (filterInput) {
+        filterInput.addEventListener('keydown', function (e) {
+          e.stopPropagation();
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          const column = sortMenuColumn;
+          if (!column) return;
+          applyFilterText(column, filterInput.value);
+          closeSortMenu({ skipFilterFlush: true });
+        });
+      }
+
+      if (filterClearBtn) {
+        filterClearBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!sortMenuColumn || !filterInput) return;
+          filterInput.value = '';
+        });
+      }
 
       sortMenuEl.addEventListener('click', function (e) {
         const item = e.target.closest('.db-col-sort-menu-item');
@@ -1164,7 +1286,7 @@
       sortMenuColumn = column;
       sortMenuAnchor = anchor;
 
-      const found = sortEntryForColumn(column);
+      const found = stackEntryForColumn(sortStack, column);
       menu.querySelectorAll('.db-col-sort-menu-item').forEach(function (btn) {
         const action = btn.dataset.action;
         btn.classList.remove('is-active');
@@ -1178,6 +1300,12 @@
         }
       });
 
+      const filterInput = menu.querySelector('.db-col-filter-input');
+      const filterFound = stackEntryForColumn(filterStack, column);
+      if (filterInput) {
+        filterInput.value = filterFound ? filterFound.entry.text : '';
+      }
+
       menu.hidden = false;
       if (anchor) {
         anchor.setAttribute('aria-expanded', 'true');
@@ -1185,8 +1313,19 @@
       }
     }
 
-    function closeSortMenu() {
+    function flushFilterFromMenu() {
+      if (!sortMenuEl || sortMenuEl.hidden || !sortMenuColumn) return;
+      const filterInput = sortMenuEl.querySelector('.db-col-filter-input');
+      if (!filterInput) return;
+      applyFilterText(sortMenuColumn, filterInput.value);
+    }
+
+    function closeSortMenu(options) {
       if (!sortMenuEl || sortMenuEl.hidden) return;
+      const skipFilterFlush = !!(options && options.skipFilterFlush);
+      if (!skipFilterFlush) {
+        flushFilterFromMenu();
+      }
       sortMenuEl.hidden = true;
       sortMenuColumn = null;
       sortMenuAnchor = null;
@@ -1208,6 +1347,18 @@
         body: JSON.stringify({ sort: sortStack }),
       }).catch(function () {
         /* 保存失敗はセッション内ソートに影響しない */
+      });
+    }
+
+    function saveFilter() {
+      if (!filterUrl) return Promise.resolve();
+      return fetch(filterUrl, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filter: filterStack }),
+      }).catch(function () {
+        /* 保存失敗はセッション内フィルターに影響しない */
       });
     }
 
@@ -1305,12 +1456,12 @@
       resetSortedDeepNavAcknowledged();
       updateSortIndicator();
       invalidateHeader();
-      await Promise.all([saveSort(), reloadForSort()]);
+      await Promise.all([saveSort(), reloadForViewChange()]);
     }
 
     async function applySortAction(column, action) {
       if (!column) return;
-      const found = sortEntryForColumn(column);
+      const found = stackEntryForColumn(sortStack, column);
       let changed = false;
       if (action === 'clear') {
         if (found) {
@@ -1336,6 +1487,47 @@
       if (!sortStack.length) return;
       sortStack = [];
       await commitSortChange();
+    }
+
+    async function commitFilterChange() {
+      updateFilterIndicator();
+      invalidateHeader();
+      await Promise.all([saveFilter(), reloadForViewChange()]);
+    }
+
+    async function applyFilterText(column, text) {
+      if (!column) return;
+      const trimmed = (text || '').trim();
+      const found = stackEntryForColumn(filterStack, column);
+      let changed = false;
+
+      if (trimmed) {
+        if (found) {
+          if (found.entry.text !== trimmed) {
+            found.entry.text = trimmed;
+            changed = true;
+          }
+        } else {
+          filterStack.push({ column: column, text: trimmed });
+          changed = true;
+        }
+      } else if (found) {
+        filterStack.splice(found.index, 1);
+        changed = true;
+      }
+
+      if (!changed) return;
+      await commitFilterChange();
+    }
+
+    async function clearAllFilters() {
+      if (!hasActiveFilters()) return;
+      filterStack = [];
+      await commitFilterChange();
+    }
+
+    async function reloadForViewChange() {
+      await reloadData({ fullReset: false });
     }
 
     const AUTO_FIT_SAMPLE_ROWS = 40;
@@ -2063,18 +2255,21 @@
       if (!thead || columnsRendered || columns.length === 0) return;
       const showPriority = sortStack.length > 1;
       const sortByColumn = sortIndexMap();
+      const filterByColumn = filterIndexMap();
       thead.innerHTML =
         '<tr>' +
         columns
           .map(function (col) {
             const found = sortByColumn.get(col);
             const priority = found ? found.index + 1 : 0;
+            const filterEntry = filterByColumn.get(col);
             return dbHeaderCellHtml(
               col,
               found ? found.entry : null,
               priority,
               showPriority,
-              isPrimaryKeyColumn(col)
+              isPrimaryKeyColumn(col),
+              filterEntry ? filterEntry.text : ''
             );
           })
           .join('') +
@@ -2288,7 +2483,7 @@
           (apiUrl.indexOf('?') >= 0 ? '&' : '?') +
           'offset=' +
           offset +
-          sortQueryString();
+          dataViewQueryString();
         const signal = isPrefetch
           ? prefetchAbortController
             ? prefetchAbortController.signal
@@ -2326,7 +2521,13 @@
           columnWidthsApplied = false;
           invalidateHeader();
           sortStack = Array.isArray(data.sort) ? data.sort.slice() : [];
+          filterStack = Array.isArray(data.filter)
+            ? data.filter.filter(function (entry) {
+                return entry.text;
+              })
+            : [];
           updateSortIndicator();
+          updateFilterIndicator();
           updateFitAllColumnsButton();
         }
 
@@ -2586,7 +2787,7 @@
       if (!first || gen !== generation) return false;
 
       if (first.total_count === 0) {
-        setStatus('empty', 'データがありません', false);
+        setStatus('empty', emptyDataStatusText(), false);
         renderVisibleRows();
         return true;
       }
@@ -2677,10 +2878,6 @@
       await reloadData({ fullReset: true });
     }
 
-    async function reloadForSort() {
-      await reloadData({ fullReset: false });
-    }
-
     if (scrollEl) {
       scrollEl.addEventListener(
         'scroll',
@@ -2744,6 +2941,13 @@
         e.preventDefault();
         e.stopPropagation();
         clearAllSort();
+      });
+    }
+    if (filterClearBtn) {
+      filterClearBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        clearAllFilters();
       });
     }
     if (rowGotoForm) {

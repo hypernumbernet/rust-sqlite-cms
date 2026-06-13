@@ -28,7 +28,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use crate::error::{ApiResult, AppError, AppResult, DomainError};
 use crate::services::database::{
     self, DbObjectItem, SeedFormRow, TableCellUpdateRequest, TableColumnInput, TableDataColumnMeta,
-    TableSortEntry, TestDataSeedForm, DEFAULT_SEED_COUNT,
+    TableFilterEntry, TableSortEntry, TestDataSeedForm, DEFAULT_SEED_COUNT,
 };
 use crate::state::AppState;
 
@@ -61,6 +61,7 @@ struct TableDataRowsQuery {
     #[serde(default)]
     offset: i64,
     sort: Option<String>,
+    filter: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -77,6 +78,8 @@ struct TableDataRowsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     sort: Option<Vec<TableSortEntry>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    filter: Option<Vec<TableFilterEntry>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     column_meta: Option<Vec<TableDataColumnMeta>>,
 }
 
@@ -88,6 +91,11 @@ struct ColumnWidthsSaveRequest {
 #[derive(Debug, Deserialize)]
 struct SortSaveRequest {
     sort: Vec<TableSortEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FilterSaveRequest {
+    filter: Vec<TableFilterEntry>,
 }
 
 #[derive(Template)]
@@ -212,6 +220,10 @@ pub fn router() -> Router<AppState> {
         .route(
             "/admin/database/tables/{name}/data/sort",
             post(save_table_sort),
+        )
+        .route(
+            "/admin/database/tables/{name}/data/filter",
+            post(save_table_filter),
         )
         .route(
             "/admin/database/tables/{name}/data/cells",
@@ -381,9 +393,21 @@ async fn table_data_rows(
     } else {
         None
     };
+    let filter_override = if let Some(raw) = &query.filter {
+        Some(database::parse_filter_query_param(raw)?)
+    } else {
+        None
+    };
     let sort_ref = sort_override.as_deref();
-    let data =
-        database::list_user_table_rows(&state.pool(), &name, query.offset, sort_ref).await?;
+    let filter_ref = filter_override.as_deref();
+    let data = database::list_user_table_rows(
+        &state.pool(),
+        &name,
+        query.offset,
+        sort_ref,
+        filter_ref,
+    )
+    .await?;
     let shown_count = data.rows.len() as i64;
     Ok(Json(TableDataRowsResponse {
         columns: data.columns,
@@ -395,6 +419,7 @@ async fn table_data_rows(
         chunk_size: database::TABLE_DATA_CHUNK_SIZE,
         column_widths: data.column_widths,
         sort: data.sort,
+        filter: data.filter,
         column_meta: data.column_meta,
     }))
 }
@@ -416,6 +441,16 @@ async fn save_table_sort(
     Json(body): Json<SortSaveRequest>,
 ) -> ApiResult<Json<serde_json::Value>> {
     database::save_table_sort(&state.pool(), &name, &body.sort).await?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn save_table_filter(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(body): Json<FilterSaveRequest>,
+) -> ApiResult<Json<serde_json::Value>> {
+    database::save_table_filter(&state.pool(), &name, &body.filter).await?;
     Ok(Json(json!({ "ok": true })))
 }
 

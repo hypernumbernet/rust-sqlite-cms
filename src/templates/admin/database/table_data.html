@@ -23,6 +23,10 @@
       <span class="db-data-sort-indicator-label" id="db-data-sort-indicator-label"></span>
       <button type="button" class="db-data-sort-clear" id="db-data-sort-clear" aria-label="ソートをすべて解除">×</button>
     </div>
+    <div id="db-data-filter-indicator" class="db-data-filter-indicator" hidden>
+      <span class="db-data-filter-indicator-label" id="db-data-filter-indicator-label"></span>
+      <button type="button" class="db-data-filter-clear" id="db-data-filter-clear" aria-label="フィルターをすべて解除">×</button>
+    </div>
     {% if read_only %}
     <span class="toolbar-notice notice info">CMSシステムテーブルのデータは閲覧専用です。列編集・テストデータ生成はできません。</span>
     {% endif %}

@@ -159,6 +159,13 @@ pub struct TableSortEntry {
     pub direction: TableSortDirection,
 }
 
+/// 列フィルターの1エントリ（複数列は AND 条件）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TableFilterEntry {
+    pub column: String,
+    pub text: String,
+}
+
 /// データ一覧 API 向けの列メタデータ。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TableDataColumnMeta {
@@ -199,6 +206,9 @@ pub struct TableDataView {
     /// offset=0 のときのみ。適用中のソート（空ならデフォルト順）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<Vec<TableSortEntry>>,
+    /// offset=0 のときのみ。適用中の列フィルター。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filter: Option<Vec<TableFilterEntry>>,
     /// offset=0 のときのみ。列メタデータ（PK・型・NULL 可）。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub column_meta: Option<Vec<TableDataColumnMeta>>,
@@ -335,7 +345,7 @@ pub async fn list_tables(pool: &SqlitePool) -> AppResult<Vec<DbObjectItem>> {
     let counts = try_join_all(
         visible_rows
             .iter()
-            .map(|row| table_row_count(pool, &row.name)),
+            .map(|row| table_row_count(pool, &row.name, "", &[])),
     )
     .await?;
 
@@ -924,43 +934,92 @@ pub async fn save_table_column_widths(
     Ok(())
 }
 
-/// クエリ文字列 `name:asc,age:desc` をパースする。
-pub fn parse_sort_query_param(raw: &str) -> DomainResult<Vec<TableSortEntry>> {
+/// `col:value,col2:value2` 形式のクエリ断片を列名と値に分割する。
+fn split_column_value_query_parts(
+    raw: &str,
+    kind_label: &str,
+) -> DomainResult<Vec<(String, String)>> {
     if raw.is_empty() {
         return Ok(Vec::new());
     }
 
-    let mut entries = Vec::new();
+    let mut parts = Vec::new();
     for part in raw.split(',') {
         let part = part.trim();
         if part.is_empty() {
             continue;
         }
-        let (column, direction) = part.split_once(':').ok_or_else(|| {
-            DomainError::Validation(format!("ソート指定の形式が不正です: `{part}`"))
+        let (column, value) = part.split_once(':').ok_or_else(|| {
+            DomainError::Validation(format!("{kind_label}指定の形式が不正です: `{part}`"))
         })?;
         let column = column.trim();
         if column.is_empty() {
-            return Err(DomainError::Validation(
-                "ソート指定に列名が含まれていません".into(),
-            ));
+            return Err(DomainError::Validation(format!(
+                "{kind_label}指定に列名が含まれていません"
+            )));
         }
-        let direction = match direction.trim().to_ascii_lowercase().as_str() {
-            "asc" => TableSortDirection::Asc,
-            "desc" => TableSortDirection::Desc,
-            other => {
-                return Err(DomainError::Validation(format!(
-                    "ソート方向は asc または desc で指定してください: `{other}`"
-                )));
-            }
-        };
-        entries.push(TableSortEntry {
-            column: column.to_string(),
-            direction,
-        });
+        parts.push((column.to_string(), value.to_string()));
     }
 
-    Ok(entries)
+    Ok(parts)
+}
+
+/// クエリ文字列 `name:asc,age:desc` をパースする。
+pub fn parse_sort_query_param(raw: &str) -> DomainResult<Vec<TableSortEntry>> {
+    split_column_value_query_parts(raw, "ソート")?
+        .into_iter()
+        .map(|(column, direction)| {
+            let direction = match direction.trim().to_ascii_lowercase().as_str() {
+                "asc" => TableSortDirection::Asc,
+                "desc" => TableSortDirection::Desc,
+                other => {
+                    return Err(DomainError::Validation(format!(
+                        "ソート方向は asc または desc で指定してください: `{other}`"
+                    )));
+                }
+            };
+            Ok(TableSortEntry { column, direction })
+        })
+        .collect()
+}
+
+/// クエリ文字列 `name:hello,age:42` をパースする（値は URL エンコード可）。
+pub fn parse_filter_query_param(raw: &str) -> DomainResult<Vec<TableFilterEntry>> {
+    Ok(split_column_value_query_parts(raw, "フィルター")?
+        .into_iter()
+        .map(|(column, text)| TableFilterEntry {
+            column: percent_decode_query_component(&column),
+            text: percent_decode_query_component(&text),
+        })
+        .collect())
+}
+
+fn compact_filter_entries(entries: &[TableFilterEntry]) -> Vec<TableFilterEntry> {
+    entries
+        .iter()
+        .filter(|entry| !entry.text.trim().is_empty())
+        .cloned()
+        .collect()
+}
+
+fn percent_decode_query_component(raw: &str) -> String {
+    urlencoding::decode(raw)
+        .map(|value| value.into_owned())
+        .unwrap_or_else(|_| raw.to_string())
+}
+
+fn escape_like_pattern(text: &str) -> String {
+    let mut escaped = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '\\' | '%' | '_' => {
+                escaped.push('\\');
+                escaped.push(ch);
+            }
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 fn is_missing_user_table_meta_error(err: &sqlx::Error) -> bool {
@@ -1013,6 +1072,49 @@ pub async fn save_table_sort(
     Ok(())
 }
 
+/// 保存済みの列フィルターを取得する。未保存の場合は `None`。
+pub async fn get_table_filter(
+    pool: &SqlitePool,
+    name: &str,
+) -> DomainResult<Option<Vec<TableFilterEntry>>> {
+    Ok(get_table_ui_meta(pool, name).await?.filter)
+}
+
+/// 列フィルターを保存する（UPSERT）。
+pub async fn save_table_filter(
+    pool: &SqlitePool,
+    name: &str,
+    filter: &[TableFilterEntry],
+) -> DomainResult<()> {
+    let name = ensure_viewable_table(name)?;
+    if !object_name_exists(pool, name, "table").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    let filter = compact_filter_entries(filter);
+    validate_filter_columns(pool, name, &filter).await?;
+
+    let json = serde_json::to_string(&filter).map_err(|e| {
+        DomainError::Internal(anyhow::anyhow!("フィルター JSON のシリアライズに失敗: {e}"))
+    })?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_table_meta (table_name, filter_json, updated_at)
+        VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        ON CONFLICT(table_name) DO UPDATE SET
+            filter_json = excluded.filter_json,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(name)
+    .bind(json)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
 fn validate_sort_against_columns(
     column_names: &[String],
     table_name: &str,
@@ -1035,6 +1137,79 @@ fn validate_sort_against_columns(
     }
 
     Ok(())
+}
+
+fn validate_filter_against_columns(
+    column_names: &[String],
+    table_name: &str,
+    entries: &[TableFilterEntry],
+) -> DomainResult<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+
+    let column_set: std::collections::HashSet<&str> =
+        column_names.iter().map(String::as_str).collect();
+
+    for entry in entries {
+        if entry.text.is_empty() {
+            continue;
+        }
+        if !column_set.contains(entry.column.as_str()) {
+            return Err(DomainError::Validation(format!(
+                "カラム `{}` はテーブル `{table_name}` に存在しません",
+                entry.column
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+fn build_where_from_filter(
+    column_names: &[String],
+    table_name: &str,
+    entries: &[TableFilterEntry],
+) -> DomainResult<(String, Vec<String>)> {
+    validate_filter_against_columns(column_names, table_name, entries)?;
+
+    let active: Vec<&TableFilterEntry> = entries
+        .iter()
+        .filter(|entry| !entry.text.is_empty())
+        .collect();
+    if active.is_empty() {
+        return Ok((String::new(), Vec::new()));
+    }
+
+    let mut binds = Vec::with_capacity(active.len());
+    let parts: Vec<String> = active
+        .iter()
+        .map(|entry| {
+            let pattern = format!(
+                "%{}%",
+                escape_like_pattern(&entry.text.to_ascii_lowercase())
+            );
+            binds.push(pattern);
+            format!(
+                "LOWER(CAST({} AS TEXT)) LIKE ? ESCAPE '\\'",
+                quote_sql_identifier(&entry.column)
+            )
+        })
+        .collect();
+
+    Ok((format!("WHERE {}", parts.join(" AND ")), binds))
+}
+
+async fn validate_filter_columns(
+    pool: &SqlitePool,
+    table_name: &str,
+    entries: &[TableFilterEntry],
+) -> DomainResult<()> {
+    if entries.is_empty() {
+        return Ok(());
+    }
+    let column_names = table_column_names(pool, table_name).await?;
+    validate_filter_against_columns(&column_names, table_name, entries)
 }
 
 fn build_order_by_from_sort(
@@ -1105,13 +1280,14 @@ pub async fn build_order_by_clause(
 #[derive(Debug, Default)]
 struct TableUiMeta {
     sort: Option<Vec<TableSortEntry>>,
+    filter: Option<Vec<TableFilterEntry>>,
     column_widths: Option<std::collections::HashMap<String, i32>>,
 }
 
 async fn get_table_ui_meta(pool: &SqlitePool, name: &str) -> DomainResult<TableUiMeta> {
     let name = ensure_viewable_table(name)?;
-    let row: Option<(String, String)> = match sqlx::query_as::<_, (String, String)>(
-        "SELECT column_widths_json, sort_json FROM user_table_meta WHERE table_name = ?",
+    let row: Option<(String, String, String)> = match sqlx::query_as::<_, (String, String, String)>(
+        "SELECT column_widths_json, sort_json, filter_json FROM user_table_meta WHERE table_name = ?",
     )
     .bind(name)
     .fetch_optional(pool)
@@ -1122,7 +1298,7 @@ async fn get_table_ui_meta(pool: &SqlitePool, name: &str) -> DomainResult<TableU
         Err(err) => return Err(err.into()),
     };
 
-    let Some((widths_json, sort_json)) = row else {
+    let Some((widths_json, sort_json, filter_json)) = row else {
         return Ok(TableUiMeta::default());
     };
 
@@ -1153,8 +1329,22 @@ async fn get_table_ui_meta(pool: &SqlitePool, name: &str) -> DomainResult<TableU
         }
     };
 
+    let filter = if filter_json.is_empty() || filter_json == "[]" {
+        None
+    } else {
+        let parsed: Vec<TableFilterEntry> = serde_json::from_str(&filter_json).map_err(|e| {
+            DomainError::Internal(anyhow::anyhow!("フィルター JSON の解析に失敗: {e}"))
+        })?;
+        if parsed.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
+    };
+
     Ok(TableUiMeta {
         sort,
+        filter,
         column_widths,
     })
 }
@@ -1176,6 +1366,7 @@ pub async fn list_user_table_rows(
     name: &str,
     offset: i64,
     sort_override: Option<&[TableSortEntry]>,
+    filter_override: Option<&[TableFilterEntry]>,
 ) -> DomainResult<TableDataView> {
     let name = ensure_viewable_table(name)?;
     if !object_name_exists(pool, name, "table").await? {
@@ -1189,9 +1380,8 @@ pub async fn list_user_table_rows(
 
     let pragma_rows = table_pragma_info(pool, name).await?;
     let columns: Vec<String> = pragma_rows.iter().map(|row| row.name.clone()).collect();
-    let total_count = table_row_count(pool, name).await.map_err(DomainError::from)?;
 
-    let ui_meta = if sort_override.is_none() {
+    let ui_meta = if sort_override.is_none() || filter_override.is_none() {
         Some(get_table_ui_meta(pool, name).await?)
     } else {
         None
@@ -1204,6 +1394,19 @@ pub async fn list_user_table_rows(
             .and_then(|meta| meta.sort.clone())
             .unwrap_or_default(),
     };
+
+    let effective_filter = compact_filter_entries(match filter_override {
+        Some(entries) => entries,
+        None => ui_meta
+            .as_ref()
+            .and_then(|meta| meta.filter.as_deref())
+            .unwrap_or_default(),
+    });
+
+    let (where_clause, where_binds) =
+        build_where_from_filter(&columns, name, &effective_filter)?;
+    let total_count =
+        table_row_count(pool, name, &where_clause, &where_binds).await.map_err(DomainError::from)?;
 
     let order_by = if effective_sort.is_empty() {
         order_columns_from_pragma(&pragma_rows)
@@ -1218,6 +1421,8 @@ pub async fn list_user_table_rows(
         TABLE_DATA_CHUNK_SIZE,
         columns.len(),
         &order_by,
+        &where_clause,
+        &where_binds,
     )
     .await?;
     let fetched = rows.len() as i64;
@@ -1238,6 +1443,12 @@ pub async fn list_user_table_rows(
         None
     };
 
+    let filter = if offset == 0 {
+        Some(effective_filter)
+    } else {
+        None
+    };
+
     let column_meta = if offset == 0 {
         Some(column_meta_from_pragma(&pragma_rows)?)
     } else {
@@ -1252,6 +1463,7 @@ pub async fn list_user_table_rows(
         has_more,
         column_widths,
         sort,
+        filter,
         column_meta,
     })
 }
@@ -1347,6 +1559,8 @@ pub async fn fetch_table_rows_chunk(
     limit: i64,
     column_count: usize,
     order_by: &str,
+    where_clause: &str,
+    where_binds: &[String],
 ) -> DomainResult<Vec<Vec<Option<String>>>> {
     let name = ensure_viewable_table(name)?;
     if offset < 0 || limit < 0 {
@@ -1356,10 +1570,18 @@ pub async fn fetch_table_rows_chunk(
     }
 
     let quoted = quote_sql_identifier(name);
-    let query = format!("SELECT * FROM {quoted} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}");
-    let sql_rows = sqlx::query(sqlx::AssertSqlSafe(query))
-        .fetch_all(pool)
-        .await?;
+    let query = if where_clause.is_empty() {
+        format!("SELECT * FROM {quoted} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}")
+    } else {
+        format!(
+            "SELECT * FROM {quoted} {where_clause} ORDER BY {order_by} LIMIT {limit} OFFSET {offset}"
+        )
+    };
+    let mut sql_query = sqlx::query(sqlx::AssertSqlSafe(query));
+    for bind in where_binds {
+        sql_query = sql_query.bind(bind);
+    }
+    let sql_rows = sql_query.fetch_all(pool).await?;
 
     Ok(sql_rows
         .iter()
@@ -2326,10 +2548,23 @@ async fn execute_ddl(pool: &SqlitePool, ddl: &str) -> DomainResult<()> {
     Ok(())
 }
 
-async fn table_row_count(pool: &SqlitePool, name: &str) -> AppResult<i64> {
+async fn table_row_count(
+    pool: &SqlitePool,
+    name: &str,
+    where_clause: &str,
+    where_binds: &[String],
+) -> AppResult<i64> {
     let quoted = quote_sql_identifier(name);
-    let query = format!("SELECT COUNT(*) FROM {quoted}");
-    let count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(query))
+    let query = if where_clause.is_empty() {
+        format!("SELECT COUNT(*) FROM {quoted}")
+    } else {
+        format!("SELECT COUNT(*) FROM {quoted} {where_clause}")
+    };
+    let mut sql_query = sqlx::query_scalar::<_, i64>(sqlx::AssertSqlSafe(query));
+    for bind in where_binds {
+        sql_query = sql_query.bind(bind);
+    }
+    let count = sql_query
         .fetch_one(pool)
         .await
         .map_err(AppError::Database)?;
@@ -2618,7 +2853,7 @@ mod tests {
         .await
         .expect("insert row");
 
-        let view = list_user_table_rows(&pool, "_sqlx_test", 0, None)
+        let view = list_user_table_rows(&pool, "_sqlx_test", 0, None, None)
             .await
             .expect("list rows");
         assert_eq!(
@@ -2788,7 +3023,7 @@ mod tests {
         .await
         .expect("insert row");
 
-        let view = list_user_table_rows(&pool, "nullable_rows", 0, None)
+        let view = list_user_table_rows(&pool, "nullable_rows", 0, None, None)
             .await
             .expect("list rows");
         assert_eq!(view.rows.len(), 1);
@@ -2814,7 +3049,7 @@ mod tests {
                 .expect("insert row");
         }
 
-        let view = list_user_table_rows(&pool, "big", 0, None)
+        let view = list_user_table_rows(&pool, "big", 0, None, None)
             .await
             .expect("list rows");
         assert_eq!(view.columns, vec!["id".to_string(), "n".to_string()]);
@@ -2886,7 +3121,7 @@ mod tests {
             column: "label".to_string(),
             direction: TableSortDirection::Asc,
         }];
-        let view = list_user_table_rows(&pool, "sorted", 0, Some(&sort))
+        let view = list_user_table_rows(&pool, "sorted", 0, Some(&sort), None)
             .await
             .expect("list rows");
         assert_eq!(
@@ -2897,6 +3132,112 @@ mod tests {
             vec![Some("a"), Some("b"), Some("c")]
         );
         assert_eq!(view.sort, Some(sort));
+    }
+
+    #[test]
+    fn parse_filter_query_param_parses_entries() {
+        let entries = parse_filter_query_param("name:hello,age:42").unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].column, "name");
+        assert_eq!(entries[0].text, "hello");
+        assert_eq!(entries[1].column, "age");
+        assert_eq!(entries[1].text, "42");
+    }
+
+    #[test]
+    fn parse_filter_query_param_decodes_percent_encoding() {
+        let entries = parse_filter_query_param("body:hello%2Cworld").unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].column, "body");
+        assert_eq!(entries[0].text, "hello,world");
+    }
+
+    #[test]
+    fn parse_filter_query_param_empty_returns_empty_vec() {
+        assert!(parse_filter_query_param("").unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_user_table_rows_filters_rows() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(
+            r#"CREATE TABLE "filtered" (
+                id INTEGER PRIMARY KEY,
+                "label" TEXT NOT NULL,
+                "score" INTEGER NOT NULL
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create table");
+
+        let rows = [("alpha", 10), ("beta", 20), ("alphabet", 30)];
+        for (label, score) in rows {
+            sqlx::query(r#"INSERT INTO "filtered" ("label", "score") VALUES (?, ?)"#)
+                .bind(label)
+                .bind(score)
+                .execute(&pool)
+                .await
+                .expect("insert row");
+        }
+
+        let filter = vec![TableFilterEntry {
+            column: "label".to_string(),
+            text: "ta".to_string(),
+        }];
+        let view = list_user_table_rows(&pool, "filtered", 0, None, Some(&filter))
+            .await
+            .expect("list rows");
+        assert_eq!(view.total_count, 1);
+        assert_eq!(view.rows[0][1].as_deref(), Some("beta"));
+
+        let multi_filter = vec![
+            TableFilterEntry {
+                column: "label".to_string(),
+                text: "a".to_string(),
+            },
+            TableFilterEntry {
+                column: "score".to_string(),
+                text: "2".to_string(),
+            },
+        ];
+        let view = list_user_table_rows(&pool, "filtered", 0, None, Some(&multi_filter))
+            .await
+            .expect("list rows");
+        assert_eq!(view.total_count, 1);
+        assert_eq!(view.rows[0][1].as_deref(), Some("beta"));
+    }
+
+    #[tokio::test]
+    async fn list_user_table_rows_filter_excludes_null_cells() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("connect memory db");
+        sqlx::query(
+            r#"CREATE TABLE "nullable_filter" (
+                id INTEGER PRIMARY KEY,
+                body TEXT
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create table");
+
+        sqlx::query(r#"INSERT INTO "nullable_filter" ("body") VALUES ('match'), (NULL)"#)
+            .execute(&pool)
+            .await
+            .expect("insert rows");
+
+        let filter = vec![TableFilterEntry {
+            column: "body".to_string(),
+            text: "match".to_string(),
+        }];
+        let view = list_user_table_rows(&pool, "nullable_filter", 0, None, Some(&filter))
+            .await
+            .expect("list rows");
+        assert_eq!(view.total_count, 1);
     }
 
     #[test]

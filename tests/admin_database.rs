@@ -1028,6 +1028,222 @@ async fn database_table_data_rows_empty_sort_uses_default_order() {
 }
 
 #[tokio::test]
+async fn database_table_data_rows_filters_by_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=filter_rows&col_name=label&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    for label in ["alpha", "beta", "alphabet"] {
+        sqlx::query(r#"INSERT INTO "filter_rows" ("label") VALUES (?)"#)
+            .bind(label)
+            .execute(&app.state.pool())
+            .await
+            .unwrap();
+    }
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/filter_rows/data/rows?offset=0&filter=label:ta",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["total_count"], 1);
+    assert_eq!(
+        json["rows"].as_array().unwrap()[0][1],
+        serde_json::json!("beta")
+    );
+    assert_eq!(json["filter"][0]["column"], "label");
+    assert_eq!(json["filter"][0]["text"], "ta");
+}
+
+#[tokio::test]
+async fn database_table_data_rows_multi_column_filter() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some(
+                "name=multi_filter&col_name=group_name&col_type=text&col_nullable=0\
+                 &col_name=score&col_type=integer&col_nullable=0",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let rows = [("team-a", 10), ("team-a", 20), ("team-b", 20)];
+    for (group_name, score) in rows {
+        sqlx::query(r#"INSERT INTO "multi_filter" ("group_name", "score") VALUES (?, ?)"#)
+            .bind(group_name)
+            .bind(score)
+            .execute(&app.state.pool())
+            .await
+            .unwrap();
+    }
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/multi_filter/data/rows?offset=0&filter=group_name:team-a,score:20",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let data_rows = json["rows"].as_array().unwrap();
+
+    assert_eq!(json["total_count"], 1);
+    assert_eq!(data_rows[0][1], serde_json::json!("team-a"));
+    assert_eq!(data_rows[0][2], serde_json::json!("20"));
+}
+
+#[tokio::test]
+async fn database_table_data_rows_rejects_unknown_filter_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=filter_bad&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/filter_bad/data/rows?offset=0&filter=missing:abc",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn database_table_data_filter_save_and_load() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=filter_save&col_name=title&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "filter_save" ("title") VALUES ('alpha'), ('beta')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let save_body = r#"{"filter":[{"column":"title","text":"lp"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/filter_save/data/filter",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/filter_save/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["filter"][0]["column"], "title");
+    assert_eq!(json["filter"][0]["text"], "lp");
+    assert_eq!(json["total_count"], 1);
+    assert_eq!(
+        json["rows"].as_array().unwrap()[0][1],
+        serde_json::json!("alpha")
+    );
+
+    let stored: Option<String> = sqlx::query_scalar(
+        "SELECT filter_json FROM user_table_meta WHERE table_name = 'filter_save'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(stored.unwrap().contains("title"));
+}
+
+#[tokio::test]
+async fn database_table_data_rows_empty_filter_clears_saved_filter() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=filter_default&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "filter_default" ("body") VALUES ('alpha'), ('beta')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let save_body = r#"{"filter":[{"column":"body","text":"lp"}]}"#;
+    app.admin_request(
+        "POST",
+        "/admin/database/tables/filter_default/data/filter",
+        Some(save_body),
+        Some("application/json"),
+    )
+    .await;
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/filter_default/data/rows?offset=0&filter=",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["filter"], serde_json::json!([]));
+    assert_eq!(json["total_count"], 2);
+}
+
+#[tokio::test]
 async fn database_table_data_column_widths_rejects_infra_table() {
     let app = common::TestApp::new().await;
 

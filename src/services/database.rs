@@ -507,11 +507,12 @@ pub async fn load_user_table_columns(
 
 /// データ一覧画面向けに、テーブルが閲覧可能か検証する。
 pub async fn ensure_user_table_viewable(pool: &SqlitePool, name: &str) -> DomainResult<()> {
-    let name = ensure_viewable_table(name)?;
-    if !object_name_exists(pool, name, "table").await? {
-        return Err(DomainError::NotFound);
-    }
-    Ok(())
+    ensure_named_object_viewable(pool, name, "table").await
+}
+
+/// データ一覧画面向けに、ビューが閲覧可能か検証する。
+pub async fn ensure_user_view_viewable(pool: &SqlitePool, name: &str) -> DomainResult<()> {
+    ensure_named_object_viewable(pool, name, "view").await
 }
 
 pub async fn update_user_table_from_columns(
@@ -817,12 +818,65 @@ pub async fn create_user_view(
         )));
     }
 
-    let ddl = format!(
-        "CREATE VIEW {} AS {definition}",
-        quote_sql_identifier(&name)
-    );
-    execute_ddl(pool, &ddl).await?;
+    execute_ddl(pool, &create_view_ddl(&name, &definition)).await?;
     Ok(())
+}
+
+pub async fn load_user_view_definition(pool: &SqlitePool, name: &str) -> DomainResult<String> {
+    let name = ensure_editable_user_table(name)?;
+    let sql: Option<String> = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await?;
+
+    let sql = sql.ok_or(DomainError::NotFound)?;
+    extract_view_select_from_create_sql(&sql)
+}
+
+pub async fn update_user_view(
+    pool: &SqlitePool,
+    name: &str,
+    definition: &str,
+) -> DomainResult<()> {
+    let name = ensure_editable_user_table(name)?;
+    if !object_name_exists(pool, name, "view").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    let definition = validate_view_definition(definition)?;
+    let quoted_name = quote_sql_identifier(name);
+    let mut tx = pool.begin().await?;
+    let drop_ddl = format!("DROP VIEW IF EXISTS {quoted_name}");
+    sqlx::query(sqlx::AssertSqlSafe(drop_ddl))
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(sqlx::AssertSqlSafe(create_view_ddl(name, &definition)))
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+fn create_view_ddl(name: &str, definition: &str) -> String {
+    format!(
+        "CREATE VIEW {} AS {definition}",
+        quote_sql_identifier(name)
+    )
+}
+
+fn extract_view_select_from_create_sql(sql: &str) -> DomainResult<String> {
+    let upper = sql.to_ascii_uppercase();
+    let marker = " AS ";
+    let pos = upper
+        .find(marker)
+        .ok_or(DomainError::NotFound)?;
+    let definition = sql[pos + marker.len()..].trim();
+    if definition.is_empty() {
+        return Err(DomainError::NotFound);
+    }
+    Ok(definition.to_string())
 }
 
 fn validate_view_definition(definition: &str) -> DomainResult<String> {
@@ -877,6 +931,29 @@ async fn object_name_exists(
     Ok(exists)
 }
 
+async fn ensure_named_object_viewable(
+    pool: &SqlitePool,
+    name: &str,
+    object_type: &str,
+) -> DomainResult<()> {
+    let name = ensure_viewable_table(name)?;
+    if !object_name_exists(pool, name, object_type).await? {
+        return Err(DomainError::NotFound);
+    }
+    Ok(())
+}
+
+async fn object_exists_as_table_or_view(pool: &SqlitePool, name: &str) -> DomainResult<bool> {
+    let exists = sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM sqlite_master WHERE name = ? AND type IN ('table', 'view') LIMIT 1",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await?
+    .is_some();
+    Ok(exists)
+}
+
 /// 保存済みの列幅を取得する。未保存の場合は `None`。
 pub async fn get_table_column_widths(
     pool: &SqlitePool,
@@ -892,7 +969,7 @@ pub async fn save_table_column_widths(
     widths: &std::collections::HashMap<String, i32>,
 ) -> DomainResult<()> {
     let name = ensure_viewable_table(name)?;
-    if !object_name_exists(pool, name, "table").await? {
+    if !object_exists_as_table_or_view(pool, name).await? {
         return Err(DomainError::NotFound);
     }
 
@@ -903,7 +980,7 @@ pub async fn save_table_column_widths(
     for (col, width) in widths {
         if !column_set.contains(col.as_str()) {
             return Err(DomainError::Validation(format!(
-                "カラム `{col}` はテーブル `{name}` に存在しません"
+                "カラム `{col}` はオブジェクト `{name}` に存在しません"
             )));
         }
         if *width < COLUMN_WIDTH_MIN_PX || *width > COLUMN_WIDTH_MAX_PX {
@@ -1045,7 +1122,7 @@ pub async fn save_table_sort(
     sort: &[TableSortEntry],
 ) -> DomainResult<()> {
     let name = ensure_viewable_table(name)?;
-    if !object_name_exists(pool, name, "table").await? {
+    if !object_exists_as_table_or_view(pool, name).await? {
         return Err(DomainError::NotFound);
     }
 
@@ -1087,7 +1164,7 @@ pub async fn save_table_filter(
     filter: &[TableFilterEntry],
 ) -> DomainResult<()> {
     let name = ensure_viewable_table(name)?;
-    if !object_name_exists(pool, name, "table").await? {
+    if !object_exists_as_table_or_view(pool, name).await? {
         return Err(DomainError::NotFound);
     }
 
@@ -1369,7 +1446,7 @@ pub async fn list_user_table_rows(
     filter_override: Option<&[TableFilterEntry]>,
 ) -> DomainResult<TableDataView> {
     let name = ensure_viewable_table(name)?;
-    if !object_name_exists(pool, name, "table").await? {
+    if !object_exists_as_table_or_view(pool, name).await? {
         return Err(DomainError::NotFound);
     }
     if offset < 0 {
@@ -3424,5 +3501,18 @@ mod tests {
         assert_eq!(truncate_sql(sql, 80), sql);
         assert!(truncate_sql(sql, 20).ends_with('…'));
         assert!(truncate_sql(sql, 20).chars().count() <= 21);
+    }
+
+    #[test]
+    fn extract_view_select_from_create_sql_parses_quoted_view_name() {
+        let sql = r#"CREATE VIEW "custom_notes_view" AS SELECT id, body FROM custom_notes"#;
+        let definition = extract_view_select_from_create_sql(sql).expect("extract definition");
+        assert_eq!(definition, "SELECT id, body FROM custom_notes");
+    }
+
+    #[test]
+    fn extract_view_select_from_create_sql_rejects_missing_as_clause() {
+        let err = extract_view_select_from_create_sql("CREATE VIEW broken").unwrap_err();
+        assert!(matches!(err, DomainError::NotFound));
     }
 }

@@ -27,14 +27,18 @@
       <span class="db-data-filter-indicator-label" id="db-data-filter-indicator-label"></span>
       <button type="button" class="db-data-filter-clear" id="db-data-filter-clear" aria-label="フィルターをすべて解除">×</button>
     </div>
-    {% if read_only %}
+    {% if read_only && is_view %}
+    <span class="toolbar-notice notice info">ビューのデータは閲覧専用です。</span>
+    {% elif read_only %}
     <span class="toolbar-notice notice info">CMSシステムテーブルのデータは閲覧専用です。列編集・テストデータ生成はできません。</span>
     {% endif %}
   </div>
   <div class="toolbar-actions">
     {% if !read_only %}
     <a class="button secondary" href="{{ seed_url }}">テストデータ生成</a>
-    <a class="button secondary" href="{{ edit_url }}">列編集</a>
+    <a class="button secondary" href="{{ edit_url }}">{{ edit_label }}</a>
+    {% elif !edit_url.is_empty() %}
+    <a class="button secondary" href="{{ edit_url }}">{{ edit_label }}</a>
     {% endif %}
     <button type="button" id="db-data-fit-all-columns" class="button secondary" disabled>全列幅調整</button>
   </div>

@@ -45,6 +45,17 @@ struct TableListItem {
     data_url: String,
 }
 
+#[derive(Debug, Clone)]
+struct ViewListItem {
+    name: String,
+    sql_preview: String,
+    is_system: bool,
+    can_edit: bool,
+    can_view_data: bool,
+    edit_url: String,
+    data_url: String,
+}
+
 #[derive(Template)]
 #[template(path = "admin/database/table_data.html")]
 struct TableDataTemplate {
@@ -52,7 +63,9 @@ struct TableDataTemplate {
     table_name: String,
     data_api_url: String,
     read_only: bool,
+    is_view: bool,
     edit_url: String,
+    edit_label: &'static str,
     seed_url: String,
 }
 
@@ -125,7 +138,7 @@ struct TableSeedFormTemplate {
 struct DatabaseTemplate {
     layout: layout::AdminLayoutCtx,
     tables: Vec<TableListItem>,
-    views: Vec<DbObjectItem>,
+    views: Vec<ViewListItem>,
     has_views: bool,
     is_tables_tab: bool,
     is_views_tab: bool,
@@ -162,11 +175,49 @@ struct TableFormTemplate {
 #[template(path = "admin/database/view_form.html")]
 struct ViewFormTemplate {
     layout: layout::AdminLayoutCtx,
-    action: &'static str,
+    heading: String,
+    action: String,
     cancel_url: &'static str,
+    submit_label: String,
     name: String,
+    name_readonly: bool,
+    is_edit: bool,
     definition: String,
     error_message: String,
+}
+
+struct ViewFormParams<'a> {
+    heading: &'a str,
+    action: String,
+    submit_label: &'a str,
+    name: &'a str,
+    name_readonly: bool,
+    is_edit: bool,
+    definition: &'a str,
+    error_message: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum DbAdminObjectKind {
+    Table,
+    View,
+}
+
+struct ListActionUrls {
+    can_edit: bool,
+    can_view_data: bool,
+    edit_url: String,
+    data_url: String,
+}
+
+struct DataPageParams {
+    name: String,
+    data_api_url: String,
+    read_only: bool,
+    is_view: bool,
+    edit_url: String,
+    edit_label: &'static str,
+    seed_url: String,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -237,6 +288,27 @@ pub fn router() -> Router<AppState> {
             "/admin/database/views/new",
             get(new_view_form).post(create_view),
         )
+        .route(
+            "/admin/database/views/{name}/edit",
+            get(edit_view_form).post(update_view),
+        )
+        .route("/admin/database/views/{name}/data", get(view_data))
+        .route(
+            "/admin/database/views/{name}/data/rows",
+            get(table_data_rows),
+        )
+        .route(
+            "/admin/database/views/{name}/data/column-widths",
+            post(save_table_column_widths),
+        )
+        .route(
+            "/admin/database/views/{name}/data/sort",
+            post(save_table_sort),
+        )
+        .route(
+            "/admin/database/views/{name}/data/filter",
+            post(save_table_filter),
+        )
 }
 
 async fn index(
@@ -257,6 +329,7 @@ async fn index(
             table_list_item(item)
         })
         .collect::<Vec<_>>();
+    let views = views.into_iter().map(view_list_item).collect::<Vec<_>>();
     let is_views_tab = query.tab == "views";
     let new_url = if is_views_tab {
         "/admin/database/views/new".to_string()
@@ -351,33 +424,61 @@ async fn table_data(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> AppResult<Response> {
-    match database::ensure_user_table_viewable(&state.pool(), &name).await {
-        Ok(()) => {}
-        Err(DomainError::SystemTable(message)) => {
-            return Ok(system_table_notice_response(&auth, &name, &message).await?);
-        }
-        Err(DomainError::NotFound) => return Err(AppError::NotFound),
-        Err(err) => return Err(err.into()),
+    if let Err(err) = database::ensure_user_table_viewable(&state.pool(), &name).await {
+        return handle_object_viewable_error(&auth, &name, err).await;
     }
 
     let read_only = database::is_cms_readonly_table(&name);
-    let html = TableDataTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
-        table_name: name.clone(),
-        data_api_url: table_url(&name, "/data/rows"),
-        read_only,
-        edit_url: if read_only {
-            String::new()
-        } else {
-            table_url(&name, "/edit")
+    let html = render_data_page(
+        &auth,
+        DataPageParams {
+            name: name.clone(),
+            data_api_url: object_admin_url(DbAdminObjectKind::Table, &name, "/data/rows"),
+            read_only,
+            is_view: false,
+            edit_url: if read_only {
+                String::new()
+            } else {
+                object_admin_url(DbAdminObjectKind::Table, &name, "/edit")
+            },
+            edit_label: "列編集",
+            seed_url: if read_only {
+                String::new()
+            } else {
+                object_admin_url(DbAdminObjectKind::Table, &name, "/data/seed")
+            },
         },
-        seed_url: if read_only {
-            String::new()
-        } else {
-            table_url(&name, "/data/seed")
-        },
+    )?;
+
+    Ok(Html(html).into_response())
+}
+
+async fn view_data(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> AppResult<Response> {
+    if let Err(err) = database::ensure_user_view_viewable(&state.pool(), &name).await {
+        return handle_object_viewable_error(&auth, &name, err).await;
     }
-    .render()?;
+
+    let can_edit = database::is_db_admin_editable(&name);
+    let html = render_data_page(
+        &auth,
+        DataPageParams {
+            name: name.clone(),
+            data_api_url: object_admin_url(DbAdminObjectKind::View, &name, "/data/rows"),
+            read_only: true,
+            is_view: true,
+            edit_url: if can_edit {
+                object_admin_url(DbAdminObjectKind::View, &name, "/edit")
+            } else {
+                String::new()
+            },
+            edit_label: "定義編集",
+            seed_url: String::new(),
+        },
+    )?;
 
     Ok(Html(html).into_response())
 }
@@ -759,8 +860,44 @@ async fn update_table(
 }
 
 async fn new_view_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
-    let html = view_form_template(&auth, "", "", "")?;
+    let html = view_form_template(
+        &auth,
+        ViewFormParams {
+            heading: "ビューを追加",
+            action: "/admin/database/views/new".to_string(),
+            submit_label: "追加する",
+            name: "",
+            name_readonly: false,
+            is_edit: false,
+            definition: "",
+            error_message: "",
+        },
+    )?;
     Ok(Html(html))
+}
+
+async fn edit_view_form(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> AppResult<Response> {
+    match database::load_user_view_definition(&state.pool(), &name).await {
+        Ok(definition) => {
+            let html = view_form_template(&auth, view_edit_form_params(&name, &definition, ""))?;
+            Ok(Html(html).into_response())
+        }
+        Err(DomainError::SystemTable(message)) => {
+            Ok(system_table_notice_response(&auth, &name, &message).await?)
+        }
+        Err(DomainError::NotFound) => Err(AppError::NotFound),
+        Err(err) => {
+            let html = view_form_template(
+                &auth,
+                view_edit_form_params(&name, "", &domain_error_message(&err)),
+            )?;
+            Ok(Html(html).into_response())
+        }
+    }
 }
 
 async fn create_view(
@@ -773,46 +910,160 @@ async fn create_view(
         Err(err) => {
             let html = view_form_template(
                 &auth,
-                &form.name,
-                &form.definition,
-                &domain_error_message(&err),
+                ViewFormParams {
+                    heading: "ビューを追加",
+                    action: "/admin/database/views/new".to_string(),
+                    submit_label: "追加する",
+                    name: &form.name,
+                    name_readonly: false,
+                    is_edit: false,
+                    definition: &form.definition,
+                    error_message: &domain_error_message(&err),
+                },
             )?;
             Ok(Html(html).into_response())
         }
     }
 }
 
-fn table_url(name: &str, suffix: &str) -> String {
+async fn update_view(
+    auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Form(form): Form<ViewCreateForm>,
+) -> AppResult<Response> {
+    if form.name != name {
+        let html = view_form_template(
+            &auth,
+            view_edit_form_params(&name, &form.definition, "ビュー名は変更できません"),
+        )?;
+        return Ok(Html(html).into_response());
+    }
+
+    match database::update_user_view(&state.pool(), &name, &form.definition).await {
+        Ok(()) => Ok(Redirect::to("/admin/database?tab=views").into_response()),
+        Err(DomainError::SystemTable(message)) => {
+            Ok(system_table_notice_response(&auth, &name, &message).await?)
+        }
+        Err(DomainError::NotFound) => Err(AppError::NotFound),
+        Err(err) => {
+            let html = view_form_template(
+                &auth,
+                view_edit_form_params(&name, &form.definition, &domain_error_message(&err)),
+            )?;
+            Ok(Html(html).into_response())
+        }
+    }
+}
+
+fn object_admin_url(kind: DbAdminObjectKind, name: &str, suffix: &str) -> String {
+    let segment = match kind {
+        DbAdminObjectKind::Table => "tables",
+        DbAdminObjectKind::View => "views",
+    };
     format!(
-        "/admin/database/tables/{}{}",
+        "/admin/database/{segment}/{}{}",
         urlencoding::encode(name),
         suffix
     )
 }
 
-fn table_list_item(item: DbObjectItem) -> TableListItem {
-    let can_edit = database::is_db_admin_editable(&item.name);
-    let can_view_data = database::is_db_admin_data_viewable(&item.name);
-    let edit_url = if can_edit {
-        table_url(&item.name, "/edit")
-    } else {
-        String::new()
-    };
-    let data_url = if can_view_data {
-        table_url(&item.name, "/data")
-    } else {
-        String::new()
-    };
+fn table_url(name: &str, suffix: &str) -> String {
+    object_admin_url(DbAdminObjectKind::Table, name, suffix)
+}
 
+fn view_url(name: &str, suffix: &str) -> String {
+    object_admin_url(DbAdminObjectKind::View, name, suffix)
+}
+
+fn list_action_urls(kind: DbAdminObjectKind, name: &str) -> ListActionUrls {
+    let can_edit = database::is_db_admin_editable(name);
+    let can_view_data = database::is_db_admin_data_viewable(name);
+    ListActionUrls {
+        can_edit,
+        can_view_data,
+        edit_url: if can_edit {
+            object_admin_url(kind, name, "/edit")
+        } else {
+            String::new()
+        },
+        data_url: if can_view_data {
+            object_admin_url(kind, name, "/data")
+        } else {
+            String::new()
+        },
+    }
+}
+
+fn table_list_item(item: DbObjectItem) -> TableListItem {
+    let actions = list_action_urls(DbAdminObjectKind::Table, &item.name);
     TableListItem {
         name: item.name,
         row_count: item.row_count,
         is_system: item.is_system,
-        can_edit,
-        can_view_data,
-        edit_url,
-        data_url,
+        can_edit: actions.can_edit,
+        can_view_data: actions.can_view_data,
+        edit_url: actions.edit_url,
+        data_url: actions.data_url,
     }
+}
+
+fn view_list_item(item: DbObjectItem) -> ViewListItem {
+    let actions = list_action_urls(DbAdminObjectKind::View, &item.name);
+    ViewListItem {
+        name: item.name,
+        sql_preview: item.sql_preview,
+        is_system: item.is_system,
+        can_edit: actions.can_edit,
+        can_view_data: actions.can_view_data,
+        edit_url: actions.edit_url,
+        data_url: actions.data_url,
+    }
+}
+
+fn view_edit_form_params<'a>(
+    name: &'a str,
+    definition: &'a str,
+    error_message: &'a str,
+) -> ViewFormParams<'a> {
+    ViewFormParams {
+        heading: "ビューを編集",
+        action: view_url(name, "/edit"),
+        submit_label: "保存する",
+        name,
+        name_readonly: true,
+        is_edit: true,
+        definition,
+        error_message,
+    }
+}
+
+async fn handle_object_viewable_error(
+    auth: &AuthUser,
+    name: &str,
+    err: DomainError,
+) -> AppResult<Response> {
+    match err {
+        DomainError::SystemTable(message) => {
+            Ok(system_table_notice_response(auth, name, &message).await?)
+        }
+        DomainError::NotFound => Err(AppError::NotFound),
+        other => Err(other.into()),
+    }
+}
+
+fn render_data_page(auth: &AuthUser, params: DataPageParams) -> AppResult<String> {
+    Ok(TableDataTemplate {
+        layout: layout::AdminLayoutCtx::new(auth),
+        table_name: params.name,
+        data_api_url: params.data_api_url,
+        read_only: params.read_only,
+        is_view: params.is_view,
+        edit_url: params.edit_url,
+        edit_label: params.edit_label,
+        seed_url: params.seed_url,
+    }
+    .render()?)
 }
 
 fn parse_seed_form_body(body: &Bytes) -> Result<TestDataSeedForm, String> {
@@ -933,19 +1184,18 @@ fn table_form_template(auth: &AuthUser, params: TableFormParams<'_>) -> AppResul
     .render()?)
 }
 
-fn view_form_template(
-    auth: &AuthUser,
-    name: &str,
-    definition: &str,
-    error_message: &str,
-) -> AppResult<String> {
+fn view_form_template(auth: &AuthUser, params: ViewFormParams<'_>) -> AppResult<String> {
     Ok(ViewFormTemplate {
         layout: layout::AdminLayoutCtx::new(auth),
-        action: "/admin/database/views/new",
+        heading: params.heading.to_string(),
+        action: params.action,
         cancel_url: "/admin/database?tab=views",
-        name: name.to_string(),
-        definition: definition.to_string(),
-        error_message: error_message.to_string(),
+        submit_label: params.submit_label.to_string(),
+        name: params.name.to_string(),
+        name_readonly: params.name_readonly,
+        is_edit: params.is_edit,
+        definition: params.definition.to_string(),
+        error_message: params.error_message.to_string(),
     }
     .render()?)
 }

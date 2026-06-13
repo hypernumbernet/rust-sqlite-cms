@@ -181,6 +181,87 @@ async fn database_create_user_table_and_view() {
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("custom_notes_view"));
     assert!(html.contains("SELECT id, body FROM custom_notes"));
+    let view_row = html.split("custom_notes_view</span>").nth(1).unwrap_or("");
+    assert!(view_row.contains("データ"));
+    assert!(view_row.contains("編集"));
+    assert!(html.contains(r#"/admin/database/views/custom_notes_view/data"#));
+    assert!(html.contains(r#"/admin/database/views/custom_notes_view/edit"#));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/custom_notes_view/data",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("db-table-data-panel"));
+    assert!(html.contains("定義編集"));
+    assert!(html.contains(r#"/admin/database/views/custom_notes_view/data/rows"#));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/custom_notes_view/data/rows",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["id", "body"]));
+    assert_eq!(json["rows"].as_array().unwrap().len(), 0);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/custom_notes_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("ビューを編集"));
+    assert!(html.contains("SELECT id, body FROM custom_notes"));
+    assert!(html.contains(r#"name="name" type="text" maxlength="120" value="custom_notes_view" readonly"#));
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/custom_notes_view/edit",
+            Some("name=custom_notes_view&definition=SELECT+body+FROM+custom_notes"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request("GET", "/admin/database?tab=views", None, None)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("SELECT body FROM custom_notes"));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/custom_notes_view/data/rows",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["body"]));
+    assert_eq!(json["rows"].as_array().unwrap().len(), 0);
 }
 
 #[tokio::test]

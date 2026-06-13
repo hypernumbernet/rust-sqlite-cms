@@ -1,11 +1,18 @@
 {% extends "admin/base.html" %}
 
-{% block title %}ビューを追加{% endblock %}
+{% block title %}{{ heading }}{% endblock %}
 {% block nav_database %}active{% endblock %}
-{% block heading %}ビューを追加{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
+{% if is_edit %}
+<p class="breadcrumb">
+  <a href="/admin/database?tab=views">DB管理</a> /
+  <code>{{ name }}</code>
+</p>
+{% else %}
 <p class="breadcrumb"><a href="/admin/database?tab=views">DB管理</a></p>
+{% endif %}
 
 {% if !error_message.is_empty() %}
 <div class="error">{{ error_message }}</div>
@@ -15,7 +22,7 @@
   <section class="panel">
     <div class="field">
       <label for="name">ビュー名</label>
-      <input id="name" name="name" type="text" maxlength="120" value="{{ name }}" required>
+      <input id="name" name="name" type="text" maxlength="120" value="{{ name }}"{% if name_readonly %} readonly{% endif %} required>
       <p class="help">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。CMS コアテーブル名は使用できません。</p>
     </div>
 
@@ -28,7 +35,7 @@
 
   <aside class="panel">
     <div class="actions">
-      <button class="button" type="submit">追加する</button>
+      <button class="button" type="submit">{{ submit_label }}</button>
       <a class="button secondary" href="{{ cancel_url }}">一覧に戻る</a>
     </div>
   </aside>

@@ -174,6 +174,11 @@ struct TableFormTemplate {
     data_url: String,
 }
 
+#[derive(Debug, Clone)]
+struct ViewSourceTableOption {
+    name: String,
+}
+
 #[derive(Template)]
 #[template(path = "admin/database/view_form.html")]
 struct ViewFormTemplate {
@@ -187,6 +192,8 @@ struct ViewFormTemplate {
     is_edit: bool,
     definition: String,
     error_message: String,
+    table_options: Vec<ViewSourceTableOption>,
+    ui_builder_json: String,
 }
 
 struct ViewFormParams<'a> {
@@ -273,6 +280,10 @@ pub fn router() -> Router<AppState> {
             post(duplicate_table),
         )
         .route("/admin/database/tables/{name}/data", get(table_data))
+        .route(
+            "/admin/database/tables/{name}/columns",
+            get(table_columns_json),
+        )
         .route(
             "/admin/database/tables/{name}/data/rows",
             get(table_data_rows),
@@ -977,9 +988,10 @@ async fn update_table(
     }
 }
 
-async fn new_view_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
-    let html = view_form_template(
+async fn new_view_form(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl IntoResponse> {
+    let html = render_view_form(
         &auth,
+        &state.pool(),
         ViewFormParams {
             heading: "ビューを追加",
             action: "/admin/database/views/new".to_string(),
@@ -990,7 +1002,8 @@ async fn new_view_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
             definition: "",
             error_message: "",
         },
-    )?;
+    )
+    .await?;
     Ok(Html(html))
 }
 
@@ -1001,7 +1014,12 @@ async fn edit_view_form(
 ) -> AppResult<Response> {
     match database::load_user_view_definition(&state.pool(), &name).await {
         Ok(definition) => {
-            let html = view_form_template(&auth, view_edit_form_params(&name, &definition, ""))?;
+            let html = render_view_form(
+                &auth,
+                &state.pool(),
+                view_edit_form_params(&name, &definition, ""),
+            )
+            .await?;
             Ok(Html(html).into_response())
         }
         Err(DomainError::SystemTable(message)) => {
@@ -1009,10 +1027,12 @@ async fn edit_view_form(
         }
         Err(DomainError::NotFound) => Err(AppError::NotFound),
         Err(err) => {
-            let html = view_form_template(
+            let html = render_view_form(
                 &auth,
+                &state.pool(),
                 view_edit_form_params(&name, "", &domain_error_message(&err)),
-            )?;
+            )
+            .await?;
             Ok(Html(html).into_response())
         }
     }
@@ -1026,8 +1046,9 @@ async fn create_view(
     match database::create_user_view(&state.pool(), &form.name, &form.definition).await {
         Ok(()) => Ok(Redirect::to("/admin/database?tab=views").into_response()),
         Err(err) => {
-            let html = view_form_template(
+            let html = render_view_form(
                 &auth,
+                &state.pool(),
                 ViewFormParams {
                     heading: "ビューを追加",
                     action: "/admin/database/views/new".to_string(),
@@ -1038,7 +1059,8 @@ async fn create_view(
                     definition: &form.definition,
                     error_message: &domain_error_message(&err),
                 },
-            )?;
+            )
+            .await?;
             Ok(Html(html).into_response())
         }
     }
@@ -1051,10 +1073,12 @@ async fn update_view(
     Form(form): Form<ViewCreateForm>,
 ) -> AppResult<Response> {
     if form.name != name {
-        let html = view_form_template(
+        let html = render_view_form(
             &auth,
+            &state.pool(),
             view_edit_form_params(&name, &form.definition, "ビュー名は変更できません"),
-        )?;
+        )
+        .await?;
         return Ok(Html(html).into_response());
     }
 
@@ -1065,13 +1089,24 @@ async fn update_view(
         }
         Err(DomainError::NotFound) => Err(AppError::NotFound),
         Err(err) => {
-            let html = view_form_template(
+            let html = render_view_form(
                 &auth,
+                &state.pool(),
                 view_edit_form_params(&name, &form.definition, &domain_error_message(&err)),
-            )?;
+            )
+            .await?;
             Ok(Html(html).into_response())
         }
     }
+}
+
+async fn table_columns_json(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> ApiResult<Json<serde_json::Value>> {
+    let columns = database::table_columns_for_ui(&state.pool(), &name).await?;
+    Ok(Json(json!({ "columns": columns })))
 }
 
 fn object_admin_url(kind: DbAdminObjectKind, name: &str, suffix: &str) -> String {
@@ -1309,7 +1344,18 @@ fn table_form_template(auth: &AuthUser, params: TableFormParams<'_>) -> AppResul
     .render()?)
 }
 
-fn view_form_template(auth: &AuthUser, params: ViewFormParams<'_>) -> AppResult<String> {
+async fn render_view_form(
+    auth: &AuthUser,
+    pool: &sqlx::SqlitePool,
+    params: ViewFormParams<'_>,
+) -> AppResult<String> {
+    let table_names = database::list_view_source_tables(pool).await?;
+    let table_options = table_names
+        .into_iter()
+        .map(|name| ViewSourceTableOption { name })
+        .collect::<Vec<_>>();
+    let ui_builder_json = build_view_ui_builder_json(pool, params.definition).await;
+
     Ok(ViewFormTemplate {
         layout: layout::AdminLayoutCtx::new(auth),
         heading: params.heading.to_string(),
@@ -1321,8 +1367,21 @@ fn view_form_template(auth: &AuthUser, params: ViewFormParams<'_>) -> AppResult<
         is_edit: params.is_edit,
         definition: params.definition.to_string(),
         error_message: params.error_message.to_string(),
+        table_options,
+        ui_builder_json,
     }
     .render()?)
+}
+
+async fn build_view_ui_builder_json(pool: &sqlx::SqlitePool, definition: &str) -> String {
+    let Some(parsed) = database::parse_simple_view_select(definition) else {
+        return "null".to_string();
+    };
+    let Ok(table_columns) = database::table_columns_for_ui(pool, &parsed.base_table).await else {
+        return "null".to_string();
+    };
+    let spec = database::build_simple_view_ui_spec(&parsed, &table_columns);
+    serde_json::to_string(&spec).unwrap_or_else(|_| "null".to_string())
 }
 
 fn domain_error_message(err: &DomainError) -> String {

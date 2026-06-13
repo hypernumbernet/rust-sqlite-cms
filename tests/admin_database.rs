@@ -230,6 +230,10 @@ async fn database_create_user_table_and_view() {
     assert!(html.contains("ビューを編集"));
     assert!(html.contains("SELECT id, body FROM custom_notes"));
     assert!(html.contains(r#"name="name" type="text" maxlength="120" value="custom_notes_view" readonly"#));
+    assert!(html.contains("view-form-tabs"));
+    assert!(html.contains("view-tab-ui"));
+    assert!(html.contains(r#""base_table":"custom_notes""#));
+    assert!(html.contains(r#""name":"body""#));
 
     let response = app
         .admin_request(
@@ -262,6 +266,96 @@ async fn database_create_user_table_and_view() {
     let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(json["columns"], serde_json::json!(["body"]));
     assert_eq!(json["rows"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn database_view_form_ui_builder() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=custom_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request("GET", "/admin/database/views/new", None, None)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("view-form-tabs"));
+    assert!(html.contains(r#"data-view-tab="sql""#));
+    assert!(html.contains(r#"data-view-tab="ui""#));
+    assert!(html.contains("view-ui-base-table"));
+    assert!(html.contains(r#"<option value="custom_notes">custom_notes</option>"#));
+    assert!(html.contains(r#"<script type="application/json" id="view-ui-initial">null</script>"#));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/custom_notes/columns",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"][0]["name"], "id");
+    assert_eq!(json["columns"][1]["name"], "body");
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=ui_notes_view&definition=SELECT+%22body%22+FROM+%22custom_notes%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/ui_notes_view/edit",
+            Some("name=ui_notes_view&definition=SELECT+%22id%22%2C+%22body%22+FROM+%22custom_notes%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/ui_notes_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("SELECT"));
+    assert!(html.contains("custom_notes"));
+    assert!(html.contains(r#""base_table":"custom_notes""#));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/ui_notes_view/data/rows",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["id", "body"]));
 }
 
 #[tokio::test]

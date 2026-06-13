@@ -18,7 +18,7 @@
 <div class="error">{{ error_message }}</div>
 {% endif %}
 
-<form method="post" action="{{ action }}" class="form-layout">
+<form method="post" action="{{ action }}" class="form-layout" id="view-form">
   <section class="panel">
     <div class="field">
       <label for="name">ビュー名</label>
@@ -27,9 +27,40 @@
     </div>
 
     <div class="field">
-      <label for="definition">SELECT 文</label>
-      <textarea id="definition" name="definition" rows="8" required>{{ definition }}</textarea>
-      <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
+      <label>ビュー定義</label>
+      <nav class="tab-nav view-form-tabs" aria-label="ビュー定義">
+        <button type="button" class="active" data-view-tab="sql">SQL編集</button>
+        <button type="button" data-view-tab="ui">UI編集</button>
+      </nav>
+
+      <div class="tab-panel" id="view-tab-sql">
+        <textarea id="definition" name="definition" rows="8" required>{{ definition }}</textarea>
+        <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
+      </div>
+
+      <div class="tab-panel" id="view-tab-ui" hidden>
+        <div class="field">
+          <label for="view-ui-base-table">元テーブル</label>
+          <select id="view-ui-base-table">
+            <option value="">テーブルを選択</option>
+            {% for table in table_options %}
+            <option value="{{ table.name }}">{{ table.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div id="view-ui-unsupported" class="notice info" hidden>
+          この定義は UI 編集に対応していません。SQL編集タブをご利用ください。
+        </div>
+
+        <div id="view-ui-error" class="error" hidden></div>
+
+        <p id="view-ui-loading" class="help" hidden>カラム一覧を読み込み中…</p>
+        <p id="view-ui-empty" class="help">元テーブルを選択するとカラム一覧が表示されます。</p>
+
+        <ul id="view-ui-columns" class="view-ui-column-list" hidden></ul>
+        <p class="help">チェックしたカラムがビューに含まれます。ドラッグで並び順を変更できます。</p>
+      </div>
     </div>
   </section>
 
@@ -40,4 +71,6 @@
     </div>
   </aside>
 </form>
+
+<script type="application/json" id="view-ui-initial">{{ ui_builder_json | safe }}</script>
 {% endblock %}

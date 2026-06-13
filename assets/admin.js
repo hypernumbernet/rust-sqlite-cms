@@ -3342,6 +3342,488 @@
     });
   }
 
+  function initViewForm() {
+    const form = document.getElementById('view-form');
+    const definitionInput = document.getElementById('definition');
+    const tabButtons = document.querySelectorAll('.view-form-tabs [data-view-tab]');
+    const sqlPanel = document.getElementById('view-tab-sql');
+    const uiPanel = document.getElementById('view-tab-ui');
+    const baseTableSelect = document.getElementById('view-ui-base-table');
+    const columnsList = document.getElementById('view-ui-columns');
+    const unsupportedNotice = document.getElementById('view-ui-unsupported');
+    const uiError = document.getElementById('view-ui-error');
+    const loadingEl = document.getElementById('view-ui-loading');
+    const emptyEl = document.getElementById('view-ui-empty');
+    const initialEl = document.getElementById('view-ui-initial');
+
+    if (!form || !definitionInput || !tabButtons.length || !sqlPanel || !uiPanel) return;
+
+    let activeTab = 'sql';
+    let dragSourceItem = null;
+
+    function quoteSqlIdentifier(name) {
+      return '"' + String(name).replace(/"/g, '""') + '"';
+    }
+
+    function isIdentifierChar(ch) {
+      return /[A-Za-z0-9_]/.test(ch);
+    }
+
+    function findSqlKeyword(sql, keyword, start) {
+      const upper = sql.toUpperCase();
+      const kw = keyword.toUpperCase();
+      let searchStart = start;
+      while (true) {
+        const rel = upper.indexOf(kw, searchStart);
+        if (rel === -1) return -1;
+        const pos = rel;
+        const beforeOk = pos === 0 || !isIdentifierChar(upper.charAt(pos - 1));
+        const afterPos = pos + kw.length;
+        const afterOk = afterPos >= upper.length || !isIdentifierChar(upper.charAt(afterPos));
+        if (beforeOk && afterOk) return pos;
+        searchStart = pos + 1;
+      }
+    }
+
+    function containsTrailingClause(remainder) {
+      const clauses = [
+        'JOIN',
+        'WHERE',
+        'GROUP',
+        'HAVING',
+        'ORDER',
+        'LIMIT',
+        'UNION',
+        'EXCEPT',
+        'INTERSECT',
+      ];
+      return clauses.some(function (clause) {
+        return findSqlKeyword(remainder, clause, 0) !== -1;
+      });
+    }
+
+    function parseSqlIdentifierPrefix(input) {
+      input = input.trim();
+      if (!input) return null;
+      if (input.charAt(0) === '"') {
+        let i = 1;
+        let name = '';
+        while (i < input.length) {
+          if (input.charAt(i) === '"') {
+            if (i + 1 < input.length && input.charAt(i + 1) === '"') {
+              name += '"';
+              i += 2;
+            } else {
+              return { name: name, rest: input.slice(i + 1) };
+            }
+          } else {
+            name += input.charAt(i);
+            i += 1;
+          }
+        }
+        return null;
+      }
+      const match = input.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
+      if (!match) return null;
+      return { name: match[1], rest: input.slice(match[1].length) };
+    }
+
+    function parseCommaSeparatedIdentifiers(input) {
+      const names = [];
+      let rest = input.trim();
+      while (rest) {
+        const parsed = parseSqlIdentifierPrefix(rest);
+        if (!parsed) return null;
+        names.push(parsed.name);
+        rest = parsed.rest.trim();
+        if (!rest) break;
+        if (!rest.startsWith(',')) return null;
+        rest = rest.slice(1).trim();
+      }
+      return names;
+    }
+
+    function parseSimpleSelect(definition) {
+      const trimmed = definition.trim();
+      if (!trimmed.toUpperCase().startsWith('SELECT')) return null;
+      const fromPos = findSqlKeyword(trimmed, 'FROM', 'SELECT'.length);
+      if (fromPos === -1) return null;
+      const selectPart = trimmed.slice('SELECT'.length, fromPos).trim();
+      const afterFrom = trimmed.slice(fromPos + 'FROM'.length).trim();
+      if (!afterFrom || containsTrailingClause(afterFrom)) return null;
+      const tableParsed = parseSqlIdentifierPrefix(afterFrom);
+      if (!tableParsed || tableParsed.rest.trim()) return null;
+      if (selectPart === '*') {
+        return { baseTable: tableParsed.name, allColumns: true, columns: [] };
+      }
+      const columns = parseCommaSeparatedIdentifiers(selectPart);
+      if (!columns || columns.length === 0) return null;
+      return { baseTable: tableParsed.name, allColumns: false, columns: columns };
+    }
+
+    function hideUiError() {
+      if (!uiError) return;
+      uiError.hidden = true;
+      uiError.textContent = '';
+    }
+
+    function showUiError(message) {
+      if (!uiError) return;
+      uiError.textContent = message;
+      uiError.hidden = false;
+    }
+
+    function setActiveTab(tab) {
+      activeTab = tab;
+      tabButtons.forEach(function (btn) {
+        btn.classList.toggle('active', btn.dataset.viewTab === tab);
+      });
+      sqlPanel.hidden = tab !== 'sql';
+      uiPanel.hidden = tab !== 'ui';
+      if (tab === 'ui') {
+        hideUiError();
+      }
+    }
+
+    function readColumnState() {
+      if (!columnsList) return [];
+      return Array.from(columnsList.querySelectorAll('.view-ui-column-item')).map(function (item) {
+        return {
+          name: item.dataset.columnName || '',
+          type_key: item.dataset.columnType || 'text',
+          included: item.querySelector('.view-ui-col-check').checked,
+        };
+      });
+    }
+
+    function mergeSelectedColumns(apiColumns, selectedNames, allIncluded) {
+      const typeByName = {};
+      apiColumns.forEach(function (column) {
+        typeByName[column.name] = column.type_key;
+      });
+      if (allIncluded) {
+        return apiColumns.map(function (column) {
+          return {
+            name: column.name,
+            type_key: column.type_key,
+            included: true,
+          };
+        });
+      }
+      const selectedSet = new Set(selectedNames);
+      const ordered = selectedNames.map(function (name) {
+        return {
+          name: name,
+          type_key: typeByName[name] || 'text',
+          included: true,
+        };
+      });
+      apiColumns.forEach(function (column) {
+        if (!selectedSet.has(column.name)) {
+          ordered.push({
+            name: column.name,
+            type_key: column.type_key,
+            included: false,
+          });
+        }
+      });
+      return ordered;
+    }
+
+    function mergeColumnState(apiColumns, state) {
+      const typeByName = {};
+      apiColumns.forEach(function (column) {
+        typeByName[column.name] = column.type_key;
+      });
+      const apiNames = new Set(apiColumns.map(function (column) {
+        return column.name;
+      }));
+      const result = state
+        .filter(function (column) {
+          return apiNames.has(column.name);
+        })
+        .map(function (column) {
+          return {
+            name: column.name,
+            type_key: typeByName[column.name] || column.type_key || 'text',
+            included: !!column.included,
+          };
+        });
+      apiColumns.forEach(function (column) {
+        if (!result.some(function (entry) {
+          return entry.name === column.name;
+        })) {
+          result.push({
+            name: column.name,
+            type_key: column.type_key,
+            included: false,
+          });
+        }
+      });
+      return result;
+    }
+
+    function bindDragHandlers() {
+      if (!columnsList) return;
+      columnsList.querySelectorAll('.view-ui-column-item').forEach(function (item) {
+        item.addEventListener('dragstart', function (event) {
+          dragSourceItem = item;
+          item.classList.add('is-dragging');
+          event.dataTransfer.effectAllowed = 'move';
+          event.dataTransfer.setData('text/plain', item.dataset.columnName || '');
+        });
+        item.addEventListener('dragover', function (event) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+          if (dragSourceItem && dragSourceItem !== item) {
+            item.classList.add('is-drop-target');
+          }
+        });
+        item.addEventListener('dragleave', function () {
+          item.classList.remove('is-drop-target');
+        });
+        item.addEventListener('drop', function (event) {
+          event.preventDefault();
+          item.classList.remove('is-drop-target');
+          if (!dragSourceItem || dragSourceItem === item || !columnsList) return;
+          const rect = item.getBoundingClientRect();
+          const before = event.clientY < rect.top + rect.height / 2;
+          if (before) {
+            columnsList.insertBefore(dragSourceItem, item);
+          } else {
+            columnsList.insertBefore(dragSourceItem, item.nextSibling);
+          }
+        });
+        item.addEventListener('dragend', function () {
+          item.classList.remove('is-dragging');
+          columnsList.querySelectorAll('.view-ui-column-item').forEach(function (row) {
+            row.classList.remove('is-drop-target');
+          });
+          dragSourceItem = null;
+        });
+      });
+    }
+
+    function renderColumns(columns) {
+      if (!columnsList || !emptyEl) return;
+      columnsList.innerHTML = '';
+      columns.forEach(function (column) {
+        const item = document.createElement('li');
+        item.className = 'view-ui-column-item';
+        item.draggable = true;
+        item.dataset.columnName = column.name;
+        item.dataset.columnType = column.type_key || 'text';
+
+        const handle = document.createElement('span');
+        handle.className = 'view-ui-drag-handle';
+        handle.setAttribute('aria-hidden', 'true');
+        handle.textContent = '⋮⋮';
+
+        const label = document.createElement('label');
+        label.className = 'label-option';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'view-ui-col-check';
+        checkbox.checked = !!column.included;
+
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(' ' + column.name));
+
+        const typeLabel = document.createElement('span');
+        typeLabel.className = 'view-ui-column-type';
+        typeLabel.textContent = column.type_key || 'text';
+
+        item.appendChild(handle);
+        item.appendChild(label);
+        item.appendChild(typeLabel);
+        columnsList.appendChild(item);
+      });
+
+      bindDragHandlers();
+      columnsList.hidden = columns.length === 0;
+      emptyEl.hidden = columns.length > 0;
+    }
+
+    function syncUiToSql() {
+      if (!baseTableSelect) return;
+      const table = baseTableSelect.value;
+      if (!table) return;
+      const included = readColumnState().filter(function (column) {
+        return column.included;
+      });
+      if (included.length === 0) return;
+      const columnSql = included
+        .map(function (column) {
+          return quoteSqlIdentifier(column.name);
+        })
+        .join(', ');
+      definitionInput.value =
+        'SELECT ' + columnSql + ' FROM ' + quoteSqlIdentifier(table);
+    }
+
+    function loadColumnsForTable(tableName, columnState) {
+      if (!tableName) {
+        renderColumns([]);
+        if (emptyEl) emptyEl.hidden = false;
+        return Promise.resolve();
+      }
+
+      if (loadingEl) loadingEl.hidden = false;
+      if (columnsList) columnsList.hidden = true;
+      if (emptyEl) emptyEl.hidden = true;
+      hideUiError();
+
+      return fetch(
+        '/admin/database/tables/' + encodeURIComponent(tableName) + '/columns'
+      )
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error('カラム一覧の取得に失敗しました');
+          }
+          return response.json();
+        })
+        .then(function (data) {
+          const apiColumns = Array.isArray(data.columns) ? data.columns : [];
+          let columns;
+          if (columnState && columnState.length > 0) {
+            columns = mergeColumnState(apiColumns, columnState);
+          } else {
+            columns = apiColumns.map(function (column) {
+              return {
+                name: column.name,
+                type_key: column.type_key,
+                included: true,
+              };
+            });
+          }
+          renderColumns(columns);
+        })
+        .catch(function (err) {
+          renderColumns([]);
+          showUiError(err.message || 'カラム一覧の取得に失敗しました');
+        })
+        .finally(function () {
+          if (loadingEl) loadingEl.hidden = true;
+        });
+    }
+
+    function applyParsedUiState(parsed) {
+      if (!baseTableSelect) return Promise.resolve();
+      baseTableSelect.value = parsed.baseTable;
+      if (loadingEl) loadingEl.hidden = false;
+      if (columnsList) columnsList.hidden = true;
+      if (emptyEl) emptyEl.hidden = true;
+      hideUiError();
+
+      return fetch(
+        '/admin/database/tables/' +
+          encodeURIComponent(parsed.baseTable) +
+          '/columns'
+      )
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error('カラム一覧の取得に失敗しました');
+          }
+          return response.json();
+        })
+        .then(function (data) {
+          const apiColumns = Array.isArray(data.columns) ? data.columns : [];
+          const columns = mergeSelectedColumns(
+            apiColumns,
+            parsed.columns,
+            parsed.allColumns
+          );
+          renderColumns(columns);
+        })
+        .catch(function (err) {
+          renderColumns([]);
+          showUiError(err.message || 'カラム一覧の取得に失敗しました');
+        })
+        .finally(function () {
+          if (loadingEl) loadingEl.hidden = true;
+        });
+    }
+
+    function applyUiSpec(spec) {
+      if (!spec || !spec.base_table) return Promise.resolve();
+      if (baseTableSelect) baseTableSelect.value = spec.base_table;
+      return loadColumnsForTable(spec.base_table, spec.columns || []);
+    }
+
+    function switchToUiTab() {
+      if (unsupportedNotice) unsupportedNotice.hidden = true;
+      const parsed = parseSimpleSelect(definitionInput.value.trim());
+      if (!parsed) {
+        if (unsupportedNotice) unsupportedNotice.hidden = false;
+        return false;
+      }
+      setActiveTab('ui');
+      applyParsedUiState(parsed).catch(function (err) {
+        showUiError(err.message || 'UI 状態の復元に失敗しました');
+      });
+      return true;
+    }
+
+    function switchToSqlTab() {
+      syncUiToSql();
+      if (unsupportedNotice) unsupportedNotice.hidden = true;
+      setActiveTab('sql');
+    }
+
+    tabButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const tab = btn.dataset.viewTab;
+        if (tab === 'ui') {
+          if (!switchToUiTab()) {
+            setActiveTab('sql');
+          }
+        } else {
+          switchToSqlTab();
+        }
+      });
+    });
+
+    if (baseTableSelect) {
+      baseTableSelect.addEventListener('change', function () {
+        if (unsupportedNotice) unsupportedNotice.hidden = true;
+        hideUiError();
+        loadColumnsForTable(baseTableSelect.value, null);
+      });
+    }
+
+    form.addEventListener('submit', function (event) {
+      if (activeTab !== 'ui') return;
+      hideUiError();
+      const table = baseTableSelect ? baseTableSelect.value : '';
+      if (!table) {
+        event.preventDefault();
+        showUiError('元テーブルを選択してください。');
+        return;
+      }
+      const included = readColumnState().filter(function (column) {
+        return column.included;
+      });
+      if (included.length === 0) {
+        event.preventDefault();
+        showUiError('ビューに含めるカラムを1つ以上選択してください。');
+        return;
+      }
+      syncUiToSql();
+    });
+
+    if (initialEl && initialEl.textContent.trim()) {
+      try {
+        const initial = JSON.parse(initialEl.textContent);
+        if (initial && initial.base_table) {
+          applyUiSpec(initial);
+        }
+      } catch (_err) {
+        /* ignore invalid initial state */
+      }
+    }
+  }
+
   function initDatabaseIndex() {
     const checkbox = document.getElementById('db-show-system-tables');
     const emptyEl = document.getElementById('db-tables-empty');
@@ -3388,6 +3870,7 @@
     initDatabaseIndex();
     initTableDuplicate();
     initViewDuplicate();
+    initViewForm();
     initLayoutDuplicate();
   }
 

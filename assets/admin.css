@@ -301,10 +301,70 @@ textarea::placeholder {
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
-.tab-nav a.active {
+.tab-nav a.active,
+.tab-nav button.active {
   color: var(--text);
   font-weight: 600;
   border-bottom-color: var(--accent);
+}
+.tab-nav button {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-block;
+  font: inherit;
+  font-size: 14px;
+  margin-bottom: -1px;
+  padding: 10px 18px;
+}
+.tab-nav button:hover {
+  color: var(--text);
+}
+.view-form-tabs {
+  margin-top: 8px;
+}
+.view-ui-column-list {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+.view-ui-column-item {
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+}
+.view-ui-column-item:last-child {
+  border-bottom: none;
+}
+.view-ui-column-item.is-dragging {
+  opacity: 0.45;
+}
+.view-ui-column-item.is-drop-target {
+  background: var(--panel);
+}
+.view-ui-drag-handle {
+  color: var(--muted);
+  cursor: grab;
+  flex: 0 0 auto;
+  font-size: 16px;
+  line-height: 1;
+  user-select: none;
+}
+.view-ui-column-item .label-option {
+  flex: 1 1 auto;
+  margin: 0;
+}
+.view-ui-column-type {
+  color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 12px;
 }
 .tab-panel[hidden] { display: none; }
 

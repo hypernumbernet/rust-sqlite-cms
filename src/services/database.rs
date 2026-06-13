@@ -177,6 +177,43 @@ pub struct TableDataColumnMeta {
     pub nullable: bool,
 }
 
+/// ビュー UI ビルダー向けの列メタデータ。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TableColumnUiInfo {
+    pub name: String,
+    pub type_key: String,
+    pub pk: bool,
+    pub nullable: bool,
+}
+
+/// ビュー UI ビルダーで表示する列の状態。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SimpleViewUiColumn {
+    pub name: String,
+    pub included: bool,
+    pub type_key: String,
+}
+
+/// ビュー UI ビルダーの完全な状態。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SimpleViewUiSpec {
+    pub base_table: String,
+    pub columns: Vec<SimpleViewUiColumn>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum ParsedViewColumnList {
+    All,
+    Names(Vec<String>),
+}
+
+/// 単純な `SELECT ... FROM table` 定義の解析結果。
+#[derive(Debug, Clone)]
+pub(crate) struct ParsedSimpleViewSelect {
+    pub(crate) base_table: String,
+    pub(crate) columns: ParsedViewColumnList,
+}
+
 /// セル更新リクエスト。
 #[derive(Debug, Clone, Deserialize)]
 pub struct TableCellUpdateRequest {
@@ -1036,6 +1073,257 @@ fn validate_view_definition(definition: &str) -> DomainResult<String> {
     }
     validate_ddl_fragment(definition, "SELECT 文")?;
     Ok(definition.to_string())
+}
+
+/// ビュー UI ビルダーで選択可能な元テーブル名の一覧。
+pub async fn list_view_source_tables(pool: &SqlitePool) -> AppResult<Vec<String>> {
+    let tables = list_tables(pool).await?;
+    Ok(tables
+        .into_iter()
+        .filter(|item| is_db_admin_data_viewable(&item.name))
+        .map(|item| item.name)
+        .collect())
+}
+
+/// ビュー UI ビルダー向けにテーブルのカラム一覧を返す。
+pub async fn table_columns_for_ui(
+    pool: &SqlitePool,
+    table_name: &str,
+) -> DomainResult<Vec<TableColumnUiInfo>> {
+    if !is_db_admin_data_viewable(table_name) {
+        return Err(DomainError::SystemTable(infra_table_denied_message(table_name)));
+    }
+    if !object_name_exists(pool, table_name, "table").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    let rows = table_pragma_info(pool, table_name).await?;
+    rows.iter()
+        .map(|row| {
+            let type_key = pragma_type_to_type_key(&row.type_name).ok_or_else(|| {
+                DomainError::Validation(format!(
+                    "カラム `{}` の型を判別できません",
+                    row.name
+                ))
+            })?;
+            Ok(TableColumnUiInfo {
+                name: row.name.clone(),
+                type_key: type_key.to_string(),
+                pk: row.pk > 0,
+                nullable: row.notnull == 0,
+            })
+        })
+        .collect()
+}
+
+/// 単純な `SELECT ... FROM table` 形式のビュー定義を UI 状態へ復元する。
+pub(crate) fn parse_simple_view_select(definition: &str) -> Option<ParsedSimpleViewSelect> {
+    let trimmed = definition.trim();
+    let upper = trimmed.to_ascii_uppercase();
+    if !upper.starts_with("SELECT") {
+        return None;
+    }
+
+    let from_pos = find_sql_keyword(trimmed, "FROM", "SELECT".len())?;
+    let select_part = trimmed["SELECT".len()..from_pos].trim();
+    let after_from = trimmed[from_pos + "FROM".len()..].trim();
+    if after_from.is_empty() || contains_trailing_select_clause(after_from) {
+        return None;
+    }
+
+    let base_table = parse_single_sql_identifier(after_from)?;
+    let columns = if select_part == "*" {
+        ParsedViewColumnList::All
+    } else {
+        let names = parse_comma_separated_sql_identifiers(select_part)?;
+        if names.is_empty() {
+            return None;
+        }
+        ParsedViewColumnList::Names(names)
+    };
+
+    Some(ParsedSimpleViewSelect {
+        base_table,
+        columns,
+    })
+}
+
+/// 解析結果とテーブル定義からビュー UI ビルダーの初期状態を組み立てる。
+pub(crate) fn build_simple_view_ui_spec(
+    parsed: &ParsedSimpleViewSelect,
+    table_columns: &[TableColumnUiInfo],
+) -> SimpleViewUiSpec {
+    use std::collections::HashSet;
+
+    let type_by_name: std::collections::HashMap<_, _> = table_columns
+        .iter()
+        .map(|column| (column.name.as_str(), column.type_key.as_str()))
+        .collect();
+
+    let (ordered_names, included): (Vec<String>, HashSet<String>) = match &parsed.columns {
+        ParsedViewColumnList::All => {
+            let names: Vec<String> = table_columns.iter().map(|column| column.name.clone()).collect();
+            let included: HashSet<String> = names.iter().cloned().collect();
+            (names, included)
+        }
+        ParsedViewColumnList::Names(selected) => {
+            let included: HashSet<String> = selected.iter().cloned().collect();
+            let mut ordered = selected.clone();
+            for column in table_columns {
+                if !included.contains(&column.name) {
+                    ordered.push(column.name.clone());
+                }
+            }
+            (ordered, included)
+        }
+    };
+
+    let columns = ordered_names
+        .into_iter()
+        .map(|name| SimpleViewUiColumn {
+            included: included.contains(&name),
+            type_key: type_by_name
+                .get(name.as_str())
+                .map(|value| (*value).to_string())
+                .unwrap_or_else(|| "text".to_string()),
+            name,
+        })
+        .collect();
+
+    SimpleViewUiSpec {
+        base_table: parsed.base_table.clone(),
+        columns,
+    }
+}
+
+/// ビュー UI ビルダーの状態から単純な SELECT 文を生成する。
+pub fn build_simple_view_select(spec: &SimpleViewUiSpec) -> DomainResult<String> {
+    let included: Vec<_> = spec
+        .columns
+        .iter()
+        .filter(|column| column.included)
+        .collect();
+    if included.is_empty() {
+        return Err(DomainError::Validation(
+            "ビューに含めるカラムを1つ以上選択してください".into(),
+        ));
+    }
+
+    let column_sql = included
+        .iter()
+        .map(|column| quote_sql_identifier(&column.name))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Ok(format!(
+        "SELECT {column_sql} FROM {}",
+        quote_sql_identifier(&spec.base_table)
+    ))
+}
+
+fn find_sql_keyword(sql: &str, keyword: &str, start: usize) -> Option<usize> {
+    let upper = sql.to_ascii_uppercase();
+    let keyword_upper = keyword.to_ascii_uppercase();
+    let mut search_start = start;
+
+    while let Some(rel_pos) = upper[search_start..].find(&keyword_upper) {
+        let pos = search_start + rel_pos;
+        let before_ok = pos == 0 || !is_identifier_char(upper.as_bytes()[pos - 1]);
+        let after_pos = pos + keyword_upper.len();
+        let after_ok = after_pos >= upper.len() || !is_identifier_char(upper.as_bytes()[after_pos]);
+        if before_ok && after_ok {
+            return Some(pos);
+        }
+        search_start = pos + 1;
+    }
+
+    None
+}
+
+fn is_identifier_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn contains_trailing_select_clause(remainder: &str) -> bool {
+    const CLAUSES: &[&str] = &[
+        "JOIN", "WHERE", "GROUP", "HAVING", "ORDER", "LIMIT", "UNION", "EXCEPT", "INTERSECT",
+    ];
+
+    CLAUSES.iter().any(|clause| find_sql_keyword(remainder, clause, 0).is_some())
+}
+
+fn parse_single_sql_identifier(input: &str) -> Option<String> {
+    let (name, rest) = parse_sql_identifier_prefix(input.trim())?;
+    if !rest.trim().is_empty() {
+        return None;
+    }
+    Some(name)
+}
+
+fn parse_comma_separated_sql_identifiers(input: &str) -> Option<Vec<String>> {
+    let mut names = Vec::new();
+    let mut rest = input.trim();
+
+    while !rest.is_empty() {
+        let (name, remaining) = parse_sql_identifier_prefix(rest)?;
+        names.push(name);
+        rest = remaining.trim();
+        if rest.is_empty() {
+            break;
+        }
+        if !rest.starts_with(',') {
+            return None;
+        }
+        rest = rest[1..].trim();
+    }
+
+    Some(names)
+}
+
+fn parse_sql_identifier_prefix(input: &str) -> Option<(String, &str)> {
+    let input = input.trim();
+    if input.is_empty() {
+        return None;
+    }
+
+    if input.starts_with('"') {
+        let mut escaped = false;
+        let mut end = 1usize;
+        let chars: Vec<char> = input.chars().collect();
+        while end < chars.len() {
+            let ch = chars[end];
+            if escaped {
+                escaped = false;
+            } else if ch == '"' {
+                if end + 1 < chars.len() && chars[end + 1] == '"' {
+                    escaped = true;
+                } else {
+                    let byte_len: usize = chars[..=end].iter().map(|c| c.len_utf8()).sum();
+                    let name = unquote_sql_identifier(&input[..byte_len])?;
+                    return Some((name, &input[byte_len..]));
+                }
+            }
+            end += 1;
+        }
+        return None;
+    }
+
+    let end = input
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .map(char::len_utf8)
+        .sum::<usize>();
+    if end == 0 {
+        return None;
+    }
+
+    Some((input[..end].to_string(), &input[end..]))
+}
+
+fn unquote_sql_identifier(input: &str) -> Option<String> {
+    if !input.starts_with('"') || !input.ends_with('"') || input.len() < 2 {
+        return None;
+    }
+    Some(input[1..input.len() - 1].replace("\"\"", "\""))
 }
 
 fn validate_ddl_fragment(fragment: &str, label: &str) -> DomainResult<()> {
@@ -3689,5 +3977,95 @@ mod tests {
     fn extract_view_select_from_create_sql_rejects_missing_as_clause() {
         let err = extract_view_select_from_create_sql("CREATE VIEW broken").unwrap_err();
         assert!(matches!(err, DomainError::NotFound));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_column_list() {
+        let parsed = parse_simple_view_select("SELECT id, body FROM custom_notes").expect("parsed");
+        assert_eq!(parsed.base_table, "custom_notes");
+        assert!(matches!(parsed.columns, ParsedViewColumnList::Names(ref names) if names == &["id", "body"]));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_quoted_identifiers() {
+        let parsed =
+            parse_simple_view_select(r#"SELECT "id", "body" FROM "custom_notes""#).expect("parsed");
+        assert_eq!(parsed.base_table, "custom_notes");
+        assert!(matches!(parsed.columns, ParsedViewColumnList::Names(ref names) if names == &["id", "body"]));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_star() {
+        let parsed = parse_simple_view_select("SELECT * FROM posts").expect("parsed");
+        assert_eq!(parsed.base_table, "posts");
+        assert!(matches!(parsed.columns, ParsedViewColumnList::All));
+    }
+
+    #[test]
+    fn parse_simple_view_select_rejects_join_and_where() {
+        assert!(parse_simple_view_select("SELECT id FROM posts JOIN users ON 1 = 1").is_none());
+        assert!(parse_simple_view_select("SELECT id FROM posts WHERE id = 1").is_none());
+    }
+
+    #[test]
+    fn build_simple_view_select_generates_quoted_sql() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            columns: vec![
+                SimpleViewUiColumn {
+                    name: "body".to_string(),
+                    included: true,
+                    type_key: "text".to_string(),
+                },
+                SimpleViewUiColumn {
+                    name: "id".to_string(),
+                    included: false,
+                    type_key: "integer".to_string(),
+                },
+            ],
+        };
+
+        let sql = build_simple_view_select(&spec).expect("sql");
+        assert_eq!(sql, r#"SELECT "body" FROM "custom_notes""#);
+    }
+
+    #[test]
+    fn build_simple_view_select_requires_included_column() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            columns: vec![SimpleViewUiColumn {
+                name: "id".to_string(),
+                included: false,
+                type_key: "integer".to_string(),
+            }],
+        };
+        assert!(build_simple_view_select(&spec).is_err());
+    }
+
+    #[test]
+    fn build_simple_view_ui_spec_orders_selected_columns_first() {
+        let parsed = parse_simple_view_select("SELECT body FROM custom_notes").expect("parsed");
+        let table_columns = vec![
+            TableColumnUiInfo {
+                name: "id".to_string(),
+                type_key: "integer".to_string(),
+                pk: true,
+                nullable: false,
+            },
+            TableColumnUiInfo {
+                name: "body".to_string(),
+                type_key: "text".to_string(),
+                pk: false,
+                nullable: false,
+            },
+        ];
+
+        let spec = build_simple_view_ui_spec(&parsed, &table_columns);
+        assert_eq!(spec.base_table, "custom_notes");
+        assert_eq!(spec.columns.len(), 2);
+        assert_eq!(spec.columns[0].name, "body");
+        assert!(spec.columns[0].included);
+        assert_eq!(spec.columns[1].name, "id");
+        assert!(!spec.columns[1].included);
     }
 }

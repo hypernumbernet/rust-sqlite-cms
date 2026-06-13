@@ -1913,6 +1913,186 @@ async fn database_index_shows_new_button_for_each_tab() {
     assert!(html.contains(r#"href="/admin/database/views/new""#));
 }
 
+async fn create_dup_source_table(app: &common::TestApp) {
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=dup_source&col_name=body&col_type=text&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "dup_source" (body) VALUES ('hello'), ('world')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn table_columns_json_returns_column_definitions() {
+    let app = common::TestApp::new().await;
+    create_dup_source_table(&app).await;
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/dup_source/columns",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["name"], "dup_source");
+    assert_eq!(json["columns"].as_array().unwrap().len(), 1);
+    assert_eq!(json["columns"][0]["name"], "body");
+    assert_eq!(json["columns"][0]["type_key"], "text");
+    assert_eq!(json["columns"][0]["nullable"], true);
+}
+
+#[tokio::test]
+async fn duplicate_user_table_copies_schema_only() {
+    let app = common::TestApp::new().await;
+    create_dup_source_table(&app).await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/dup_source/duplicate",
+            Some("name=dup_schema&col_name=body&col_type=text&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(location.contains("success_message="));
+
+    let count: i64 = sqlx::query_scalar(r#"SELECT COUNT(*) FROM "dup_schema""#)
+        .fetch_one(&app.state.pool())
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+
+    let definition = sqlx::query_scalar::<_, String>(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'dup_schema'",
+    )
+    .fetch_one(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(definition.contains(r#""body" TEXT"#));
+}
+
+#[tokio::test]
+async fn duplicate_user_table_copies_data_when_requested() {
+    let app = common::TestApp::new().await;
+    create_dup_source_table(&app).await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/dup_source/duplicate",
+            Some(
+                "name=dup_data&col_name=body&col_type=text&col_nullable=1&include_data=1",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let rows: Vec<(String,)> =
+        sqlx::query_as(r#"SELECT body FROM "dup_data" ORDER BY id"#)
+            .fetch_all(&app.state.pool())
+            .await
+            .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].0, "hello");
+    assert_eq!(rows[1].0, "world");
+}
+
+#[tokio::test]
+async fn duplicate_user_table_rejects_same_or_existing_name() {
+    let app = common::TestApp::new().await;
+    create_dup_source_table(&app).await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/dup_source/duplicate",
+            Some("name=dup_source&col_name=body&col_type=text&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(location.contains("error_message="));
+    assert!(urlencoding::decode(location).unwrap().contains("異なる必要があります"));
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/dup_source/duplicate",
+            Some("name=dup_existing&col_name=body&col_type=text&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/dup_source/duplicate",
+            Some("name=dup_existing&col_name=body&col_type=text&col_nullable=1"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let location = response
+        .headers()
+        .get("location")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    assert!(location.contains("error_message="));
+    assert!(urlencoding::decode(location).unwrap().contains("既に存在します"));
+}
+
+#[tokio::test]
+async fn database_index_shows_duplicate_button_for_user_tables() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=custom_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app.admin_request("GET", "/admin/database", None, None).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+
+    let custom_row = html.split("custom_notes</span>").nth(1).unwrap_or("");
+    assert!(custom_row.contains("data-table-duplicate"));
+    assert!(custom_row.contains("複製"));
+
+    let posts_row = html.split("posts</span>").nth(1).unwrap_or("");
+    assert!(!posts_row.contains("data-table-duplicate"));
+}
+
 #[tokio::test]
 async fn unauthenticated_database_redirects() {
     let app = common::TestApp::new().await;

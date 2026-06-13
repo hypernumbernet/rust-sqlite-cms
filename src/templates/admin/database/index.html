@@ -31,6 +31,13 @@
   </div>
 </div>
 
+{% if !success_message.is_empty() %}
+<div class="notice success">{{ success_message }}</div>
+{% endif %}
+{% if !error_message.is_empty() %}
+<div class="notice error">{{ error_message }}</div>
+{% endif %}
+
 <div class="tab-panel"{% if !is_tables_tab %} hidden{% endif %}>
   <section class="panel panel-table">
     {% if !tables.is_empty() %}
@@ -61,6 +68,9 @@
               {% endif %}
               {% if item.can_edit %}
               <a class="button secondary" href="{{ item.edit_url }}">列編集</a>
+              <button type="button" class="button secondary"
+                data-table-duplicate
+                data-table-name="{{ item.name }}">複製</button>
               {% endif %}
             </div>
             {% else %}
@@ -120,4 +130,78 @@
     {% endif %}
   </section>
 </div>
+
+<dialog id="table-duplicate-dialog" class="table-duplicate-dialog">
+  <div class="table-duplicate-dialog-inner">
+    <div class="table-duplicate-dialog-header">
+      <h2>テーブルを複製</h2>
+    </div>
+    <form id="table-duplicate-form" class="table-duplicate-dialog-body" method="post" action="">
+      <p class="help" id="table-duplicate-source"></p>
+      <div class="field">
+        <label for="table-duplicate-target-name">複製先テーブル名</label>
+        <input id="table-duplicate-target-name" name="name" type="text" maxlength="120" required>
+        <p class="help">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。</p>
+      </div>
+      <div class="field">
+        <label>カラム</label>
+        <p class="help"><code>id INTEGER PRIMARY KEY</code> 列は自動で追加されます。</p>
+        <div class="table-duplicate-column-builder panel panel-table">
+          <table>
+            <thead>
+              <tr>
+                <th>カラム名</th>
+                <th>型</th>
+                <th>NULL</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="table-duplicate-column-rows"></tbody>
+          </table>
+        </div>
+        <div class="table-duplicate-column-actions">
+          <button type="button" class="button secondary" id="table-duplicate-add-column-btn">カラムを追加</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label-option">
+          <input type="checkbox" id="table-duplicate-include-data" name="include_data" value="1">
+          データも複製
+        </label>
+        <p class="help">ON にすると、複製先の列定義と名前が一致する列のデータをコピーします。</p>
+      </div>
+      <div class="table-duplicate-dialog-actions">
+        <button type="submit" class="button">複製</button>
+        <button type="button" class="button secondary" id="table-duplicate-cancel">キャンセル</button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<template id="table-duplicate-column-row-template">
+  <tr class="column-row">
+    <td>
+      <input name="col_name" type="text" maxlength="120" value="">
+    </td>
+    <td>
+      <select name="col_type">
+        <option value="integer">整数</option>
+        <option value="real">実数</option>
+        <option value="text" selected>文字列</option>
+        <option value="blob">バイナリ</option>
+        <option value="timestamp">日時</option>
+        <option value="boolean">真偽値</option>
+      </select>
+    </td>
+    <td>
+      <select name="col_nullable">
+        <option value="1" selected>NULL可</option>
+        <option value="0">NOT NULL</option>
+      </select>
+    </td>
+    <td>
+      <button type="button" class="button secondary column-remove-btn">削除</button>
+    </td>
+  </tr>
+</template>
 {% endblock %}

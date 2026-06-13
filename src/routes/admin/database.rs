@@ -144,6 +144,8 @@ struct DatabaseTemplate {
     is_views_tab: bool,
     has_user_tables: bool,
     new_url: String,
+    success_message: String,
+    error_message: String,
 }
 
 #[derive(Debug, Clone)]
@@ -224,6 +226,37 @@ struct DataPageParams {
 struct DatabaseQuery {
     #[serde(default)]
     tab: String,
+    #[serde(default)]
+    success_message: String,
+    #[serde(default)]
+    error_message: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct TableDuplicateForm {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    col_name: Vec<String>,
+    #[serde(default)]
+    col_type: Vec<String>,
+    #[serde(default)]
+    col_nullable: Vec<String>,
+    #[serde(default)]
+    include_data: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+struct TableColumnJson {
+    name: String,
+    type_key: String,
+    nullable: bool,
+}
+
+#[derive(serde::Serialize)]
+struct TableColumnsJsonResponse {
+    name: String,
+    columns: Vec<TableColumnJson>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -258,6 +291,14 @@ pub fn router() -> Router<AppState> {
         .route(
             "/admin/database/tables/{name}/edit",
             get(edit_table_form).post(update_table),
+        )
+        .route(
+            "/admin/database/tables/{name}/columns",
+            get(table_columns_json),
+        )
+        .route(
+            "/admin/database/tables/{name}/duplicate",
+            post(duplicate_table),
         )
         .route("/admin/database/tables/{name}/data", get(table_data))
         .route(
@@ -346,10 +387,72 @@ async fn index(
         is_tables_tab: !is_views_tab,
         is_views_tab,
         new_url,
+        success_message: query.success_message,
+        error_message: query.error_message,
     }
     .render()?;
 
     Ok(Html(html))
+}
+
+async fn table_columns_json(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> AppResult<impl IntoResponse> {
+    match database::load_user_table_columns(&state.pool(), &name).await {
+        Ok(columns) => Ok(Json(TableColumnsJsonResponse {
+            name: name.clone(),
+            columns: columns
+                .into_iter()
+                .map(|column| TableColumnJson {
+                    name: column.name,
+                    type_key: column.type_key,
+                    nullable: column.nullable,
+                })
+                .collect(),
+        })),
+        Err(DomainError::NotFound) => Err(AppError::NotFound),
+        Err(err) => Err(err.into()),
+    }
+}
+
+async fn duplicate_table(
+    State(state): State<AppState>,
+    Path(source): Path<String>,
+    body: Bytes,
+) -> AppResult<Response> {
+    let form = match parse_table_duplicate_form(&body) {
+        Ok(form) => form,
+        Err(message) => return Ok(redirect_index_with_error(&message)),
+    };
+
+    let columns = duplicate_form_to_columns(&form);
+    let include_data = form.include_data.is_some();
+    match database::duplicate_user_table(
+        &state.pool(),
+        &source,
+        &form.name,
+        &columns,
+        include_data,
+    )
+    .await
+    {
+        Ok(()) => Ok(redirect_index_with_success(&format!(
+            "テーブル「{source}」を「{}」として複製しました",
+            form.name
+        ))),
+        Err(err) => Ok(redirect_index_with_error(&domain_error_message(&err))),
+    }
+}
+
+fn redirect_index_with_success(message: &str) -> Response {
+    let encoded = urlencoding::encode(message);
+    Redirect::to(&format!("/admin/database?success_message={encoded}")).into_response()
+}
+
+fn redirect_index_with_error(message: &str) -> Response {
+    let encoded = urlencoding::encode(message);
+    Redirect::to(&format!("/admin/database?error_message={encoded}")).into_response()
 }
 
 async fn new_table_form(auth: AuthUser) -> AppResult<Response> {
@@ -1095,6 +1198,21 @@ fn table_seed_form_template(
 fn parse_table_create_form(body: &Bytes) -> Result<TableCreateForm, String> {
     let body = std::str::from_utf8(body).map_err(|_| "フォームデータの形式が不正です".to_string())?;
     serde_html_form::from_str(body).map_err(|err| format!("フォームデータの解析に失敗しました: {err}"))
+}
+
+fn parse_table_duplicate_form(body: &Bytes) -> Result<TableDuplicateForm, String> {
+    let body = std::str::from_utf8(body).map_err(|_| "フォームデータの形式が不正です".to_string())?;
+    serde_html_form::from_str(body).map_err(|err| format!("フォームデータの解析に失敗しました: {err}"))
+}
+
+fn duplicate_form_to_columns(form: &TableDuplicateForm) -> Vec<TableColumnInput> {
+    table_form_to_columns(&TableCreateForm {
+        name: form.name.clone(),
+        col_name: form.col_name.clone(),
+        col_type: form.col_type.clone(),
+        col_nullable: form.col_nullable.clone(),
+        col_orig_name: Vec::new(),
+    })
 }
 
 fn table_form_to_columns(form: &TableCreateForm) -> Vec<TableColumnInput> {

@@ -3129,6 +3129,123 @@
     }
   }
 
+  function initTableDuplicate() {
+    const dialog = document.getElementById('table-duplicate-dialog');
+    const form = document.getElementById('table-duplicate-form');
+    const sourceEl = document.getElementById('table-duplicate-source');
+    const targetNameInput = document.getElementById('table-duplicate-target-name');
+    const rowsEl = document.getElementById('table-duplicate-column-rows');
+    const template = document.getElementById('table-duplicate-column-row-template');
+    const addBtn = document.getElementById('table-duplicate-add-column-btn');
+    const cancelBtn = document.getElementById('table-duplicate-cancel');
+    const includeDataCheckbox = document.getElementById('table-duplicate-include-data');
+    if (!dialog || !form || !sourceEl || !targetNameInput || !rowsEl || !template) return;
+
+    function closeDialog() {
+      if (dialog.open) {
+        dialog.close();
+      }
+    }
+
+    function bindRow(row) {
+      const removeBtn = row.querySelector('.column-remove-btn');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', function () {
+          row.remove();
+        });
+      }
+    }
+
+    function setSelectValue(select, value) {
+      if (!select) return;
+      const option = Array.from(select.options).find(function (opt) {
+        return opt.value === value;
+      });
+      if (option) {
+        select.value = value;
+      }
+    }
+
+    function addColumnRow(column) {
+      const fragment = template.content.cloneNode(true);
+      const row = fragment.querySelector('.column-row');
+      if (!row) return;
+
+      const nameInput = row.querySelector('input[name="col_name"]');
+      const typeSelect = row.querySelector('select[name="col_type"]');
+      const nullableSelect = row.querySelector('select[name="col_nullable"]');
+
+      if (column) {
+        if (nameInput) nameInput.value = column.name || '';
+        setSelectValue(typeSelect, column.type_key || 'text');
+        setSelectValue(nullableSelect, column.nullable ? '1' : '0');
+      }
+
+      rowsEl.appendChild(fragment);
+      bindRow(rowsEl.lastElementChild);
+    }
+
+    if (addBtn) {
+      addBtn.addEventListener('click', function () {
+        addColumnRow(null);
+      });
+    }
+
+    document.querySelectorAll('[data-table-duplicate]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        const tableName = btn.dataset.tableName || '';
+        if (!tableName) return;
+
+        form.action =
+          '/admin/database/tables/' + encodeURIComponent(tableName) + '/duplicate';
+        sourceEl.textContent = '複製元: ' + tableName;
+        targetNameInput.value = tableName + '-copy';
+        rowsEl.replaceChildren();
+        if (includeDataCheckbox) {
+          includeDataCheckbox.checked = false;
+        }
+
+        fetch('/admin/database/tables/' + encodeURIComponent(tableName) + '/columns')
+          .then(function (response) {
+            if (!response.ok) {
+              throw new Error('列定義の取得に失敗しました');
+            }
+            return response.json();
+          })
+          .then(function (payload) {
+            const columns = Array.isArray(payload.columns) ? payload.columns : [];
+            if (columns.length === 0) {
+              addColumnRow(null);
+            } else {
+              columns.forEach(function (column) {
+                addColumnRow(column);
+              });
+            }
+            dialog.showModal();
+            targetNameInput.focus();
+            targetNameInput.select();
+          })
+          .catch(function () {
+            alert('列定義の取得に失敗しました');
+          });
+      });
+    });
+
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', closeDialog);
+    }
+
+    dialog.addEventListener('cancel', function (event) {
+      event.preventDefault();
+      closeDialog();
+    });
+
+    dialog.addEventListener('close', function () {
+      form.reset();
+      rowsEl.replaceChildren();
+    });
+  }
+
   function initLayoutDuplicate() {
     const dialog = document.getElementById('layout-duplicate-dialog');
     const form = document.getElementById('layout-duplicate-form');
@@ -3218,6 +3335,7 @@
     initTableData();
     initWidgetConfig();
     initDatabaseIndex();
+    initTableDuplicate();
     initLayoutDuplicate();
   }
 

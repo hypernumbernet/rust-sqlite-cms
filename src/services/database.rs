@@ -750,6 +750,76 @@ async fn rebuild_user_table(
     Ok(())
 }
 
+/// ユーザー定義テーブルを別名で複製する。
+pub async fn duplicate_user_table(
+    pool: &SqlitePool,
+    source: &str,
+    target: &str,
+    columns: &[TableColumnInput],
+    include_data: bool,
+) -> DomainResult<()> {
+    let source = ensure_editable_user_table(source)?;
+    let target = validate_user_object_name(target)?;
+
+    if source == target {
+        return Err(DomainError::Validation(
+            "複製先のテーブル名は複製元と異なる必要があります".to_string(),
+        ));
+    }
+
+    if !object_name_exists(pool, source, "table").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    if object_name_exists(pool, &target, "table").await? {
+        return Err(DomainError::Conflict(format!(
+            "テーブル `{target}` は既に存在します"
+        )));
+    }
+
+    let definition = build_table_definition(columns)?;
+    let quoted_target = quote_sql_identifier(&target);
+    let quoted_source = quote_sql_identifier(source);
+    let create_ddl = format!("CREATE TABLE {quoted_target} ({definition})");
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(sqlx::AssertSqlSafe(create_ddl))
+        .execute(&mut *tx)
+        .await?;
+
+    if include_data {
+        let source_columns = load_user_table_columns(pool, source).await?;
+        let dest_names: std::collections::HashSet<String> = columns
+            .iter()
+            .filter(|column| !column.name.trim().is_empty())
+            .map(|column| column.name.clone())
+            .collect();
+
+        let mut copy_cols = vec!["id".to_string()];
+        for src_col in &source_columns {
+            if dest_names.contains(&src_col.name) {
+                copy_cols.push(src_col.name.clone());
+            }
+        }
+
+        let quoted_cols: Vec<String> = copy_cols
+            .iter()
+            .map(|name| quote_sql_identifier(name))
+            .collect();
+        let insert_ddl = format!(
+            "INSERT INTO {quoted_target} ({}) SELECT {} FROM {quoted_source}",
+            quoted_cols.join(", "),
+            quoted_cols.join(", ")
+        );
+        sqlx::query(sqlx::AssertSqlSafe(insert_ddl))
+            .execute(&mut *tx)
+            .await?;
+    }
+
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn create_user_table_from_columns(
     pool: &SqlitePool,
     name: &str,

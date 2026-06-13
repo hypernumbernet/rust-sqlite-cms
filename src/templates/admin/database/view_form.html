@@ -35,7 +35,7 @@
 
       <div class="tab-panel" id="view-tab-ui">
         <div id="view-ui-unsupported" class="notice info" hidden>
-          この定義はビジュアル編集に対応していません。JOIN・WHERE・集計などを含む SQL は SQL編集タブで編集してください。
+          この定義はビジュアル編集に対応していません。JOIN・集計・複雑な WHERE などを含む SQL は SQL編集タブで編集してください。
         </div>
 
         <div id="view-ui-builder">
@@ -54,8 +54,16 @@
           <p id="view-ui-loading" class="help" hidden>カラム一覧を読み込み中…</p>
           <p id="view-ui-empty" class="help">元テーブルを選択するとカラム一覧が表示されます。</p>
 
-          <ul id="view-ui-columns" class="view-ui-column-list" hidden></ul>
-          <p class="help">チェックしたカラムがビューに含まれます。ドラッグで並び順を変更できます。</p>
+          <div id="view-ui-columns-wrap" class="view-ui-columns-wrap" hidden>
+            <ul id="view-ui-columns" class="view-ui-column-list"></ul>
+            <div id="view-ui-add-column" class="view-ui-add-column-row">
+              <select id="view-ui-add-column-select" aria-label="追加するカラム">
+                <option value="">カラムを選択</option>
+              </select>
+              <button type="button" class="view-ui-icon-btn" id="view-ui-add-column-btn" aria-label="カラムを追加">+</button>
+            </div>
+          </div>
+          <p class="help">カラムを追加・削除できます。WHERE 欄には列名以外の条件を入力してください（例: <code>IS NOT NULL</code>）。複数列の条件は AND で結合されます。ドラッグで並び順を変更できます。</p>
         </div>
       </div>
 

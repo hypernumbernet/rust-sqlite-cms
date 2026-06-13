@@ -1044,7 +1044,7 @@ async fn create_view(
     Form(form): Form<ViewCreateForm>,
 ) -> AppResult<Response> {
     match database::create_user_view(&state.pool(), &form.name, &form.definition).await {
-        Ok(()) => Ok(Redirect::to("/admin/database?tab=views").into_response()),
+        Ok(()) => Ok(Redirect::to(&view_url(&form.name, "/data")).into_response()),
         Err(err) => {
             let html = render_view_form(
                 &auth,
@@ -1083,7 +1083,7 @@ async fn update_view(
     }
 
     match database::update_user_view(&state.pool(), &name, &form.definition).await {
-        Ok(()) => Ok(Redirect::to("/admin/database?tab=views").into_response()),
+        Ok(()) => Ok(Redirect::to(&view_url(&name, "/data")).into_response()),
         Err(DomainError::SystemTable(message)) => {
             Ok(system_table_notice_response(&auth, &name, &message).await?)
         }

@@ -326,12 +326,29 @@ textarea::placeholder {
 .view-form-tabs {
   margin-top: 8px;
 }
-.view-ui-column-list {
+.view-ui-columns-wrap {
   border: 1px solid var(--border);
   border-radius: 4px;
-  list-style: none;
   margin: 12px 0 0;
+  overflow: hidden;
+}
+.view-ui-column-list {
+  border: none;
+  border-radius: 0;
+  list-style: none;
+  margin: 0;
   padding: 0;
+}
+.view-ui-add-column-row {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 12px;
+  padding: 10px 12px;
+}
+.view-ui-add-column-row select {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .view-ui-column-item {
   align-items: center;
@@ -351,42 +368,99 @@ textarea::placeholder {
   border-bottom-color: transparent;
 }
 .view-ui-column-list.is-drag-active .view-ui-column-item.is-dragging {
-  background: var(--panel);
+  background: var(--bg);
   border-bottom-color: transparent;
+  border-radius: 4px;
+  box-shadow: none;
+  transform: none;
+  z-index: 0;
+}
+.view-ui-column-list.is-drag-active .view-ui-column-item.is-dragging > * {
+  visibility: hidden;
+}
+.view-ui-column-drag-ghost {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  list-style: none;
+  margin: 0;
+  background: var(--panel);
   border-radius: 6px;
   box-shadow:
     0 10px 28px rgba(29, 35, 39, 0.16),
     0 2px 8px rgba(29, 35, 39, 0.08);
-  transform: translateY(-3px);
-  z-index: 2;
 }
 @media (prefers-reduced-motion: reduce) {
   .view-ui-column-item {
     transition: none;
   }
-  .view-ui-column-list.is-drag-active .view-ui-column-item.is-dragging {
-    transform: none;
+  .view-ui-column-drag-ghost {
+    box-shadow: 0 2px 8px rgba(29, 35, 39, 0.12);
   }
+}
+.view-ui-column-drag-zone {
+  align-items: center;
+  cursor: grab;
+  display: flex;
+  flex: 0 0 auto;
+  gap: 12px;
+  max-width: 168px;
+  min-width: 0;
+  user-select: none;
+}
+.view-ui-column-item.is-dragging .view-ui-column-drag-zone {
+  cursor: grabbing;
 }
 .view-ui-drag-handle {
   color: var(--muted);
-  cursor: grab;
   flex: 0 0 auto;
   font-size: 16px;
   line-height: 1;
-  user-select: none;
 }
-.view-ui-column-item.is-dragging .view-ui-drag-handle {
-  cursor: grabbing;
-}
-.view-ui-column-item .label-option {
+.view-ui-column-name {
   flex: 1 1 auto;
-  margin: 0;
+  font-family: var(--mono, monospace);
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.view-ui-column-where {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.view-ui-column-where input {
+  width: 100%;
 }
 .view-ui-column-type {
   color: var(--muted);
   flex: 0 0 auto;
   font-size: 12px;
+}
+.view-ui-icon-btn {
+  align-items: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 18px;
+  height: 32px;
+  justify-content: center;
+  line-height: 1;
+  min-width: 32px;
+  padding: 0;
+}
+.view-ui-icon-btn:hover {
+  background: var(--bg);
+  border-color: var(--muted);
+}
+.view-ui-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 .tab-panel[hidden] { display: none; }
 

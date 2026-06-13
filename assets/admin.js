@@ -3349,7 +3349,10 @@
     const sqlPanel = document.getElementById('view-tab-sql');
     const uiPanel = document.getElementById('view-tab-ui');
     const baseTableSelect = document.getElementById('view-ui-base-table');
+    const columnsWrap = document.getElementById('view-ui-columns-wrap');
     const columnsList = document.getElementById('view-ui-columns');
+    const addColumnSelect = document.getElementById('view-ui-add-column-select');
+    const addColumnBtn = document.getElementById('view-ui-add-column-btn');
     const unsupportedNotice = document.getElementById('view-ui-unsupported');
     const builderEl = document.getElementById('view-ui-builder');
     const uiError = document.getElementById('view-ui-error');
@@ -3360,7 +3363,10 @@
     if (!form || !definitionInput || !tabButtons.length || !sqlPanel || !uiPanel) return;
 
     let activeTab = 'ui';
+    let tableApiColumns = [];
     let dragSourceItem = null;
+    let dragGhostEl = null;
+    let dragPointerOffset = { x: 0, y: 0 };
     let lastReorderTarget = null;
     let lastReorderBefore = null;
     let emptyDragImage = null;
@@ -3392,10 +3398,9 @@
       }
     }
 
-    function containsTrailingClause(remainder) {
+    function containsUnsupportedTrailingClause(remainder) {
       const clauses = [
         'JOIN',
-        'WHERE',
         'GROUP',
         'HAVING',
         'ORDER',
@@ -3407,6 +3412,92 @@
       return clauses.some(function (clause) {
         return findSqlKeyword(remainder, clause, 0) !== -1;
       });
+    }
+
+    function hasUnclosedStringLiteral(input) {
+      let inSingleQuote = false;
+      for (let i = 0; i < input.length; i += 1) {
+        if (input.charAt(i) === "'") {
+          inSingleQuote = !inSingleQuote;
+        }
+      }
+      return inSingleQuote;
+    }
+
+    function findTopLevelKeyword(input, keyword) {
+      let inSingleQuote = false;
+      let i = 0;
+      while (i < input.length) {
+        const ch = input.charAt(i);
+        if (ch === "'") {
+          inSingleQuote = !inSingleQuote;
+          i += 1;
+          continue;
+        }
+        if (!inSingleQuote && findSqlKeyword(input.slice(i), keyword, 0) === 0) {
+          return i;
+        }
+        i += 1;
+      }
+      return -1;
+    }
+
+    function splitTopLevelAnd(input) {
+      if (hasUnclosedStringLiteral(input)) return null;
+      const parts = [];
+      let segmentStart = 0;
+      let i = 0;
+      while (true) {
+        const andPos = findTopLevelKeyword(input.slice(i), 'AND');
+        if (andPos === -1) break;
+        const splitAt = i + andPos;
+        const segment = input.slice(segmentStart, splitAt).trim();
+        if (!segment) return null;
+        parts.push(segment);
+        i = splitAt + 'AND'.length;
+        while (i < input.length && /\s/.test(input.charAt(i))) {
+          i += 1;
+        }
+        segmentStart = i;
+      }
+      const last = input.slice(segmentStart).trim();
+      if (!last) {
+        return parts.length > 0 ? parts : null;
+      }
+      parts.push(last);
+      return parts;
+    }
+
+    function parseColumnWhereCondition(part) {
+      const parsed = parseSqlIdentifierPrefix(part.trim());
+      if (!parsed) return null;
+      const suffix = parsed.rest.trim();
+      if (!suffix) return null;
+      return { column: parsed.name, suffix: suffix };
+    }
+
+    function parseSimpleWhereConditions(wherePart) {
+      if (findTopLevelKeyword(wherePart, 'OR') !== -1) return null;
+      const parts = splitTopLevelAnd(wherePart);
+      if (!parts) return null;
+      const conditions = {};
+      for (let idx = 0; idx < parts.length; idx += 1) {
+        const parsed = parseColumnWhereCondition(parts[idx]);
+        if (!parsed) return null;
+        if (conditions[parsed.column]) return null;
+        conditions[parsed.column] = parsed.suffix;
+      }
+      return conditions;
+    }
+
+    function parseOptionalWhereConditions(afterTable) {
+      if (!afterTable) return {};
+      const wherePos = findSqlKeyword(afterTable, 'WHERE', 0);
+      if (wherePos === -1) return null;
+      if (wherePos !== 0) return null;
+      const wherePart = afterTable.slice('WHERE'.length).trim();
+      if (!wherePart) return null;
+      return parseSimpleWhereConditions(wherePart);
     }
 
     function parseSqlIdentifierPrefix(input) {
@@ -3457,15 +3548,29 @@
       if (fromPos === -1) return null;
       const selectPart = trimmed.slice('SELECT'.length, fromPos).trim();
       const afterFrom = trimmed.slice(fromPos + 'FROM'.length).trim();
-      if (!afterFrom || containsTrailingClause(afterFrom)) return null;
+      if (!afterFrom) return null;
       const tableParsed = parseSqlIdentifierPrefix(afterFrom);
-      if (!tableParsed || tableParsed.rest.trim()) return null;
+      if (!tableParsed) return null;
+      const afterTable = tableParsed.rest.trim();
+      if (containsUnsupportedTrailingClause(afterTable)) return null;
+      const whereConditions = parseOptionalWhereConditions(afterTable);
+      if (whereConditions === null) return null;
       if (selectPart === '*') {
-        return { baseTable: tableParsed.name, allColumns: true, columns: [] };
+        return {
+          baseTable: tableParsed.name,
+          allColumns: true,
+          columns: [],
+          whereConditions: whereConditions,
+        };
       }
       const columns = parseCommaSeparatedIdentifiers(selectPart);
       if (!columns || columns.length === 0) return null;
-      return { baseTable: tableParsed.name, allColumns: false, columns: columns };
+      return {
+        baseTable: tableParsed.name,
+        allColumns: false,
+        columns: columns,
+        whereConditions: whereConditions,
+      };
     }
 
     function hideUiError() {
@@ -3480,10 +3585,17 @@
       uiError.hidden = false;
     }
 
+    function parseVisualState(definition) {
+      const trimmed = definition.trim();
+      if (!trimmed) {
+        return { supported: true, parsed: null };
+      }
+      const parsed = parseSimpleSelect(trimmed);
+      return { supported: parsed !== null, parsed: parsed };
+    }
+
     function isVisualEditingSupported() {
-      const trimmed = definitionInput.value.trim();
-      if (!trimmed) return true;
-      return parseSimpleSelect(trimmed) !== null;
+      return parseVisualState(definitionInput.value).supported;
     }
 
     function setVisualBuilderVisible(visible) {
@@ -3506,79 +3618,131 @@
     function readColumnState() {
       if (!columnsList) return [];
       return Array.from(columnsList.querySelectorAll('.view-ui-column-item')).map(function (item) {
+        const whereInput = item.querySelector('.view-ui-column-where-input');
+        const whereValue = whereInput ? whereInput.value.trim() : '';
         return {
           name: item.dataset.columnName || '',
           type_key: item.dataset.columnType || 'text',
-          included: item.querySelector('.view-ui-col-check').checked,
+          where_condition: whereValue || null,
         };
       });
     }
 
-    function mergeSelectedColumns(apiColumns, selectedNames, allIncluded) {
+    function columnTypeByName(apiColumns) {
       const typeByName = {};
       apiColumns.forEach(function (column) {
         typeByName[column.name] = column.type_key;
       });
-      if (allIncluded) {
-        return apiColumns.map(function (column) {
-          return {
-            name: column.name,
-            type_key: column.type_key,
-            included: true,
-          };
-        });
-      }
-      const selectedSet = new Set(selectedNames);
-      const ordered = selectedNames.map(function (name) {
-        return {
-          name: name,
-          type_key: typeByName[name] || 'text',
-          included: true,
-        };
-      });
-      apiColumns.forEach(function (column) {
-        if (!selectedSet.has(column.name)) {
-          ordered.push({
-            name: column.name,
-            type_key: column.type_key,
-            included: false,
-          });
-        }
-      });
-      return ordered;
+      return typeByName;
     }
 
-    function mergeColumnState(apiColumns, state) {
-      const typeByName = {};
-      apiColumns.forEach(function (column) {
-        typeByName[column.name] = column.type_key;
+    function toUiColumn(column, typeByName) {
+      const whereValue =
+        column.where_condition != null ? String(column.where_condition).trim() : '';
+      return {
+        name: column.name,
+        type_key: typeByName[column.name] || column.type_key || 'text',
+        where_condition: whereValue || null,
+      };
+    }
+
+    function buildColumnsFromParsed(apiColumns, parsed) {
+      const typeByName = columnTypeByName(apiColumns);
+      const names = parsed.allColumns
+        ? apiColumns.map(function (column) {
+            return column.name;
+          })
+        : parsed.columns;
+      return names.map(function (name) {
+        return toUiColumn(
+          {
+            name: name,
+            type_key: typeByName[name],
+            where_condition: parsed.whereConditions[name] || null,
+          },
+          typeByName
+        );
       });
-      const apiNames = new Set(apiColumns.map(function (column) {
-        return column.name;
-      }));
-      const result = state
+    }
+
+    function normalizeColumnState(apiColumns, state) {
+      const typeByName = columnTypeByName(apiColumns);
+      const apiNames = new Set(
+        apiColumns.map(function (column) {
+          return column.name;
+        })
+      );
+      return state
+        .filter(function (column) {
+          return column.included !== false;
+        })
         .filter(function (column) {
           return apiNames.has(column.name);
         })
         .map(function (column) {
-          return {
-            name: column.name,
-            type_key: typeByName[column.name] || column.type_key || 'text',
-            included: !!column.included,
-          };
+          return toUiColumn(column, typeByName);
         });
-      apiColumns.forEach(function (column) {
-        if (!result.some(function (entry) {
-          return entry.name === column.name;
-        })) {
-          result.push({
-            name: column.name,
-            type_key: column.type_key,
-            included: false,
-          });
-        }
+    }
+
+    function updateColumnsWrapVisibility() {
+      const hasColumns = !!columnsList && columnsList.children.length > 0;
+      if (columnsWrap) columnsWrap.hidden = !hasColumns;
+      if (emptyEl) emptyEl.hidden = hasColumns;
+    }
+
+    function beginColumnsLoad() {
+      if (loadingEl) loadingEl.hidden = false;
+      if (columnsWrap) columnsWrap.hidden = true;
+      if (emptyEl) emptyEl.hidden = true;
+      hideUiError();
+    }
+
+    function finishColumnsLoad() {
+      if (loadingEl) loadingEl.hidden = true;
+    }
+
+    function fetchTableColumns(tableName) {
+      return fetch(
+        '/admin/database/tables/' + encodeURIComponent(tableName) + '/columns'
+      )
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error('カラム一覧の取得に失敗しました');
+          }
+          return response.json();
+        })
+        .then(function (data) {
+          return Array.isArray(data.columns) ? data.columns : [];
+        });
+    }
+
+    function updateAddColumnSelect() {
+      if (!addColumnSelect) return;
+      const used = new Set(
+        readColumnState().map(function (column) {
+          return column.name;
+        })
+      );
+      const available = tableApiColumns.filter(function (column) {
+        return !used.has(column.name);
       });
-      return result;
+
+      addColumnSelect.replaceChildren();
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent =
+        available.length === 0 ? '追加できるカラムがありません' : 'カラムを選択';
+      addColumnSelect.appendChild(emptyOption);
+      available.forEach(function (column) {
+        const option = document.createElement('option');
+        option.value = column.name;
+        option.textContent = column.name + ' (' + (column.type_key || 'text') + ')';
+        addColumnSelect.appendChild(option);
+      });
+
+      if (addColumnBtn) {
+        addColumnBtn.disabled = available.length === 0;
+      }
     }
 
     function captureColumnItemTops(items) {
@@ -3594,38 +3758,28 @@
       item.style.transition = '';
     }
 
-    function dragLiftOffset(item) {
-      return item.classList.contains('is-dragging') ? -3 : 0;
-    }
-
     function animateColumnReorder(items, oldTops) {
       if (prefersReducedMotion) return;
       const duration = '240ms';
       const easing = 'cubic-bezier(0.25, 0.8, 0.25, 1)';
       items.forEach(function (item) {
+        if (item.classList.contains('is-dragging')) return;
         const oldTop = oldTops.get(item);
         if (oldTop == null) return;
         const delta = oldTop - item.getBoundingClientRect().top;
         if (Math.abs(delta) < 0.5) return;
-        const lift = dragLiftOffset(item);
-        const restingTransform = lift ? 'translateY(' + lift + 'px)' : '';
         clearColumnItemMotionStyles(item);
-        item.style.transform = 'translateY(' + (delta + lift) + 'px)';
+        item.style.transform = 'translateY(' + delta + 'px)';
         requestAnimationFrame(function () {
           requestAnimationFrame(function () {
             item.style.transition = 'transform ' + duration + ' ' + easing;
-            item.style.transform = restingTransform;
+            item.style.transform = '';
             item.addEventListener(
               'transitionend',
               function onTransitionEnd(event) {
                 if (event.propertyName !== 'transform') return;
                 item.removeEventListener('transitionend', onTransitionEnd);
-                if (restingTransform) {
-                  item.style.transform = restingTransform;
-                  item.style.transition = '';
-                } else {
-                  clearColumnItemMotionStyles(item);
-                }
+                clearColumnItemMotionStyles(item);
               }
             );
           });
@@ -3658,184 +3812,246 @@
       event.dataTransfer.setDragImage(emptyDragImage, 0, 0);
     }
 
-    function bindDragHandlers() {
+    function updateDragGhostPosition(event) {
+      if (!dragGhostEl) return;
+      const x = event.clientX;
+      const y = event.clientY;
+      if (x === 0 && y === 0) return;
+      dragGhostEl.style.left = x - dragPointerOffset.x + 'px';
+      dragGhostEl.style.top = y - dragPointerOffset.y + 'px';
+    }
+
+    function onDocumentDragOver(event) {
+      if (!dragGhostEl) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'move';
+      updateDragGhostPosition(event);
+    }
+
+    function removeDragGhost() {
+      document.removeEventListener('dragover', onDocumentDragOver);
+      if (dragGhostEl) {
+        dragGhostEl.remove();
+        dragGhostEl = null;
+      }
+    }
+
+    function createDragGhost(item, event, dragAnchor) {
+      removeDragGhost();
+      const anchor = dragAnchor || item;
+      const anchorRect = anchor.getBoundingClientRect();
+      const itemRect = item.getBoundingClientRect();
+      dragPointerOffset = {
+        x: event.clientX - anchorRect.left,
+        y: event.clientY - anchorRect.top,
+      };
+      dragGhostEl = item.cloneNode(true);
+      dragGhostEl.classList.add('view-ui-column-drag-ghost');
+      dragGhostEl.classList.remove('is-dragging');
+      dragGhostEl.querySelectorAll('[draggable]').forEach(function (el) {
+        el.removeAttribute('draggable');
+      });
+      dragGhostEl.style.width = itemRect.width + 'px';
+      document.body.appendChild(dragGhostEl);
+      updateDragGhostPosition(event);
+      document.addEventListener('dragover', onDocumentDragOver);
+    }
+
+    function finishColumnDrag(item) {
+      removeDragGhost();
+      if (item) item.classList.remove('is-dragging');
+      if (columnsList) columnsList.classList.remove('is-drag-active');
+      if (columnsList) {
+        columnsList.querySelectorAll('.view-ui-column-item').forEach(function (row) {
+          clearColumnItemMotionStyles(row);
+        });
+      }
+      dragSourceItem = null;
+      resetDragReorderState();
+    }
+
+    function bindColumnListInteractions() {
       if (!columnsList) return;
-      columnsList.querySelectorAll('.view-ui-column-item').forEach(function (item) {
-        item.addEventListener('dragstart', function (event) {
-          dragSourceItem = item;
-          resetDragReorderState();
-          item.classList.add('is-dragging');
-          columnsList.classList.add('is-drag-active');
-          hideNativeDragImage(event);
-          event.dataTransfer.effectAllowed = 'move';
-          event.dataTransfer.setData('text/plain', item.dataset.columnName || '');
-        });
-        item.addEventListener('dragover', function (event) {
-          event.preventDefault();
-          event.dataTransfer.dropEffect = 'move';
-          if (!dragSourceItem || dragSourceItem === item) return;
-          const rect = item.getBoundingClientRect();
-          const before = event.clientY < rect.top + rect.height / 2;
-          if (lastReorderTarget === item && lastReorderBefore === before) return;
-          if (moveDraggedColumn(item, before)) {
-            lastReorderTarget = item;
-            lastReorderBefore = before;
-          }
-        });
-        item.addEventListener('drop', function (event) {
-          event.preventDefault();
-        });
-        item.addEventListener('dragend', function () {
-          item.classList.remove('is-dragging');
-          columnsList.classList.remove('is-drag-active');
-          columnsList.querySelectorAll('.view-ui-column-item').forEach(function (row) {
-            clearColumnItemMotionStyles(row);
-          });
-          dragSourceItem = null;
-          resetDragReorderState();
-        });
+
+      columnsList.addEventListener('dragstart', function (event) {
+        const dragZone = event.target.closest('.view-ui-column-drag-zone');
+        if (!dragZone || !columnsList.contains(dragZone)) return;
+        const item = dragZone.closest('.view-ui-column-item');
+        if (!item) return;
+        dragSourceItem = item;
+        resetDragReorderState();
+        item.classList.add('is-dragging');
+        columnsList.classList.add('is-drag-active');
+        hideNativeDragImage(event);
+        createDragGhost(item, event, dragZone);
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', item.dataset.columnName || '');
+      });
+
+      columnsList.addEventListener('dragend', function (event) {
+        const dragZone = event.target.closest('.view-ui-column-drag-zone');
+        if (!dragZone || !columnsList.contains(dragZone)) return;
+        finishColumnDrag(dragZone.closest('.view-ui-column-item'));
+      });
+
+      columnsList.addEventListener('dragover', function (event) {
+        const item = event.target.closest('.view-ui-column-item');
+        if (!item || !columnsList.contains(item)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        if (!dragSourceItem || dragSourceItem === item) return;
+        const rect = item.getBoundingClientRect();
+        const before = event.clientY < rect.top + rect.height / 2;
+        if (lastReorderTarget === item && lastReorderBefore === before) return;
+        if (moveDraggedColumn(item, before)) {
+          lastReorderTarget = item;
+          lastReorderBefore = before;
+        }
+      });
+
+      columnsList.addEventListener('drop', function (event) {
+        if (!event.target.closest('.view-ui-column-item')) return;
+        event.preventDefault();
+      });
+
+      columnsList.addEventListener('click', function (event) {
+        const removeBtn = event.target.closest('.view-ui-column-remove-btn');
+        if (!removeBtn || !columnsList.contains(removeBtn)) return;
+        const item = removeBtn.closest('.view-ui-column-item');
+        if (!item) return;
+        item.remove();
+        updateAddColumnSelect();
+        updateColumnsWrapVisibility();
       });
     }
 
+    function createColumnRow(column) {
+      const item = document.createElement('li');
+      item.className = 'view-ui-column-item';
+      item.dataset.columnName = column.name;
+      item.dataset.columnType = column.type_key || 'text';
+
+      const dragZone = document.createElement('div');
+      dragZone.className = 'view-ui-column-drag-zone';
+      dragZone.draggable = true;
+      dragZone.setAttribute('aria-label', 'カラムの並び順を変更');
+
+      const handle = document.createElement('span');
+      handle.className = 'view-ui-drag-handle';
+      handle.setAttribute('aria-hidden', 'true');
+      handle.textContent = '⠿';
+
+      const nameLabel = document.createElement('span');
+      nameLabel.className = 'view-ui-column-name';
+      nameLabel.textContent = column.name;
+
+      dragZone.appendChild(handle);
+      dragZone.appendChild(nameLabel);
+
+      const whereWrap = document.createElement('div');
+      whereWrap.className = 'view-ui-column-where';
+      const whereInput = document.createElement('input');
+      whereInput.type = 'text';
+      whereInput.className = 'view-ui-column-where-input';
+      whereInput.placeholder = '例: IS NOT NULL';
+      whereInput.value = column.where_condition || '';
+      whereWrap.appendChild(whereInput);
+
+      const typeLabel = document.createElement('span');
+      typeLabel.className = 'view-ui-column-type';
+      typeLabel.textContent = column.type_key || 'text';
+
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'view-ui-icon-btn view-ui-column-remove-btn';
+      removeBtn.setAttribute('aria-label', 'カラムを削除');
+      removeBtn.textContent = '−';
+
+      item.appendChild(dragZone);
+      item.appendChild(whereWrap);
+      item.appendChild(typeLabel);
+      item.appendChild(removeBtn);
+      return item;
+    }
+
     function renderColumns(columns) {
-      if (!columnsList || !emptyEl) return;
-      columnsList.innerHTML = '';
+      if (!columnsList) return;
+      const fragment = document.createDocumentFragment();
       columns.forEach(function (column) {
-        const item = document.createElement('li');
-        item.className = 'view-ui-column-item';
-        item.draggable = true;
-        item.dataset.columnName = column.name;
-        item.dataset.columnType = column.type_key || 'text';
-
-        const handle = document.createElement('span');
-        handle.className = 'view-ui-drag-handle';
-        handle.setAttribute('aria-hidden', 'true');
-        handle.textContent = '⋮⋮';
-
-        const label = document.createElement('label');
-        label.className = 'label-option';
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'view-ui-col-check';
-        checkbox.checked = !!column.included;
-
-        label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(' ' + column.name));
-
-        const typeLabel = document.createElement('span');
-        typeLabel.className = 'view-ui-column-type';
-        typeLabel.textContent = column.type_key || 'text';
-
-        item.appendChild(handle);
-        item.appendChild(label);
-        item.appendChild(typeLabel);
-        columnsList.appendChild(item);
+        fragment.appendChild(createColumnRow(column));
       });
-
-      bindDragHandlers();
-      columnsList.hidden = columns.length === 0;
-      emptyEl.hidden = columns.length > 0;
+      columnsList.replaceChildren(fragment);
+      updateAddColumnSelect();
+      updateColumnsWrapVisibility();
     }
 
     function syncUiToSql() {
       if (!baseTableSelect) return;
       const table = baseTableSelect.value;
       if (!table) return;
-      const included = readColumnState().filter(function (column) {
-        return column.included;
-      });
-      if (included.length === 0) return;
-      const columnSql = included
+      const columns = readColumnState();
+      if (columns.length === 0) return;
+      const columnSql = columns
         .map(function (column) {
           return quoteSqlIdentifier(column.name);
         })
         .join(', ');
-      definitionInput.value =
-        'SELECT ' + columnSql + ' FROM ' + quoteSqlIdentifier(table);
+      const whereParts = columns
+        .filter(function (column) {
+          return column.where_condition;
+        })
+        .map(function (column) {
+          return quoteSqlIdentifier(column.name) + ' ' + column.where_condition;
+        });
+      let sql = 'SELECT ' + columnSql + ' FROM ' + quoteSqlIdentifier(table);
+      if (whereParts.length > 0) {
+        sql += ' WHERE ' + whereParts.join(' AND ');
+      }
+      definitionInput.value = sql;
     }
 
-    function loadColumnsForTable(tableName, columnState) {
+    function resolveColumnsFromApi(apiColumns, columnState, parsed) {
+      if (parsed) {
+        return buildColumnsFromParsed(apiColumns, parsed);
+      }
+      if (columnState && columnState.length > 0) {
+        return normalizeColumnState(apiColumns, columnState);
+      }
+      return apiColumns.map(function (column) {
+        return {
+          name: column.name,
+          type_key: column.type_key,
+          where_condition: null,
+        };
+      });
+    }
+
+    function loadColumnsForTable(tableName, columnState, parsed) {
       if (!tableName) {
+        tableApiColumns = [];
         renderColumns([]);
-        if (emptyEl) emptyEl.hidden = false;
+        updateColumnsWrapVisibility();
         return Promise.resolve();
       }
 
-      if (loadingEl) loadingEl.hidden = false;
-      if (columnsList) columnsList.hidden = true;
-      if (emptyEl) emptyEl.hidden = true;
-      hideUiError();
-
-      return fetch(
-        '/admin/database/tables/' + encodeURIComponent(tableName) + '/columns'
-      )
-        .then(function (response) {
-          if (!response.ok) {
-            throw new Error('カラム一覧の取得に失敗しました');
-          }
-          return response.json();
-        })
-        .then(function (data) {
-          const apiColumns = Array.isArray(data.columns) ? data.columns : [];
-          let columns;
-          if (columnState && columnState.length > 0) {
-            columns = mergeColumnState(apiColumns, columnState);
-          } else {
-            columns = apiColumns.map(function (column) {
-              return {
-                name: column.name,
-                type_key: column.type_key,
-                included: true,
-              };
-            });
-          }
-          renderColumns(columns);
+      beginColumnsLoad();
+      return fetchTableColumns(tableName)
+        .then(function (apiColumns) {
+          tableApiColumns = apiColumns;
+          renderColumns(resolveColumnsFromApi(apiColumns, columnState, parsed));
         })
         .catch(function (err) {
+          tableApiColumns = [];
           renderColumns([]);
           showUiError(err.message || 'カラム一覧の取得に失敗しました');
         })
-        .finally(function () {
-          if (loadingEl) loadingEl.hidden = true;
-        });
+        .finally(finishColumnsLoad);
     }
 
     function applyParsedUiState(parsed) {
       if (!baseTableSelect) return Promise.resolve();
       baseTableSelect.value = parsed.baseTable;
-      if (loadingEl) loadingEl.hidden = false;
-      if (columnsList) columnsList.hidden = true;
-      if (emptyEl) emptyEl.hidden = true;
-      hideUiError();
-
-      return fetch(
-        '/admin/database/tables/' +
-          encodeURIComponent(parsed.baseTable) +
-          '/columns'
-      )
-        .then(function (response) {
-          if (!response.ok) {
-            throw new Error('カラム一覧の取得に失敗しました');
-          }
-          return response.json();
-        })
-        .then(function (data) {
-          const apiColumns = Array.isArray(data.columns) ? data.columns : [];
-          const columns = mergeSelectedColumns(
-            apiColumns,
-            parsed.columns,
-            parsed.allColumns
-          );
-          renderColumns(columns);
-        })
-        .catch(function (err) {
-          renderColumns([]);
-          showUiError(err.message || 'カラム一覧の取得に失敗しました');
-        })
-        .finally(function () {
-          if (loadingEl) loadingEl.hidden = true;
-        });
+      return loadColumnsForTable(parsed.baseTable, null, parsed);
     }
 
     function applyUiSpec(spec) {
@@ -3846,14 +4062,14 @@
 
     function refreshVisualTabState() {
       setActiveTab('ui');
-      if (!isVisualEditingSupported()) {
+      const visualState = parseVisualState(definitionInput.value);
+      if (!visualState.supported) {
         setVisualBuilderVisible(false);
         return;
       }
       setVisualBuilderVisible(true);
-      const parsed = parseSimpleSelect(definitionInput.value.trim());
-      if (parsed) {
-        applyParsedUiState(parsed).catch(function (err) {
+      if (visualState.parsed) {
+        applyParsedUiState(visualState.parsed).catch(function (err) {
           showUiError(err.message || 'ビジュアル編集状態の復元に失敗しました');
         });
       }
@@ -3888,6 +4104,29 @@
       });
     }
 
+    bindColumnListInteractions();
+
+    if (addColumnBtn) {
+      addColumnBtn.addEventListener('click', function () {
+        const name = addColumnSelect ? addColumnSelect.value : '';
+        if (!name || !columnsList) return;
+        const column = tableApiColumns.find(function (entry) {
+          return entry.name === name;
+        });
+        if (!column) return;
+        columnsList.appendChild(
+          createColumnRow({
+            name: column.name,
+            type_key: column.type_key,
+            where_condition: null,
+          })
+        );
+        if (addColumnSelect) addColumnSelect.value = '';
+        updateAddColumnSelect();
+        updateColumnsWrapVisibility();
+      });
+    }
+
     form.addEventListener('submit', function (event) {
       if (activeTab !== 'ui' || !isVisualEditingSupported()) return;
       hideUiError();
@@ -3897,10 +4136,8 @@
         showUiError('元テーブルを選択してください。');
         return;
       }
-      const included = readColumnState().filter(function (column) {
-        return column.included;
-      });
-      if (included.length === 0) {
+      const columns = readColumnState();
+      if (columns.length === 0) {
         event.preventDefault();
         showUiError('ビューに含めるカラムを1つ以上選択してください。');
         return;

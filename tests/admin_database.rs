@@ -385,8 +385,18 @@ async fn database_view_form_unsupported_visual_editing_notice() {
     let response = app
         .admin_request(
             "POST",
+            "/admin/database/tables/new",
+            Some("name=join_other&col_name=label&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
             "/admin/database/views/new",
-            Some("name=join_view&definition=SELECT+%22id%22+FROM+%22join_src%22+WHERE+%22body%22+IS+NOT+NULL"),
+            Some("name=join_view&definition=SELECT+%22id%22+FROM+%22join_src%22+JOIN+%22join_other%22+ON+1+%3D+1"),
             Some("application/x-www-form-urlencoded"),
         )
         .await;
@@ -407,6 +417,66 @@ async fn database_view_form_unsupported_visual_editing_notice() {
     assert!(html.contains(r#"class="active" data-view-tab="ui""#));
     assert!(html.contains("この定義はビジュアル編集に対応していません"));
     assert!(html.contains(r#"<script type="application/json" id="view-ui-initial">null</script>"#));
+}
+
+#[tokio::test]
+async fn database_view_form_where_condition() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=where_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=where_notes_view&definition=SELECT+%22id%22%2C+%22body%22+FROM+%22where_notes%22+WHERE+%22body%22+IS+NOT+NULL"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/where_notes_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains(r#""base_table":"where_notes""#));
+    assert!(html.contains(r#""where_condition":"IS NOT NULL""#));
+    assert!(html.contains("view-ui-add-column-btn"));
+    assert!(html.contains("view-ui-add-column-select"));
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/where_notes_view/edit",
+            Some("name=where_notes_view&definition=SELECT+%22body%22+FROM+%22where_notes%22+WHERE+%22body%22+IS+NOT+NULL"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let sql: String = sqlx::query_scalar(
+        "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = 'where_notes_view'",
+    )
+    .fetch_one(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(sql.contains(r#"SELECT "body" FROM "where_notes""#));
+    assert!(sql.contains(r#"WHERE "body" IS NOT NULL"#));
 }
 
 #[tokio::test]

@@ -3374,7 +3374,20 @@
     const columnsWrap = document.getElementById('view-ui-columns-wrap');
     const columnsList = document.getElementById('view-ui-columns');
     const addColumnSelect = document.getElementById('view-ui-add-column-select');
+    const addColumnExpression = document.getElementById('view-ui-add-column-expression');
     const addColumnBtn = document.getElementById('view-ui-add-column-btn');
+    const EXPRESSION_OPTION_VALUE = '__expression__';
+    const FORBIDDEN_DDL_KEYWORDS = [
+      'ATTACH',
+      'ALTER',
+      'CREATE',
+      'DELETE',
+      'DETACH',
+      'DROP',
+      'INSERT',
+      'PRAGMA',
+      'UPDATE',
+    ];
     const unsupportedNotice = document.getElementById('view-ui-unsupported');
     const builderEl = document.getElementById('view-ui-builder');
     const uiError = document.getElementById('view-ui-error');
@@ -3564,33 +3577,147 @@
       return { name: match[1], rest: input.slice(match[1].length) };
     }
 
-    function parseCommaSeparatedSelectItems(input) {
-      const items = [];
-      let rest = input.trim();
-      while (rest) {
-        const parsed = parseSqlIdentifierPrefix(rest);
-        if (!parsed) return null;
-        let alias = null;
-        rest = parsed.rest.trim();
-        if (findSqlKeyword(rest, 'AS', 0) === 0) {
-          const afterAs = rest.slice('AS'.length).trim();
-          const aliasParsed = parseSqlIdentifierPrefix(afterAs);
-          if (!aliasParsed) return null;
-          alias = aliasParsed.name;
-          rest = aliasParsed.rest.trim();
+    function findTopLevelKeywordWithParens(input, keyword) {
+      let parenDepth = 0;
+      let inSingleQuote = false;
+      let inDoubleQuote = false;
+      let i = 0;
+      while (i < input.length) {
+        const ch = input.charAt(i);
+        if (inSingleQuote) {
+          if (ch === "'") inSingleQuote = false;
+          i += 1;
+          continue;
         }
-        items.push({ name: parsed.name, alias: alias });
-        if (!rest) break;
-        if (!rest.startsWith(',')) return null;
-        rest = rest.slice(1).trim();
+        if (inDoubleQuote) {
+          if (ch === '"') {
+            if (i + 1 < input.length && input.charAt(i + 1) === '"') {
+              i += 2;
+              continue;
+            }
+            inDoubleQuote = false;
+          }
+          i += 1;
+          continue;
+        }
+        if (ch === "'") inSingleQuote = true;
+        else if (ch === '"') inDoubleQuote = true;
+        else if (ch === '(') parenDepth += 1;
+        else if (ch === ')' && parenDepth > 0) parenDepth -= 1;
+        else if (parenDepth === 0 && findSqlKeyword(input.slice(i), keyword, 0) === 0) {
+          return i;
+        }
+        i += 1;
+      }
+      return -1;
+    }
+
+    function splitTopLevelCommas(input) {
+      if (hasUnclosedStringLiteral(input)) return null;
+      const parts = [];
+      let segmentStart = 0;
+      let parenDepth = 0;
+      let inSingleQuote = false;
+      let inDoubleQuote = false;
+      let i = 0;
+      while (i < input.length) {
+        const ch = input.charAt(i);
+        if (inSingleQuote) {
+          if (ch === "'") inSingleQuote = false;
+          i += 1;
+          continue;
+        }
+        if (inDoubleQuote) {
+          if (ch === '"') {
+            if (i + 1 < input.length && input.charAt(i + 1) === '"') {
+              i += 2;
+              continue;
+            }
+            inDoubleQuote = false;
+          }
+          i += 1;
+          continue;
+        }
+        if (ch === "'") inSingleQuote = true;
+        else if (ch === '"') inDoubleQuote = true;
+        else if (ch === '(') parenDepth += 1;
+        else if (ch === ')' && parenDepth > 0) parenDepth -= 1;
+        else if (ch === ',' && parenDepth === 0) {
+          const segment = input.slice(segmentStart, i).trim();
+          if (!segment) return null;
+          parts.push(segment);
+          segmentStart = i + 1;
+        }
+        i += 1;
+      }
+      const last = input.slice(segmentStart).trim();
+      if (!last) return parts.length > 0 ? parts : null;
+      parts.push(last);
+      return parts;
+    }
+
+    function splitSelectItemAlias(item) {
+      const asPos = findTopLevelKeywordWithParens(item, 'AS');
+      if (asPos !== -1) {
+        const exprPart = item.slice(0, asPos).trim();
+        const afterAs = item.slice(asPos + 'AS'.length).trim();
+        const aliasParsed = parseSqlIdentifierPrefix(afterAs);
+        if (!aliasParsed || aliasParsed.rest.trim()) return null;
+        return { exprPart: exprPart, alias: aliasParsed.name };
+      }
+      return { exprPart: item.trim(), alias: null };
+    }
+
+    function parseSingleSelectItem(item) {
+      const split = splitSelectItemAlias(item);
+      if (!split || !split.exprPart) return null;
+      const identifierParsed = parseSqlIdentifierPrefix(split.exprPart);
+      if (identifierParsed && !identifierParsed.rest.trim()) {
+        return { name: identifierParsed.name, alias: split.alias, expression: null };
+      }
+      return { name: '', alias: split.alias, expression: split.exprPart };
+    }
+
+    function parseCommaSeparatedSelectItems(input) {
+      const parts = splitTopLevelCommas(input.trim());
+      if (!parts) return null;
+      const items = [];
+      for (let idx = 0; idx < parts.length; idx += 1) {
+        const parsed = parseSingleSelectItem(parts[idx]);
+        if (!parsed) return null;
+        items.push(parsed);
       }
       return items;
+    }
+
+    function isSimpleSelectIdentifier(value) {
+      return /^[A-Za-z_][A-Za-z0-9_]*$/.test(String(value).trim());
+    }
+
+    function columnStateFromSelectInput(value) {
+      const trimmed = String(value).trim();
+      if (!trimmed) return null;
+      if (isSimpleSelectIdentifier(trimmed)) {
+        return { name: trimmed, expression: null };
+      }
+      return { name: '', expression: trimmed };
+    }
+
+    function selectInputDisplayValue(column) {
+      if (column.expression != null && String(column.expression).trim()) {
+        return String(column.expression).trim();
+      }
+      return column.name || '';
     }
 
     function effectiveViewColumnName(column) {
       const alias =
         column.alias != null ? String(column.alias).trim() : '';
-      return alias || column.name;
+      if (alias) return alias;
+      const expression =
+        column.expression != null ? String(column.expression).trim() : '';
+      if (expression) return expression;
+      return column.name;
     }
 
     function selectOutputNamesUnique(columns) {
@@ -3619,6 +3746,22 @@
       return null;
     }
 
+    function validateViewExpression(expression) {
+      const trimmed = String(expression).trim();
+      if (!trimmed) return '式を入力してください';
+      if (trimmed.indexOf(';') !== -1) return '式にセミコロンは使用できません';
+      const words = trimmed
+        .toUpperCase()
+        .split(/[^A-Z0-9_]+/)
+        .filter(Boolean);
+      for (let i = 0; i < words.length; i += 1) {
+        if (FORBIDDEN_DDL_KEYWORDS.indexOf(words[i]) !== -1) {
+          return '式に使用できない SQL キーワードが含まれています';
+        }
+      }
+      return null;
+    }
+
     function validateViewOutputColumnNames(columns) {
       const seen = new Set();
       for (let i = 0; i < columns.length; i += 1) {
@@ -3628,6 +3771,14 @@
         if (alias) {
           const aliasError = validateViewColumnAlias(alias);
           if (aliasError) return aliasError;
+        }
+        const expression =
+          column.expression != null ? String(column.expression).trim() : '';
+        if (expression) {
+          const exprError = validateViewExpression(expression);
+          if (exprError) return exprError;
+        } else if (!String(column.name || '').trim()) {
+          return 'カラム名または式を入力してください';
         }
         const outputName = effectiveViewColumnName(column);
         if (seen.has(outputName)) {
@@ -3639,11 +3790,13 @@
     }
 
     function formatSimpleViewSelectColumn(column) {
-      const quoted = quoteSqlIdentifier(column.name);
+      const expression =
+        column.expression != null ? String(column.expression).trim() : '';
+      const selectPart = expression || quoteSqlIdentifier(column.name);
       const alias =
         column.alias != null ? String(column.alias).trim() : '';
-      if (!alias) return quoted;
-      return quoted + ' AS ' + quoteSqlIdentifier(alias);
+      if (!alias) return selectPart;
+      return selectPart + ' AS ' + quoteSqlIdentifier(alias);
     }
 
     function parseSimpleSelect(definition) {
@@ -3724,15 +3877,38 @@
     function readColumnState() {
       if (!columnsList) return [];
       return Array.from(columnsList.querySelectorAll('.view-ui-column-item')).map(function (item) {
+        const selectInput = item.querySelector('.view-ui-column-select-input');
         const aliasInput = item.querySelector('.view-ui-column-alias-input');
         const whereInput = item.querySelector('.view-ui-column-where-input');
         const aliasValue = aliasInput ? aliasInput.value.trim() : '';
         const whereValue = whereInput ? whereInput.value.trim() : '';
+        const selectValue = selectInput
+          ? selectInput.value
+          : item.dataset.columnExpression || item.dataset.columnName || '';
+        const parsed = columnStateFromSelectInput(selectValue);
+        if (!parsed) {
+          return {
+            name: '',
+            expression: null,
+            type_key: item.dataset.columnType || 'text',
+            alias: aliasValue || null,
+            where_condition: null,
+          };
+        }
+        const typeKey =
+          parsed.expression != null
+            ? 'text'
+            : tableApiColumns.find(function (entry) {
+                return entry.name === parsed.name;
+              })?.type_key ||
+              item.dataset.columnType ||
+              'text';
         return {
-          name: item.dataset.columnName || '',
-          type_key: item.dataset.columnType || 'text',
+          name: parsed.name,
+          expression: parsed.expression,
+          type_key: typeKey,
           alias: aliasValue || null,
-          where_condition: whereValue || null,
+          where_condition: parsed.expression ? null : whereValue || null,
         };
       });
     }
@@ -3749,8 +3925,20 @@
       const aliasValue = column.alias != null ? String(column.alias).trim() : '';
       const whereValue =
         column.where_condition != null ? String(column.where_condition).trim() : '';
+      const expressionValue =
+        column.expression != null ? String(column.expression).trim() : '';
+      if (expressionValue) {
+        return {
+          name: '',
+          expression: expressionValue,
+          type_key: column.type_key || 'text',
+          alias: aliasValue || null,
+          where_condition: null,
+        };
+      }
       return {
         name: column.name,
+        expression: null,
         type_key: typeByName[column.name] || column.type_key || 'text',
         alias: aliasValue || null,
         where_condition: whereValue || null,
@@ -3772,6 +3960,7 @@
         return toUiColumn(
           {
             name: item.name,
+            expression: item.expression || null,
             type_key: typeByName[item.name],
             alias: item.alias,
             where_condition: assignedWhere[index] || null,
@@ -3793,6 +3982,7 @@
           return column.included !== false;
         })
         .filter(function (column) {
+          if (column.expression) return true;
           return apiNames.has(column.name);
         })
         .map(function (column) {
@@ -3903,6 +4093,30 @@
       });
     }
 
+    function updateAddColumnButtonState() {
+      if (!addColumnBtn) return;
+      const selected = addColumnSelect ? addColumnSelect.value : '';
+      if (!selected) {
+        addColumnBtn.disabled = true;
+        return;
+      }
+      if (selected === EXPRESSION_OPTION_VALUE) {
+        const expr = addColumnExpression ? addColumnExpression.value.trim() : '';
+        addColumnBtn.disabled = !expr;
+        return;
+      }
+      addColumnBtn.disabled = false;
+    }
+
+    function toggleAddColumnExpressionInput() {
+      if (!addColumnSelect || !addColumnExpression) return;
+      const isExpression = addColumnSelect.value === EXPRESSION_OPTION_VALUE;
+      addColumnExpression.hidden = !isExpression;
+      addColumnExpression.disabled = !isExpression;
+      if (!isExpression) addColumnExpression.value = '';
+      updateAddColumnButtonState();
+    }
+
     function updateAddColumnSelect() {
       if (!addColumnSelect) return;
 
@@ -3918,9 +4132,36 @@
         option.textContent = column.name;
         addColumnSelect.appendChild(option);
       });
+      const expressionOption = document.createElement('option');
+      expressionOption.value = EXPRESSION_OPTION_VALUE;
+      expressionOption.textContent = '式を入力';
+      addColumnSelect.appendChild(expressionOption);
 
-      if (addColumnBtn) {
-        addColumnBtn.disabled = tableApiColumns.length === 0;
+      toggleAddColumnExpressionInput();
+    }
+
+    function updateColumnRowExpressionMode(item) {
+      const selectInput = item.querySelector('.view-ui-column-select-input');
+      const whereWrap = item.querySelector('.view-ui-column-where');
+      if (!selectInput) return;
+      const parsed = columnStateFromSelectInput(selectInput.value);
+      const isExpression = !!(parsed && parsed.expression);
+      item.classList.toggle('is-expression', isExpression);
+      if (parsed) {
+        item.dataset.columnName = parsed.name || '';
+        item.dataset.columnExpression = parsed.expression || '';
+        if (!isExpression) {
+          const apiColumn = tableApiColumns.find(function (entry) {
+            return entry.name === parsed.name;
+          });
+          item.dataset.columnType = apiColumn ? apiColumn.type_key : 'text';
+        } else {
+          item.dataset.columnType = 'text';
+          if (whereWrap) {
+            const whereInput = whereWrap.querySelector('.view-ui-column-where-input');
+            if (whereInput) whereInput.value = '';
+          }
+        }
       }
     }
 
@@ -4108,7 +4349,13 @@
     function createColumnRow(column) {
       const item = document.createElement('li');
       item.className = 'view-ui-column-item';
-      item.dataset.columnName = column.name;
+      const hasExpression =
+        column.expression != null && String(column.expression).trim();
+      if (hasExpression) {
+        item.classList.add('is-expression');
+      }
+      item.dataset.columnName = column.name || '';
+      item.dataset.columnExpression = hasExpression ? String(column.expression).trim() : '';
       item.dataset.columnType = column.type_key || 'text';
 
       const dragZone = document.createElement('div');
@@ -4124,16 +4371,18 @@
       const nameWrap = document.createElement('span');
       nameWrap.className = 'view-ui-column-name-wrap';
 
-      const nameLabel = document.createElement('span');
-      nameLabel.className = 'view-ui-column-name';
-      nameLabel.textContent = column.name;
+      const selectInput = document.createElement('input');
+      selectInput.type = 'text';
+      selectInput.className = 'view-ui-column-select-input';
+      selectInput.placeholder = hasExpression ? '例: LENGTH("body")' : 'カラム名';
+      selectInput.value = selectInputDisplayValue(column);
+      selectInput.addEventListener('input', function () {
+        updateColumnRowExpressionMode(item);
+      });
 
-      nameWrap.appendChild(nameLabel);
-      bindColumnNameTooltip(nameWrap);
-      updateColumnNameTooltip(nameWrap);
+      nameWrap.appendChild(selectInput);
 
       dragZone.appendChild(handle);
-      dragZone.appendChild(nameWrap);
 
       const aliasWrap = document.createElement('div');
       aliasWrap.className = 'view-ui-column-alias';
@@ -4160,6 +4409,7 @@
       removeBtn.textContent = '−';
 
       item.appendChild(dragZone);
+      item.appendChild(nameWrap);
       item.appendChild(aliasWrap);
       item.appendChild(whereWrap);
       item.appendChild(removeBtn);
@@ -4189,7 +4439,7 @@
         .join(', ');
       const whereParts = columns
         .filter(function (column) {
-          return column.where_condition;
+          return column.where_condition && !column.expression;
         })
         .map(function (column) {
           return quoteSqlIdentifier(column.name) + ' ' + column.where_condition;
@@ -4310,24 +4560,46 @@
       }
     }, true);
 
+    if (addColumnSelect) {
+      addColumnSelect.addEventListener('change', toggleAddColumnExpressionInput);
+    }
+
+    if (addColumnExpression) {
+      addColumnExpression.addEventListener('input', updateAddColumnButtonState);
+    }
+
     if (addColumnBtn) {
       addColumnBtn.addEventListener('click', function () {
-        const name = addColumnSelect ? addColumnSelect.value : '';
-        if (!name || !columnsList) return;
-        const column = tableApiColumns.find(function (entry) {
-          return entry.name === name;
-        });
-        if (!column) return;
-        columnsList.appendChild(
-          createColumnRow({
+        const selected = addColumnSelect ? addColumnSelect.value : '';
+        if (!selected || !columnsList) return;
+        let newColumn = null;
+        if (selected === EXPRESSION_OPTION_VALUE) {
+          const expression = addColumnExpression ? addColumnExpression.value.trim() : '';
+          if (!expression) return;
+          newColumn = {
+            name: '',
+            expression: expression,
+            type_key: 'text',
+            alias: null,
+            where_condition: null,
+          };
+        } else {
+          const column = tableApiColumns.find(function (entry) {
+            return entry.name === selected;
+          });
+          if (!column) return;
+          newColumn = {
             name: column.name,
+            expression: null,
             type_key: column.type_key,
             alias: null,
             where_condition: null,
-          })
-        );
+          };
+        }
+        columnsList.appendChild(createColumnRow(newColumn));
         if (addColumnSelect) addColumnSelect.value = '';
-        updateAllColumnNameTooltips();
+        if (addColumnExpression) addColumnExpression.value = '';
+        toggleAddColumnExpressionInput();
         updateAddColumnSelect();
         updateColumnsWrapVisibility();
       });

@@ -535,6 +535,62 @@ async fn database_view_form_column_alias() {
 }
 
 #[tokio::test]
+async fn database_view_form_expression_column() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=expr_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some(
+                "name=expr_notes_view&definition=SELECT+LENGTH(%22body%22)+AS+%22body_len%22%2C+%22id%22+FROM+%22expr_notes%22",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/expr_notes_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains(r#""base_table":"expr_notes""#));
+    assert!(html.contains(r#""expression":"LENGTH(\"body\")""#));
+    assert!(html.contains(r#""alias":"body_len""#));
+    assert!(html.contains("view-ui-add-column-expression"));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/expr_notes_view/data/rows",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["body_len", "id"]));
+}
+
+#[tokio::test]
 async fn database_view_data_survives_definition_change_with_stale_sort() {
     let app = common::TestApp::new().await;
 

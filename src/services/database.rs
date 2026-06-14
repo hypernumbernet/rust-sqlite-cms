@@ -194,6 +194,8 @@ pub struct SimpleViewUiColumn {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alias: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expression: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub where_condition: Option<String>,
 }
 
@@ -208,6 +210,7 @@ pub struct SimpleViewUiSpec {
 pub(crate) struct ParsedViewColumn {
     pub(crate) name: String,
     pub(crate) alias: Option<String>,
+    pub(crate) expression: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1231,6 +1234,7 @@ pub(crate) fn build_simple_view_ui_spec(
             .map(|column| ParsedViewColumn {
                 name: column.name.clone(),
                 alias: None,
+                expression: None,
             })
             .collect(),
         ParsedViewColumnList::Columns(selected) => selected.clone(),
@@ -1249,6 +1253,7 @@ pub(crate) fn build_simple_view_ui_spec(
                 .unwrap_or_else(|| "text".to_string()),
             where_condition,
             alias: column.alias,
+            expression: column.expression,
             name: column.name,
         })
         .collect();
@@ -1290,19 +1295,33 @@ fn effective_view_column_name(column: &SimpleViewUiColumn) -> String {
         .map(|value| value.trim())
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string())
+        .or_else(|| {
+            column
+                .expression
+                .as_ref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+        })
         .unwrap_or_else(|| column.name.clone())
 }
 
 fn format_simple_view_select_column(column: &SimpleViewUiColumn) -> String {
-    let quoted = quote_sql_identifier(&column.name);
+    let select_part = column
+        .expression
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| quote_sql_identifier(&column.name));
     let alias = column
         .alias
         .as_ref()
         .map(|value| value.trim())
         .filter(|value| !value.is_empty());
     match alias {
-        Some(alias) => format!("{} AS {}", quoted, quote_sql_identifier(alias)),
-        None => quoted,
+        Some(alias) => format!("{select_part} AS {}", quote_sql_identifier(alias)),
+        None => select_part,
     }
 }
 
@@ -1321,6 +1340,14 @@ fn validate_view_output_column_names(columns: &[SimpleViewUiColumn]) -> DomainRe
         {
             validate_view_column_alias(alias)?;
         }
+        if let Some(expression) = column
+            .expression
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            validate_ddl_fragment(expression, "式")?;
+        }
         let output_name = effective_view_column_name(column);
         if !seen.insert(output_name.clone()) {
             return Err(DomainError::Validation(
@@ -1336,6 +1363,7 @@ fn select_output_name(column: &ParsedViewColumn) -> String {
         .alias
         .as_ref()
         .cloned()
+        .or_else(|| column.expression.clone())
         .unwrap_or_else(|| column.name.clone())
 }
 
@@ -1370,6 +1398,9 @@ fn build_simple_view_where_clause(columns: &[SimpleViewUiColumn]) -> String {
     let conditions: Vec<String> = columns
         .iter()
         .filter_map(|column| {
+            if column.expression.is_some() {
+                return None;
+            }
             column
                 .where_condition
                 .as_ref()
@@ -1532,30 +1563,169 @@ fn has_unclosed_string_literal(input: &str) -> bool {
 }
 
 fn parse_comma_separated_select_items(input: &str) -> Option<Vec<ParsedViewColumn>> {
-    let mut items = Vec::new();
-    let mut rest = input.trim();
+    let parts = split_top_level_commas(input)?;
+    parts
+        .iter()
+        .map(|part| parse_single_select_item(part))
+        .collect()
+}
 
-    while !rest.is_empty() {
-        let (name, remaining) = parse_sql_identifier_prefix(rest)?;
-        let mut alias = None;
-        let mut remaining = remaining.trim();
-        if find_sql_keyword(remaining, "AS", 0) == Some(0) {
-            let after_as = remaining["AS".len()..].trim();
-            let (alias_name, after_alias) = parse_sql_identifier_prefix(after_as)?;
-            alias = Some(alias_name);
-            remaining = after_alias.trim();
-        }
-        items.push(ParsedViewColumn { name, alias });
-        if remaining.is_empty() {
-            break;
-        }
-        if !remaining.starts_with(',') {
-            return None;
-        }
-        rest = remaining[1..].trim();
+fn parse_single_select_item(item: &str) -> Option<ParsedViewColumn> {
+    let (expr_part, alias) = split_select_item_alias(item.trim())?;
+    if expr_part.is_empty() {
+        return None;
     }
 
-    Some(items)
+    if let Some((name, rest)) = parse_sql_identifier_prefix(&expr_part) {
+        if rest.trim().is_empty() {
+            return Some(ParsedViewColumn {
+                name,
+                alias,
+                expression: None,
+            });
+        }
+    }
+
+    Some(ParsedViewColumn {
+        name: String::new(),
+        alias,
+        expression: Some(expr_part),
+    })
+}
+
+fn split_select_item_alias(item: &str) -> Option<(String, Option<String>)> {
+    if let Some(as_pos) = find_top_level_keyword_with_parens(item, "AS") {
+        let expr_part = item[..as_pos].trim();
+        let after_as = item[as_pos + "AS".len()..].trim();
+        let (alias_name, rest) = parse_sql_identifier_prefix(after_as)?;
+        if !rest.trim().is_empty() {
+            return None;
+        }
+        return Some((expr_part.to_string(), Some(alias_name)));
+    }
+
+    Some((item.to_string(), None))
+}
+
+fn split_top_level_commas(input: &str) -> Option<Vec<String>> {
+    if has_unclosed_string_literal(input) {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    let mut segment_start = 0usize;
+    let mut paren_depth = 0i32;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut i = 0usize;
+
+    while i < input.len() {
+        let ch = input[i..].chars().next()?;
+        let ch_len = ch.len_utf8();
+
+        if in_single_quote {
+            if ch == '\'' {
+                in_single_quote = false;
+            }
+            i += ch_len;
+            continue;
+        }
+
+        if in_double_quote {
+            if ch == '"' {
+                let next_byte = input.as_bytes().get(i + ch_len).copied();
+                if next_byte == Some(b'"') {
+                    i += ch_len * 2;
+                    continue;
+                }
+                in_double_quote = false;
+            }
+            i += ch_len;
+            continue;
+        }
+
+        match ch {
+            '\'' => in_single_quote = true,
+            '"' => in_double_quote = true,
+            '(' => paren_depth += 1,
+            ')' => {
+                if paren_depth > 0 {
+                    paren_depth -= 1;
+                }
+            }
+            ',' if paren_depth == 0 => {
+                let segment = input[segment_start..i].trim();
+                if segment.is_empty() {
+                    return None;
+                }
+                parts.push(segment.to_string());
+                segment_start = i + ch_len;
+            }
+            _ => {}
+        }
+
+        i += ch_len;
+    }
+
+    let last = input[segment_start..].trim();
+    if last.is_empty() {
+        return if parts.is_empty() { None } else { Some(parts) };
+    }
+    parts.push(last.to_string());
+    Some(parts)
+}
+
+fn find_top_level_keyword_with_parens(input: &str, keyword: &str) -> Option<usize> {
+    let mut paren_depth = 0i32;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut i = 0usize;
+
+    while i < input.len() {
+        let ch = input[i..].chars().next()?;
+        let ch_len = ch.len_utf8();
+
+        if in_single_quote {
+            if ch == '\'' {
+                in_single_quote = false;
+            }
+            i += ch_len;
+            continue;
+        }
+
+        if in_double_quote {
+            if ch == '"' {
+                let next_byte = input.as_bytes().get(i + ch_len).copied();
+                if next_byte == Some(b'"') {
+                    i += ch_len * 2;
+                    continue;
+                }
+                in_double_quote = false;
+            }
+            i += ch_len;
+            continue;
+        }
+
+        match ch {
+            '\'' => in_single_quote = true,
+            '"' => in_double_quote = true,
+            '(' => paren_depth += 1,
+            ')' => {
+                if paren_depth > 0 {
+                    paren_depth -= 1;
+                }
+            }
+            _ => {
+                if paren_depth == 0 && find_sql_keyword(&input[i..], keyword, 0) == Some(0) {
+                    return Some(i);
+                }
+            }
+        }
+
+        i += ch_len;
+    }
+
+    None
 }
 
 fn parse_sql_identifier_prefix(input: &str) -> Option<(String, &str)> {
@@ -4573,6 +4743,7 @@ mod tests {
                 name: "body".to_string(),
                 type_key: "text".to_string(),
                 alias: None,
+                expression: None,
                 where_condition: None,
             }],
         };
@@ -4589,6 +4760,7 @@ mod tests {
                 name: "id".to_string(),
                 type_key: "integer".to_string(),
                 alias: Some("user_id".to_string()),
+                expression: None,
                 where_condition: None,
             }],
         };
@@ -4606,12 +4778,14 @@ mod tests {
                     name: "id".to_string(),
                     type_key: "integer".to_string(),
                     alias: None,
+                    expression: None,
                     where_condition: None,
                 },
                 SimpleViewUiColumn {
                     name: "id".to_string(),
                     type_key: "integer".to_string(),
                     alias: None,
+                    expression: None,
                     where_condition: None,
                 },
             ],
@@ -4630,12 +4804,14 @@ mod tests {
                     name: "id".to_string(),
                     type_key: "integer".to_string(),
                     alias: None,
+                    expression: None,
                     where_condition: Some("> 0".to_string()),
                 },
                 SimpleViewUiColumn {
                     name: "body".to_string(),
                     type_key: "text".to_string(),
                     alias: None,
+                    expression: None,
                     where_condition: Some("IS NOT NULL".to_string()),
                 },
             ],
@@ -4655,6 +4831,119 @@ mod tests {
             columns: vec![],
         };
         assert!(build_simple_view_select(&spec).is_err());
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_expression_with_alias() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT LENGTH("body") AS "body_len", "id" FROM "custom_notes""#,
+        )
+        .expect("parsed");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 2
+                    && columns[0].name.is_empty()
+                    && columns[0].expression.as_deref() == Some(r#"LENGTH("body")"#)
+                    && columns[0].alias.as_deref() == Some("body_len")
+                    && columns[1].name == "id"
+                    && columns[1].expression.is_none()
+        ));
+    }
+
+    #[test]
+    fn build_simple_view_select_generates_expression_column() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            columns: vec![
+                SimpleViewUiColumn {
+                    name: String::new(),
+                    type_key: "text".to_string(),
+                    alias: Some("body_len".to_string()),
+                    expression: Some(r#"LENGTH("body")"#.to_string()),
+                    where_condition: None,
+                },
+                SimpleViewUiColumn {
+                    name: "id".to_string(),
+                    type_key: "integer".to_string(),
+                    alias: None,
+                    expression: None,
+                    where_condition: None,
+                },
+            ],
+        };
+
+        let sql = build_simple_view_select(&spec).expect("sql");
+        assert_eq!(
+            sql,
+            r#"SELECT LENGTH("body") AS "body_len", "id" FROM "custom_notes""#
+        );
+    }
+
+    #[test]
+    fn build_simple_view_ui_spec_restores_expression_column() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT LENGTH("body") AS "body_len" FROM "custom_notes""#,
+        )
+        .expect("parsed");
+        let table_columns = vec![TableColumnUiInfo {
+            name: "body".to_string(),
+            type_key: "text".to_string(),
+            pk: false,
+            nullable: false,
+        }];
+
+        let spec = build_simple_view_ui_spec(&parsed, &table_columns);
+        assert_eq!(spec.columns.len(), 1);
+        assert_eq!(
+            spec.columns[0].expression.as_deref(),
+            Some(r#"LENGTH("body")"#)
+        );
+        assert_eq!(spec.columns[0].alias.as_deref(), Some("body_len"));
+        assert!(spec.columns[0].where_condition.is_none());
+    }
+
+    #[test]
+    fn build_simple_view_select_rejects_duplicate_expression_output_names() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            columns: vec![
+                SimpleViewUiColumn {
+                    name: String::new(),
+                    type_key: "text".to_string(),
+                    alias: None,
+                    expression: Some(r#"LENGTH("body")"#.to_string()),
+                    where_condition: None,
+                },
+                SimpleViewUiColumn {
+                    name: String::new(),
+                    type_key: "text".to_string(),
+                    alias: None,
+                    expression: Some(r#"LENGTH("body")"#.to_string()),
+                    where_condition: None,
+                },
+            ],
+        };
+
+        let err = build_simple_view_select(&spec).unwrap_err();
+        assert!(matches!(err, DomainError::Validation(ref msg) if msg.contains("出力列名が重複")));
+    }
+
+    #[test]
+    fn build_simple_view_select_rejects_forbidden_keyword_in_expression() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            columns: vec![SimpleViewUiColumn {
+                name: String::new(),
+                type_key: "text".to_string(),
+                alias: None,
+                expression: Some("DELETE FROM custom_notes".to_string()),
+                where_condition: None,
+            }],
+        };
+
+        let err = build_simple_view_select(&spec).unwrap_err();
+        assert!(matches!(err, DomainError::Validation(ref msg) if msg.contains("式")));
     }
 
     #[test]

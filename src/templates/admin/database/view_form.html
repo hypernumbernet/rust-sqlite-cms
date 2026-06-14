@@ -60,10 +60,11 @@
               <select id="view-ui-add-column-select" aria-label="追加するカラム">
                 <option value="">カラムを選択</option>
               </select>
+              <input type="text" id="view-ui-add-column-expression" class="view-ui-add-column-expression" placeholder='例: LENGTH("body")' hidden disabled aria-label="追加する式">
               <button type="button" class="view-ui-icon-btn" id="view-ui-add-column-btn" aria-label="カラムを追加">+</button>
             </div>
           </div>
-          <p class="help">カラムを追加・削除できます。同じカラムを複数回追加できます。別名欄で出力列名を指定できます（未入力時は元のカラム名）。出力列名（別名または元カラム名）は重複できません。WHERE 欄には列名以外の条件を入力してください（例: <code>IS NOT NULL</code>）。複数列の条件は AND で結合されます。ドラッグで並び順を変更できます。</p>
+          <p class="help">カラムを追加・削除できます。同じカラムを複数回追加できます。カラム選択で「式を入力」を選ぶと、式（例: <code>LENGTH("body")</code>）を追加できます。各行のカラム名欄はカラム名または式を直接編集できます。別名欄で出力列名を指定できます（未入力時は元のカラム名または式）。出力列名（別名または元カラム名・式）は重複できません。WHERE 欄には列名以外の条件を入力してください（例: <code>IS NOT NULL</code>）。式の行には WHERE は適用されません。複数列の条件は AND で結合されます。ドラッグで並び順を変更できます。</p>
         </div>
       </div>
 

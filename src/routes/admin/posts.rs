@@ -18,7 +18,7 @@ use crate::services;
 use crate::state::AppState;
 use crate::widgets::{self};
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 #[derive(Debug, Deserialize)]
 struct PlaceholderForm {
@@ -181,7 +181,6 @@ struct EntryFormTemplate {
     heading: String,
     action: String,
     submit_label: String,
-    placeholder_name: String,
     back_url: String,
     title: String,
     content: String,
@@ -218,7 +217,6 @@ struct ImageEntryFormTemplate {
     heading: String,
     action: String,
     submit_label: String,
-    placeholder_name: String,
     back_url: String,
     title: String,
     content: String,
@@ -250,7 +248,6 @@ struct CarouselEntryFormTemplate {
     heading: String,
     action: String,
     submit_label: String,
-    placeholder_name: String,
     back_url: String,
     title: String,
     content: String,
@@ -309,7 +306,7 @@ async fn placeholder_index(auth: AuthUser, State(state): State<AppState>) -> App
         .collect::<Vec<_>>();
     let has_placeholders = !placeholders.is_empty();
     let html = PlaceholderIndexTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::posts_index()),
         placeholders,
         has_placeholders,
     }
@@ -322,7 +319,7 @@ async fn trash_index(auth: AuthUser, State(state): State<AppState>) -> AppResult
     let items = build_trash_list(&state).await?;
     let has_items = !items.is_empty();
     let html = TrashIndexTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::posts_trash()),
         items,
         has_items,
     }
@@ -959,11 +956,22 @@ async fn image_entry_form_template(
         };
 
     Ok(ImageEntryFormTemplate {
-        layout: layout::AdminLayoutCtx::with_embed(auth, embed),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::with_embed(auth, embed),
+            breadcrumb::posts_entry(
+                placeholder.id,
+                &placeholder.name,
+                if entry.is_some() {
+                    "画像を編集"
+                } else {
+                    "画像を追加"
+                },
+                embed,
+            ),
+        ),
         heading,
         action,
         submit_label,
-        placeholder_name: placeholder.name.clone(),
         back_url,
         title,
         content,
@@ -1100,11 +1108,22 @@ async fn carousel_entry_form_template(
         };
 
     Ok(CarouselEntryFormTemplate {
-        layout: layout::AdminLayoutCtx::with_embed(auth, embed),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::with_embed(auth, embed),
+            breadcrumb::posts_entry(
+                placeholder.id,
+                &placeholder.name,
+                if entry.is_some() {
+                    "スライドを編集"
+                } else {
+                    "スライドを追加"
+                },
+                embed,
+            ),
+        ),
         heading,
         action,
         submit_label,
-        placeholder_name: placeholder.name.clone(),
         back_url,
         title,
         content,
@@ -1255,7 +1274,10 @@ async fn build_manage_template(
     let (template_example, template_help) = widgets::template_usage(&type_key, &name);
 
     Ok(PlaceholderManageTemplate {
-        layout: layout::AdminLayoutCtx::with_embed(auth, embed),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::with_embed(auth, embed),
+            breadcrumb::posts_placeholder_manage(id, &placeholder.name, embed, is_settings_tab),
+        ),
         placeholder_id: id,
         placeholder_name: placeholder.name.clone(),
         type_key,
@@ -1310,8 +1332,13 @@ async fn build_placeholder_form(
     let (template_example, template_help) = widgets::template_usage(&type_key, name);
     let config_schema = widget_config_schema(&state.pool(), effective_type_id).await?;
 
+    let breadcrumbs = if is_edit {
+        breadcrumb::posts_placeholder_edit(name)
+    } else {
+        breadcrumb::posts_placeholder_new()
+    };
     Ok(PlaceholderFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumbs),
         heading: heading.to_string(),
         action: action.to_string(),
         submit_label: submit_label.to_string(),
@@ -1583,6 +1610,10 @@ impl EntryFormTemplate {
             &format!("/admin/posts/placeholders/{}", placeholder.id),
             embed,
         );
+        let layout = breadcrumb::with(
+            layout,
+            breadcrumb::posts_entry(placeholder.id, &placeholder.name, "新規投稿", embed),
+        );
         Self {
             layout,
             heading: "投稿を追加".to_string(),
@@ -1591,7 +1622,6 @@ impl EntryFormTemplate {
                 embed,
             ),
             submit_label: "追加する".to_string(),
-            placeholder_name: placeholder.name.clone(),
             back_url,
             title: String::new(),
             content: String::new(),
@@ -1616,6 +1646,11 @@ impl EntryFormTemplate {
         let post_status = normalize_status(&entry.post_status);
         let is_publish = post_status == "publish";
 
+        let layout = breadcrumb::with(
+            layout,
+            breadcrumb::posts_entry(placeholder.id, &placeholder.name, "編集", embed),
+        );
+
         Self {
             layout,
             heading: "投稿を編集".to_string(),
@@ -1627,7 +1662,6 @@ impl EntryFormTemplate {
                 embed,
             ),
             submit_label: "更新する".to_string(),
-            placeholder_name: placeholder.name.clone(),
             back_url,
             title: entry.title,
             content: entry.content,

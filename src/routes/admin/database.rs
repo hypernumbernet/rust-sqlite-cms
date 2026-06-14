@@ -32,7 +32,7 @@ use crate::services::database::{
 };
 use crate::state::AppState;
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 #[derive(Debug, Clone)]
 struct TableListItem {
@@ -189,7 +189,6 @@ struct ViewFormTemplate {
     submit_label: String,
     name: String,
     name_readonly: bool,
-    is_edit: bool,
     definition: String,
     error_message: String,
     table_options: Vec<ViewSourceTableOption>,
@@ -372,7 +371,7 @@ async fn index(
     };
 
     let html = DatabaseTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::database_index()),
         has_user_tables,
         has_views: !views.is_empty(),
         tables,
@@ -1219,7 +1218,10 @@ async fn handle_object_viewable_error(
 
 fn render_data_page(auth: &AuthUser, params: DataPageParams) -> AppResult<String> {
     Ok(TableDataTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::new(auth),
+            breadcrumb::database_table_data(&params.name, params.read_only),
+        ),
         table_name: params.name,
         data_api_url: params.data_api_url,
         read_only: params.read_only,
@@ -1243,11 +1245,15 @@ fn table_seed_form_template(
     count: String,
     error_message: &str,
 ) -> AppResult<String> {
+    let data_url = table_url(table_name, "/data");
     Ok(TableSeedFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::new(auth),
+            breadcrumb::database_table_seed(table_name, &data_url),
+        ),
         table_name: table_name.to_string(),
         action: table_url(table_name, "/data/seed"),
-        data_url: table_url(table_name, "/data"),
+        data_url,
         count,
         max_count: database::MAX_TEST_DATA_ROWS,
         has_columns: !columns.is_empty(),
@@ -1339,8 +1345,13 @@ fn table_form_template(auth: &AuthUser, params: TableFormParams<'_>) -> AppResul
     } else {
         String::new()
     };
+    let breadcrumbs = if params.is_edit {
+        breadcrumb::database_table_edit(params.name, &data_url)
+    } else {
+        breadcrumb::database_table_new()
+    };
     Ok(TableFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumbs),
         heading: params.heading.to_string(),
         action: params.action,
         cancel_url: "/admin/database",
@@ -1368,15 +1379,19 @@ async fn render_view_form(
         .collect::<Vec<_>>();
     let ui_builder_json = build_view_ui_builder_json(pool, params.definition).await;
 
+    let breadcrumbs = if params.is_edit {
+        breadcrumb::database_view_edit(params.name)
+    } else {
+        breadcrumb::database_view_new()
+    };
     Ok(ViewFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumbs),
         heading: params.heading.to_string(),
         action: params.action,
         cancel_url: "/admin/database?tab=views",
         submit_label: params.submit_label.to_string(),
         name: params.name.to_string(),
         name_readonly: params.name_readonly,
-        is_edit: params.is_edit,
         definition: params.definition.to_string(),
         error_message: params.error_message.to_string(),
         table_options,
@@ -1413,7 +1428,10 @@ async fn system_table_notice_response(
     message: &str,
 ) -> AppResult<Response> {
     let html = TableNoticeTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::new(auth),
+            breadcrumb::database_table_notice(table_name),
+        ),
         table_name: table_name.to_string(),
         message: message.to_string(),
     }

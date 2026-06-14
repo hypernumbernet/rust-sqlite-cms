@@ -72,14 +72,61 @@ body {
 .topbar {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  padding: 14px 24px;
+  padding: 18px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 12px;
 }
-.topbar h1 { margin: 0; font-size: 18px; }
+.topbar-main {
+  flex: 1;
+  min-width: 0;
+}
+.topbar-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.topbar--embed {
+  padding: 12px 16px;
+}
+.topbar .breadcrumb--heading {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em 0.55em;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.topbar .breadcrumb--heading a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: 4px;
+}
+.topbar .breadcrumb--heading a:hover {
+  background: var(--bg);
+  text-decoration: underline;
+}
+.topbar .breadcrumb--heading .breadcrumb-sep {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.85em;
+  user-select: none;
+}
+.topbar .breadcrumb--heading .breadcrumb-current {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 600;
+  line-height: inherit;
+  color: var(--text);
+}
 .topbar .user { color: var(--muted); font-size: 13px; }
 .topbar .user-form {
   display: flex;
@@ -101,9 +148,6 @@ body {
 a { color: var(--accent); }
 
 /* ========== Common admin UI components (shared by all pages) ========== */
-.breadcrumb { margin: 0 0 16px; font-size: 13px; color: var(--muted); }
-.breadcrumb a { text-decoration: none; }
-
 .form-layout {
   display: grid;
   grid-template-columns: 1fr;

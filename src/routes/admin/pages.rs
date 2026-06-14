@@ -18,7 +18,7 @@ use crate::services;
 use crate::state::AppState;
 use crate::theme;
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 #[derive(Debug, Deserialize)]
 struct PageForm {
@@ -121,7 +121,7 @@ async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl 
         .map(|page| PageListItem::from_page(&page))
         .collect::<Vec<_>>();
     let html = PageIndexTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::pages_index()),
         pages,
     }
     .render()?;
@@ -139,7 +139,7 @@ async fn new_gallery(auth: AuthUser) -> AppResult<impl IntoResponse> {
         })
         .collect::<Vec<_>>();
     let html = PageGalleryTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::pages_gallery()),
         presets,
     }
     .render()?;
@@ -663,6 +663,12 @@ fn page_form_template(
     error_message: &str,
     delete_action: &str,
 ) -> PageFormTemplate {
+    let breadcrumb_current = if is_edit {
+        name.as_str()
+    } else {
+        "新規ページ"
+    };
+    let layout = breadcrumb::with(layout, breadcrumb::pages_form(breadcrumb_current));
     PageFormTemplate {
         layout,
         heading: heading.to_string(),

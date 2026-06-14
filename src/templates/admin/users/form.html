@@ -5,8 +5,6 @@
 {% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
-<p class="breadcrumb"><a href="/admin/users">ユーザー</a></p>
-
 {% if !error_message.is_empty() %}
 <div class="error">{{ error_message }}</div>
 {% endif %}

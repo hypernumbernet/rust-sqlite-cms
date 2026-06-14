@@ -75,12 +75,6 @@
 {% endblock %}
 
 {% block content %}
-<p class="breadcrumb">
-  <a href="/admin/database">DB管理</a> /
-  <a href="{{ data_url }}"><code>{{ table_name }}</code> データ</a> /
-  テストデータ生成
-</p>
-
 {% if !error_message.is_empty() %}
 <div class="error">{{ error_message }}</div>
 {% endif %}

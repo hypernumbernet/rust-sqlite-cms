@@ -22,6 +22,7 @@ use crate::state::AppState;
 use chrono::DateTime;
 
 pub mod auth;
+pub mod breadcrumb;
 pub mod backup;
 pub mod database;
 pub mod layout;
@@ -85,7 +86,10 @@ async fn dashboard(
         .unwrap_or_else(|| state.config.site.tagline.clone());
 
     let html = DashboardTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::new(&auth),
+            breadcrumb::dashboard(),
+        ),
         blogname,
         blogdescription,
     }

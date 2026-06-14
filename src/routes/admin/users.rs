@@ -13,7 +13,7 @@ use crate::repos::users as users_repo;
 use crate::services::users::{self, CreateUserParams, UpdateUserParams};
 use crate::state::AppState;
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 #[derive(Debug, Deserialize, Default)]
 struct UserForm {
@@ -92,7 +92,10 @@ async fn index(auth: AuthUser, State(state): State<AppState>) -> AppResult<impl 
 
 async fn new_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
     let html = UserFormTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::new(&auth),
+            breadcrumb::users_form("", true),
+        ),
         heading: "ユーザーを追加".to_string(),
         action: "/admin/users/new".to_string(),
         submit_label: "追加する".to_string(),
@@ -127,7 +130,10 @@ async fn create(
         Err(err) => {
             let message = domain_error_message(&err);
             let html = UserFormTemplate {
-                layout: layout::AdminLayoutCtx::new(&auth),
+                layout: breadcrumb::with(
+                    layout::AdminLayoutCtx::new(&auth),
+                    breadcrumb::users_form("", true),
+                ),
                 heading: "ユーザーを追加".to_string(),
                 action: "/admin/users/new".to_string(),
                 submit_label: "追加する".to_string(),
@@ -213,7 +219,7 @@ async fn render_index(auth: &AuthUser, state: &AppState, error_message: &str) ->
     let has_users = !users.is_empty();
 
     Ok(UserIndexTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumb::users_index()),
         users,
         has_users,
         error_message: error_message.to_string(),
@@ -223,7 +229,10 @@ async fn render_index(auth: &AuthUser, state: &AppState, error_message: &str) ->
 
 fn user_form_template(auth: &AuthUser, user: &User, error_message: &str) -> AppResult<String> {
     Ok(UserFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::new(auth),
+            breadcrumb::users_form(&user.display_name, false),
+        ),
         heading: "ユーザーを編集".to_string(),
         action: format!("/admin/users/{}/edit", user.id),
         submit_label: "変更を保存".to_string(),

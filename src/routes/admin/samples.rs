@@ -11,7 +11,7 @@ use crate::error::{AppError, AppResult};
 use crate::samples::{self, InstallResult, SampleLayoutSetMeta, SampleTableSetMeta};
 use crate::state::AppState;
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 #[derive(Template)]
 #[template(path = "admin/samples/index.html")]
@@ -62,7 +62,7 @@ fn render_template(
     last_result: Option<InstallSummary>,
 ) -> AppResult<String> {
     SamplesTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumb::samples_index()),
         layout_sets: samples::SAMPLE_LAYOUT_SETS.to_vec(),
         table_sets: samples::SAMPLE_TABLE_SETS.to_vec(),
         message,

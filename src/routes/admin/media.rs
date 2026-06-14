@@ -14,7 +14,7 @@ use crate::repos::media as media_repo;
 use crate::services;
 use crate::state::AppState;
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 #[derive(Debug, Clone)]
 struct MediaListItem {
@@ -176,7 +176,7 @@ async fn render_index(
     let has_media = !media_items.is_empty();
 
     Ok(MediaIndexTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumb::media_index()),
         media_items,
         has_media,
         error_message: error_message.to_string(),

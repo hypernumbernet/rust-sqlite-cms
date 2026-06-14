@@ -13,7 +13,7 @@ use crate::error::{AppError, AppResult};
 use crate::services::backup::{self, BackupRestoreResult, BackupStats};
 use crate::state::AppState;
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 #[derive(Template)]
 #[template(path = "admin/backup/index.html")]
@@ -54,7 +54,7 @@ async fn show(
 ) -> AppResult<impl IntoResponse> {
     let stats = backup::collect_stats(&state.pool()).await?;
     let html = BackupTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::backup_index()),
         stats,
         database_path: state.config.database.path.clone(),
         work_dir: state.config.paths.work_dir.clone(),
@@ -128,7 +128,7 @@ async fn render_result(
 ) -> AppResult<Response> {
     let stats = backup::collect_stats(&state.pool()).await?;
     let html = BackupTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::backup_index()),
         stats,
         database_path: state.config.database.path.clone(),
         work_dir: state.config.paths.work_dir.clone(),

@@ -14,7 +14,7 @@ use crate::repos::widget_types as widget_types_repo;
 use crate::services;
 use crate::state::AppState;
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 #[derive(Debug, Deserialize)]
 struct WidgetTypeForm {
@@ -108,7 +108,7 @@ async fn index(
         .map(WidgetTypeListItem::from)
         .collect::<Vec<_>>();
     let html = WidgetIndexTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::widgets_index()),
         widget_types,
         success_message: query.success_message,
         error_message: query.error_message,
@@ -120,7 +120,7 @@ async fn index(
 
 async fn import_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
     let html = WidgetImportTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::widgets_import()),
     }
     .render()?;
 
@@ -129,7 +129,7 @@ async fn import_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
 
 async fn new_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
     let html = WidgetNewFormTemplate {
-        layout: layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(&auth), breadcrumb::widgets_new()),
         heading: "ウィジェットを新規追加".to_string(),
         action: "/admin/widgets".to_string(),
         submit_label: "作成する".to_string(),
@@ -189,7 +189,7 @@ fn render_new_form_error(
     message: &str,
 ) -> AppResult<Response> {
     let html = WidgetNewFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumb::widgets_new()),
         heading: "ウィジェットを新規追加".to_string(),
         action: "/admin/widgets".to_string(),
         submit_label: "作成する".to_string(),
@@ -370,7 +370,10 @@ fn render_widget_edit_form(
     let description = services::widgets::display_description(widget_type);
 
     let template = WidgetEditFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(
+            layout::AdminLayoutCtx::new(auth),
+            breadcrumb::widgets_edit(&label),
+        ),
         heading: format!("{} を編集", label),
         action: format!("/admin/widgets/{}/edit", widget_type.type_key),
         delete_action: format!("/admin/widgets/{}/delete", widget_type.type_key),

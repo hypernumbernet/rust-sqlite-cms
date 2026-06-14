@@ -5,15 +5,6 @@
 {% block heading %}{{ heading }}{% endblock %}
 
 {% block content %}
-{% if is_edit %}
-<p class="breadcrumb">
-  <a href="/admin/database?tab=views">DB管理</a> /
-  <code>{{ name }}</code>
-</p>
-{% else %}
-<p class="breadcrumb"><a href="/admin/database?tab=views">DB管理</a></p>
-{% endif %}
-
 {% if !error_message.is_empty() %}
 <div class="error">{{ error_message }}</div>
 {% endif %}

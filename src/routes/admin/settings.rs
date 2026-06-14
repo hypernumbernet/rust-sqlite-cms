@@ -11,7 +11,7 @@ use crate::error::AppResult;
 use crate::services;
 use crate::state::AppState;
 
-use super::{auth::AuthUser, layout};
+use super::{auth::AuthUser, breadcrumb, layout};
 
 // 読み取り用に repos を残す（または services 経由に完全移行）
 use crate::repos::options;
@@ -98,7 +98,7 @@ async fn render_form(
     };
 
     Ok(SettingsFormTemplate {
-        layout: layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumb::settings_index()),
         blogname,
         blogdescription,
         siteurl,

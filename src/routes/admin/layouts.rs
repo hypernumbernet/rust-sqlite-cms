@@ -16,7 +16,7 @@ use crate::services::{self, layouts::LayoutAdminFile};
 use crate::state::AppState;
 use crate::theme;
 
-use super::{auth::AuthUser, format_updated_at, layout as admin_layout};
+use super::{auth::AuthUser, breadcrumb, format_updated_at, layout as admin_layout};
 
 #[derive(Debug, Deserialize)]
 struct LayoutForm {
@@ -204,7 +204,10 @@ async fn index(
         .collect();
 
     let html = LayoutIndexTemplate {
-        layout: admin_layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(
+            admin_layout::AdminLayoutCtx::new(&auth),
+            breadcrumb::layouts_index(),
+        ),
         layouts,
         success_message: query.success_message,
         error_message: query.error_message,
@@ -216,7 +219,10 @@ async fn index(
 
 async fn import_form(auth: AuthUser) -> AppResult<impl IntoResponse> {
     let html = LayoutImportTemplate {
-        layout: admin_layout::AdminLayoutCtx::new(&auth),
+        layout: breadcrumb::with(
+            admin_layout::AdminLayoutCtx::new(&auth),
+            breadcrumb::layouts_import(),
+        ),
     }
     .render()?;
 
@@ -759,6 +765,7 @@ async fn build_layout_form(
         String::new()
     };
 
+    let layout = breadcrumb::with(layout, breadcrumb::layouts_form(&name, !is_edit));
     Ok(LayoutFormTemplate {
         layout,
         heading: heading.to_string(),
@@ -895,7 +902,10 @@ async fn render_file_edit_response(auth: &AuthUser, view: FileEditView) -> AppRe
 
 fn build_file_edit_template(auth: &AuthUser, view: FileEditView) -> LayoutFileEditTemplate {
     LayoutFileEditTemplate {
-        layout: admin_layout::AdminLayoutCtx::new(auth),
+        layout: breadcrumb::with(
+            admin_layout::AdminLayoutCtx::new(auth),
+            breadcrumb::layouts_file_edit(view.layout_id, &view.layout_name, &view.file_label),
+        ),
         heading: format!("{} — {}", view.layout_name, view.file_label),
         file_label: view.file_label,
         action: view.action,

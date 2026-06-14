@@ -33,7 +33,6 @@
       min-height: 420px;
       resize: vertical;
     }
-    body.embed-mode .breadcrumb a[href="/admin/posts"]:first-child { display: none; }
   </style>
   {% endif %}
   {% block extra_styles %}{% endblock %}
@@ -62,15 +61,30 @@
     </aside>
     {% endif %}
     <div class="main">
-      {% if !layout.embed %}
-      <header class="topbar">
-        <h1>{% block heading %}管理画面{% endblock %}</h1>
+      <header class="topbar{% if layout.embed %} topbar--embed{% endif %}">
+        <div class="topbar-main">
+          {% if !layout.breadcrumbs.is_empty() %}
+          <nav class="breadcrumb breadcrumb--heading" aria-label="パンくずリスト">
+            {% for item in layout.breadcrumbs %}
+              {% if !loop.first %}<span class="breadcrumb-sep" aria-hidden="true">/</span>{% endif %}
+              {% if !item.href.is_empty() %}
+                <a href="{{ item.href }}">{{ item.label }}</a>
+              {% else %}
+                <h1 class="breadcrumb-current">{{ item.label }}</h1>
+              {% endif %}
+            {% endfor %}
+          </nav>
+          {% elif !layout.embed %}
+          <h1 class="topbar-title">{% block heading %}管理画面{% endblock %}</h1>
+          {% endif %}
+        </div>
+        {% if !layout.embed %}
         <form method="post" action="/admin/logout" class="user-form">
           <span class="user">{{ layout.user_display_name }} さん</span>
           <button type="submit" class="logout-btn">ログアウト</button>
         </form>
+        {% endif %}
       </header>
-      {% endif %}
       <main class="content">
         {% block content %}{% endblock %}
       </main>

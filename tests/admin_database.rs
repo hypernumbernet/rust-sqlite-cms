@@ -590,6 +590,149 @@ async fn database_view_form_expression_column() {
     assert_eq!(json["columns"], serde_json::json!(["body_len", "id"]));
 }
 
+async fn setup_expr_recover_view(
+    app: &common::TestApp,
+    table_name: &str,
+    view_name: &str,
+) -> String {
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some(&format!(
+                "name={table_name}&col_name=body&col_type=text&col_nullable=0"
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let valid_definition = format!(r#"SELECT LENGTH("body") AS "body_len" FROM "{table_name}""#);
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some(&format!(
+                "name={view_name}&definition={}",
+                urlencoding::encode(&valid_definition)
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    valid_definition
+}
+
+async fn post_view_edit_definition(
+    app: &common::TestApp,
+    view_name: &str,
+    definition: &str,
+) -> (StatusCode, String) {
+    let response = app
+        .admin_request(
+            "POST",
+            &format!("/admin/database/views/{view_name}/edit"),
+            Some(&format!(
+                "name={view_name}&definition={}",
+                urlencoding::encode(definition)
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    (status, String::from_utf8(body.to_vec()).unwrap())
+}
+
+async fn assert_view_edit_recovers_after_error(
+    app: &common::TestApp,
+    table_name: &str,
+    view_name: &str,
+    invalid_definition: &str,
+    invalid_expression_json: &str,
+    assert_invalid_error: impl Fn(&str),
+    assert_view_unchanged: bool,
+) {
+    let valid_definition = setup_expr_recover_view(app, table_name, view_name).await;
+
+    let (status, html) = post_view_edit_definition(app, view_name, invalid_definition).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_invalid_error(&html);
+    assert!(html.contains(invalid_expression_json));
+    assert!(html.contains(&format!(r#""base_table":"{table_name}""#)));
+
+    if assert_view_unchanged {
+        let pool = app.state.pool();
+        let view_sql: Option<String> = sqlx::query_scalar(
+            "SELECT sql FROM sqlite_master WHERE type = 'view' AND name = ?",
+        )
+        .bind(view_name)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+        assert!(
+            view_sql.as_deref().is_some_and(|sql| {
+                sql.contains("LENGTH(\"body\")") && !sql.contains("LEN(\"body\")")
+            }),
+            "invalid update must not persist broken view definition: {view_sql:?}"
+        );
+    }
+
+    let (status, _) = post_view_edit_definition(app, view_name, &valid_definition).await;
+    assert_eq!(status, StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            &format!("/admin/database/views/{view_name}/data/rows"),
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["body_len"]));
+}
+
+#[tokio::test]
+async fn database_view_edit_recovers_after_invalid_expression_error() {
+    let app = common::TestApp::new().await;
+    assert_view_edit_recovers_after_error(
+        &app,
+        "expr_recover_notes",
+        "expr_recover_view",
+        r#"SELECT DROP("body") AS "body_len" FROM "expr_recover_notes""#,
+        r#""expression":"DROP(\"body\")""#,
+        |html| {
+            assert!(html.contains("使用できない SQL キーワード"));
+            assert!(html.contains("DROP"));
+        },
+        false,
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn database_view_edit_recovers_after_sqlite_invalid_function_error() {
+    let app = common::TestApp::new().await;
+    assert_view_edit_recovers_after_error(
+        &app,
+        "len_recover_notes",
+        "len_recover_view",
+        r#"SELECT LEN("body") AS "body_len" FROM "len_recover_notes""#,
+        r#""expression":"LEN(\"body\")""#,
+        |html| {
+            assert!(
+                html.contains("no such function") || html.contains("LEN"),
+                "expected SQLite function error in response"
+            );
+        },
+        true,
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn database_view_data_survives_definition_change_with_stale_sort() {
     let app = common::TestApp::new().await;

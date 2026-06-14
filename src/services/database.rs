@@ -7,7 +7,7 @@ use futures_util::future::try_join_all;
 use rand::rngs::OsRng;
 use rand::Rng;
 use serde::Deserialize;
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
 use crate::error::{AppError, AppResult, DomainError, DomainResult};
 
@@ -1088,9 +1088,8 @@ pub async fn update_user_view(
     sqlx::query(sqlx::AssertSqlSafe(create_view_ddl(name, &definition)))
         .execute(&mut *tx)
         .await?;
-    tx.commit().await?;
-    sanitize_data_ui_preferences(
-        pool,
+    sanitize_data_ui_preferences_in_tx(
+        &mut tx,
         name,
         SanitizeUiPreferencesOptions {
             clear_sort_filter: true,
@@ -1098,6 +1097,7 @@ pub async fn update_user_view(
         },
     )
     .await?;
+    tx.commit().await?;
     Ok(())
 }
 
@@ -2136,6 +2136,143 @@ struct SanitizeUiPreferencesOptions<'a> {
     column_renames: &'a [(String, String)],
 }
 
+#[derive(Debug)]
+struct SanitizedUiPreferencesValues {
+    sort: Vec<TableSortEntry>,
+    filter: Vec<TableFilterEntry>,
+    column_widths: Option<std::collections::HashMap<String, i32>>,
+}
+
+#[derive(Debug)]
+struct SerializedTableUiMeta {
+    sort_json: String,
+    filter_json: String,
+    widths_json: String,
+}
+
+fn decode_table_ui_meta_row(row: Option<(String, String, String)>) -> DomainResult<TableUiMeta> {
+    let Some((widths_json, sort_json, filter_json)) = row else {
+        return Ok(TableUiMeta::default());
+    };
+
+    let column_widths = if widths_json.is_empty() || widths_json == "{}" {
+        None
+    } else {
+        let parsed: std::collections::HashMap<String, i32> =
+            serde_json::from_str(&widths_json).map_err(|e| {
+                DomainError::Internal(anyhow::anyhow!("列幅 JSON の解析に失敗: {e}"))
+            })?;
+        if parsed.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
+    };
+
+    let sort = if sort_json.is_empty() || sort_json == "[]" {
+        None
+    } else {
+        let parsed: Vec<TableSortEntry> = serde_json::from_str(&sort_json).map_err(|e| {
+            DomainError::Internal(anyhow::anyhow!("ソート JSON の解析に失敗: {e}"))
+        })?;
+        if parsed.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
+    };
+
+    let filter = if filter_json.is_empty() || filter_json == "[]" {
+        None
+    } else {
+        let parsed: Vec<TableFilterEntry> = serde_json::from_str(&filter_json).map_err(|e| {
+            DomainError::Internal(anyhow::anyhow!("フィルター JSON の解析に失敗: {e}"))
+        })?;
+        if parsed.is_empty() {
+            None
+        } else {
+            Some(parsed)
+        }
+    };
+
+    Ok(TableUiMeta {
+        sort,
+        filter,
+        column_widths,
+    })
+}
+
+fn compute_sanitized_ui_preferences(
+    column_names: &[String],
+    meta: &TableUiMeta,
+    options: SanitizeUiPreferencesOptions<'_>,
+) -> SanitizedUiPreferencesValues {
+    let mut sort = if options.clear_sort_filter {
+        Vec::new()
+    } else {
+        meta.sort.clone().unwrap_or_default()
+    };
+    let mut filter = if options.clear_sort_filter {
+        Vec::new()
+    } else {
+        meta.filter.clone().unwrap_or_default()
+    };
+    let mut column_widths = meta.column_widths.clone();
+
+    if !options.clear_sort_filter && !options.column_renames.is_empty() {
+        apply_column_renames_to_sort(&mut sort, options.column_renames);
+        apply_column_renames_to_filter(&mut filter, options.column_renames);
+        apply_column_renames_to_widths(&mut column_widths, options.column_renames);
+    }
+
+    SanitizedUiPreferencesValues {
+        sort: filter_sort_entries_to_columns(column_names, &sort),
+        filter: filter_filter_entries_to_columns(column_names, &filter),
+        column_widths: prune_column_widths(column_names, column_widths),
+    }
+}
+
+fn serialize_table_ui_meta(
+    sort: &[TableSortEntry],
+    filter: &[TableFilterEntry],
+    column_widths: Option<&std::collections::HashMap<String, i32>>,
+) -> DomainResult<SerializedTableUiMeta> {
+    let sort_json = serde_json::to_string(sort).map_err(|e| {
+        DomainError::Internal(anyhow::anyhow!("ソート JSON のシリアライズに失敗: {e}"))
+    })?;
+    let filter_json = serde_json::to_string(filter).map_err(|e| {
+        DomainError::Internal(anyhow::anyhow!("フィルター JSON のシリアライズに失敗: {e}"))
+    })?;
+    let widths_json = match column_widths {
+        Some(widths) if !widths.is_empty() => serde_json::to_string(widths).map_err(|e| {
+            DomainError::Internal(anyhow::anyhow!("列幅 JSON のシリアライズに失敗: {e}"))
+        })?,
+        _ => "{}".to_string(),
+    };
+
+    Ok(SerializedTableUiMeta {
+        sort_json,
+        filter_json,
+        widths_json,
+    })
+}
+
+fn should_skip_ui_meta_persist(
+    has_meta_row: bool,
+    sort: &[TableSortEntry],
+    filter: &[TableFilterEntry],
+    column_widths: Option<&std::collections::HashMap<String, i32>>,
+) -> bool {
+    !has_meta_row && sort.is_empty() && filter.is_empty() && column_widths.is_none()
+}
+
+fn pragma_table_info_sql(table_name: &str) -> String {
+    format!(
+        "PRAGMA table_info({})",
+        quote_sql_identifier(table_name)
+    )
+}
+
 fn apply_column_renames_to_sort(
     entries: &mut [TableSortEntry],
     renames: &[(String, String)],
@@ -2207,23 +2344,11 @@ async fn persist_sanitized_table_ui_meta(
         Err(err) => return Err(err.into()),
     };
 
-    if !has_meta_row && sort.is_empty() && filter.is_empty() && column_widths.is_none() {
+    if should_skip_ui_meta_persist(has_meta_row, sort, filter, column_widths.as_ref()) {
         return Ok(());
     }
 
-    let sort_json = serde_json::to_string(sort).map_err(|e| {
-        DomainError::Internal(anyhow::anyhow!("ソート JSON のシリアライズに失敗: {e}"))
-    })?;
-    let filter_json = serde_json::to_string(filter).map_err(|e| {
-        DomainError::Internal(anyhow::anyhow!("フィルター JSON のシリアライズに失敗: {e}"))
-    })?;
-    let widths_json = match column_widths {
-        Some(widths) if !widths.is_empty() => serde_json::to_string(&widths).map_err(|e| {
-            DomainError::Internal(anyhow::anyhow!("列幅 JSON のシリアライズに失敗: {e}"))
-        })?,
-        _ => "{}".to_string(),
-    };
-
+    let serialized = serialize_table_ui_meta(sort, filter, column_widths.as_ref())?;
     sqlx::query(
         r#"
         INSERT INTO user_table_meta (table_name, column_widths_json, sort_json, filter_json, updated_at)
@@ -2236,9 +2361,9 @@ async fn persist_sanitized_table_ui_meta(
         "#,
     )
     .bind(name)
-    .bind(widths_json)
-    .bind(sort_json)
-    .bind(filter_json)
+    .bind(serialized.widths_json)
+    .bind(serialized.sort_json)
+    .bind(serialized.filter_json)
     .execute(pool)
     .await?;
 
@@ -2252,30 +2377,117 @@ async fn sanitize_data_ui_preferences(
 ) -> DomainResult<()> {
     let column_names = table_column_names(pool, name).await?;
     let meta = get_table_ui_meta(pool, name).await?;
+    let sanitized = compute_sanitized_ui_preferences(&column_names, &meta, options);
+    persist_sanitized_table_ui_meta(
+        pool,
+        name,
+        &sanitized.sort,
+        &sanitized.filter,
+        sanitized.column_widths,
+    )
+    .await
+}
 
-    let mut sort = if options.clear_sort_filter {
-        Vec::new()
-    } else {
-        meta.sort.unwrap_or_default()
-    };
-    let mut filter = if options.clear_sort_filter {
-        Vec::new()
-    } else {
-        meta.filter.unwrap_or_default()
-    };
-    let mut column_widths = meta.column_widths;
+async fn sanitize_data_ui_preferences_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+    options: SanitizeUiPreferencesOptions<'_>,
+) -> DomainResult<()> {
+    let column_names = table_column_names_in_tx(tx, name).await?;
+    let meta = get_table_ui_meta_in_tx(tx, name).await?;
+    let sanitized = compute_sanitized_ui_preferences(&column_names, &meta, options);
+    persist_sanitized_table_ui_meta_in_tx(
+        tx,
+        name,
+        &sanitized.sort,
+        &sanitized.filter,
+        sanitized.column_widths,
+    )
+    .await
+}
 
-    if !options.clear_sort_filter && !options.column_renames.is_empty() {
-        apply_column_renames_to_sort(&mut sort, options.column_renames);
-        apply_column_renames_to_filter(&mut filter, options.column_renames);
-        apply_column_renames_to_widths(&mut column_widths, options.column_renames);
+async fn table_column_names_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    table_name: &str,
+) -> DomainResult<Vec<String>> {
+    let rows = table_pragma_info_in_tx(tx, table_name).await?;
+    Ok(rows.into_iter().map(|row| row.name).collect())
+}
+
+async fn table_pragma_info_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    table_name: &str,
+) -> DomainResult<Vec<PragmaTableInfoRow>> {
+    let rows = sqlx::query_as::<_, PragmaTableInfoRow>(sqlx::AssertSqlSafe(pragma_table_info_sql(
+        table_name,
+    )))
+    .fetch_all(&mut **tx)
+    .await?;
+    Ok(rows)
+}
+
+async fn get_table_ui_meta_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+) -> DomainResult<TableUiMeta> {
+    let name = ensure_viewable_table(name)?;
+    let row = match sqlx::query_as::<_, (String, String, String)>(
+        "SELECT column_widths_json, sort_json, filter_json FROM user_table_meta WHERE table_name = ?",
+    )
+    .bind(name)
+    .fetch_optional(&mut **tx)
+    .await
+    {
+        Ok(row) => row,
+        Err(err) if is_missing_user_table_meta_error(&err) => return Ok(TableUiMeta::default()),
+        Err(err) => return Err(err.into()),
+    };
+    decode_table_ui_meta_row(row)
+}
+
+async fn persist_sanitized_table_ui_meta_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+    sort: &[TableSortEntry],
+    filter: &[TableFilterEntry],
+    column_widths: Option<std::collections::HashMap<String, i32>>,
+) -> DomainResult<()> {
+    let has_meta_row: bool = match sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM user_table_meta WHERE table_name = ?",
+    )
+    .bind(name)
+    .fetch_optional(&mut **tx)
+    .await
+    {
+        Ok(row) => row.is_some(),
+        Err(err) if is_missing_user_table_meta_error(&err) => false,
+        Err(err) => return Err(err.into()),
+    };
+
+    if should_skip_ui_meta_persist(has_meta_row, sort, filter, column_widths.as_ref()) {
+        return Ok(());
     }
 
-    sort = filter_sort_entries_to_columns(&column_names, &sort);
-    filter = filter_filter_entries_to_columns(&column_names, &filter);
-    column_widths = prune_column_widths(&column_names, column_widths);
+    let serialized = serialize_table_ui_meta(sort, filter, column_widths.as_ref())?;
+    sqlx::query(
+        r#"
+        INSERT INTO user_table_meta (table_name, column_widths_json, sort_json, filter_json, updated_at)
+        VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        ON CONFLICT(table_name) DO UPDATE SET
+            column_widths_json = excluded.column_widths_json,
+            sort_json = excluded.sort_json,
+            filter_json = excluded.filter_json,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(name)
+    .bind(serialized.widths_json)
+    .bind(serialized.sort_json)
+    .bind(serialized.filter_json)
+    .execute(&mut **tx)
+    .await?;
 
-    persist_sanitized_table_ui_meta(pool, name, &sort, &filter, column_widths).await
+    Ok(())
 }
 
 fn build_where_from_filter(
@@ -2382,7 +2594,7 @@ struct TableUiMeta {
 
 async fn get_table_ui_meta(pool: &SqlitePool, name: &str) -> DomainResult<TableUiMeta> {
     let name = ensure_viewable_table(name)?;
-    let row: Option<(String, String, String)> = match sqlx::query_as::<_, (String, String, String)>(
+    let row = match sqlx::query_as::<_, (String, String, String)>(
         "SELECT column_widths_json, sort_json, filter_json FROM user_table_meta WHERE table_name = ?",
     )
     .bind(name)
@@ -2393,56 +2605,7 @@ async fn get_table_ui_meta(pool: &SqlitePool, name: &str) -> DomainResult<TableU
         Err(err) if is_missing_user_table_meta_error(&err) => return Ok(TableUiMeta::default()),
         Err(err) => return Err(err.into()),
     };
-
-    let Some((widths_json, sort_json, filter_json)) = row else {
-        return Ok(TableUiMeta::default());
-    };
-
-    let column_widths = if widths_json.is_empty() || widths_json == "{}" {
-        None
-    } else {
-        let parsed: std::collections::HashMap<String, i32> =
-            serde_json::from_str(&widths_json).map_err(|e| {
-                DomainError::Internal(anyhow::anyhow!("列幅 JSON の解析に失敗: {e}"))
-            })?;
-        if parsed.is_empty() {
-            None
-        } else {
-            Some(parsed)
-        }
-    };
-
-    let sort = if sort_json.is_empty() || sort_json == "[]" {
-        None
-    } else {
-        let parsed: Vec<TableSortEntry> = serde_json::from_str(&sort_json).map_err(|e| {
-            DomainError::Internal(anyhow::anyhow!("ソート JSON の解析に失敗: {e}"))
-        })?;
-        if parsed.is_empty() {
-            None
-        } else {
-            Some(parsed)
-        }
-    };
-
-    let filter = if filter_json.is_empty() || filter_json == "[]" {
-        None
-    } else {
-        let parsed: Vec<TableFilterEntry> = serde_json::from_str(&filter_json).map_err(|e| {
-            DomainError::Internal(anyhow::anyhow!("フィルター JSON の解析に失敗: {e}"))
-        })?;
-        if parsed.is_empty() {
-            None
-        } else {
-            Some(parsed)
-        }
-    };
-
-    Ok(TableUiMeta {
-        sort,
-        filter,
-        column_widths,
-    })
+    decode_table_ui_meta_row(row)
 }
 
 pub async fn list_user_table_rows(
@@ -2677,11 +2840,11 @@ pub async fn fetch_table_rows_chunk(
 }
 
 async fn table_pragma_info(pool: &SqlitePool, table_name: &str) -> DomainResult<Vec<PragmaTableInfoRow>> {
-    let quoted = quote_sql_identifier(table_name);
-    let query = format!("PRAGMA table_info({quoted})");
-    let rows = sqlx::query_as::<_, PragmaTableInfoRow>(sqlx::AssertSqlSafe(query))
-        .fetch_all(pool)
-        .await?;
+    let rows = sqlx::query_as::<_, PragmaTableInfoRow>(sqlx::AssertSqlSafe(pragma_table_info_sql(
+        table_name,
+    )))
+    .fetch_all(pool)
+    .await?;
     Ok(rows)
 }
 

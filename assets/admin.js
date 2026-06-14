@@ -3397,8 +3397,19 @@
 
     if (!form || !definitionInput || !tabButtons.length || !sqlPanel || !uiPanel) return;
 
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const serverErrorBanner = form.previousElementSibling &&
+      form.previousElementSibling.classList &&
+      form.previousElementSibling.classList.contains('error') &&
+      form.previousElementSibling !== uiError
+        ? form.previousElementSibling
+        : null;
+
     let activeTab = 'ui';
     let tableApiColumns = [];
+    let columnsLoading = false;
+    let columnsLoadSeq = 0;
+    let uiDirty = false;
     let dragSourceItem = null;
     let dragGhostEl = null;
     let dragPointerOffset = { x: 0, y: 0 };
@@ -3832,6 +3843,16 @@
       };
     }
 
+    function setUiDirty(dirty) {
+      uiDirty = dirty;
+    }
+
+    function clearServerErrorBanner() {
+      if (!serverErrorBanner) return;
+      serverErrorBanner.hidden = true;
+      serverErrorBanner.textContent = '';
+    }
+
     function hideUiError() {
       if (!uiError) return;
       uiError.hidden = true;
@@ -3996,15 +4017,17 @@
       if (emptyEl) emptyEl.hidden = hasColumns;
     }
 
-    function beginColumnsLoad() {
-      if (loadingEl) loadingEl.hidden = false;
-      if (columnsWrap) columnsWrap.hidden = true;
-      if (emptyEl) emptyEl.hidden = true;
-      hideUiError();
-    }
-
-    function finishColumnsLoad() {
-      if (loadingEl) loadingEl.hidden = true;
+    function setColumnsLoadingState(loading) {
+      columnsLoading = loading;
+      if (submitBtn) submitBtn.disabled = loading;
+      if (loading) {
+        if (loadingEl) loadingEl.hidden = false;
+        if (columnsWrap) columnsWrap.hidden = true;
+        if (emptyEl) emptyEl.hidden = true;
+        hideUiError();
+      } else if (loadingEl) {
+        loadingEl.hidden = true;
+      }
     }
 
     function fetchTableColumns(tableName) {
@@ -4327,6 +4350,7 @@
         if (moveDraggedColumn(item, before)) {
           lastReorderTarget = item;
           lastReorderBefore = before;
+          setUiDirty(true);
         }
       });
 
@@ -4341,6 +4365,7 @@
         const item = removeBtn.closest('.view-ui-column-item');
         if (!item) return;
         item.remove();
+        setUiDirty(true);
         updateAddColumnSelect();
         updateColumnsWrapVisibility();
       });
@@ -4378,6 +4403,7 @@
       selectInput.value = selectInputDisplayValue(column);
       selectInput.addEventListener('input', function () {
         updateColumnRowExpressionMode(item);
+        setUiDirty(true);
       });
 
       nameWrap.appendChild(selectInput);
@@ -4391,6 +4417,7 @@
       aliasInput.className = 'view-ui-column-alias-input';
       aliasInput.placeholder = '別名（任意）';
       aliasInput.value = column.alias || '';
+      aliasInput.addEventListener('input', function () { setUiDirty(true); });
       aliasWrap.appendChild(aliasInput);
 
       const whereWrap = document.createElement('div');
@@ -4400,6 +4427,7 @@
       whereInput.className = 'view-ui-column-where-input';
       whereInput.placeholder = '例: IS NOT NULL';
       whereInput.value = column.where_condition || '';
+      whereInput.addEventListener('input', function () { setUiDirty(true); });
       whereWrap.appendChild(whereInput);
 
       const removeBtn = document.createElement('button');
@@ -4449,6 +4477,7 @@
         sql += ' WHERE ' + whereParts.join(' AND ');
       }
       definitionInput.value = sql;
+      setUiDirty(false);
     }
 
     function resolveColumnsFromApi(apiColumns, columnState, parsed) {
@@ -4476,34 +4505,43 @@
         return Promise.resolve();
       }
 
-      beginColumnsLoad();
+      const seq = ++columnsLoadSeq;
+      setColumnsLoadingState(true);
       return fetchTableColumns(tableName)
         .then(function (apiColumns) {
+          if (seq !== columnsLoadSeq) return;
           tableApiColumns = apiColumns;
+          if (uiDirty) {
+            updateAddColumnSelect();
+            return;
+          }
           renderColumns(resolveColumnsFromApi(apiColumns, columnState, parsed));
+          setUiDirty(false);
         })
         .catch(function (err) {
-          tableApiColumns = [];
-          renderColumns([]);
+          if (seq !== columnsLoadSeq) return;
+          if (!uiDirty) {
+            tableApiColumns = [];
+            renderColumns([]);
+          }
           showUiError(err.message || 'カラム一覧の取得に失敗しました');
         })
-        .finally(finishColumnsLoad);
+        .finally(function () {
+          if (seq === columnsLoadSeq) {
+            setColumnsLoadingState(false);
+          }
+        });
     }
 
-    function applyParsedUiState(parsed) {
-      if (!baseTableSelect) return Promise.resolve();
-      baseTableSelect.value = parsed.baseTable;
-      return loadColumnsForTable(parsed.baseTable, null, parsed);
-    }
-
-    function applyUiSpec(spec) {
-      if (!spec || !spec.base_table) return Promise.resolve();
-      if (baseTableSelect) baseTableSelect.value = spec.base_table;
-      return loadColumnsForTable(spec.base_table, spec.columns || []);
+    function applyUiBuilderState(baseTable, columnState, parsed) {
+      if (!baseTableSelect || !baseTable) return Promise.resolve();
+      baseTableSelect.value = baseTable;
+      return loadColumnsForTable(baseTable, columnState, parsed);
     }
 
     function refreshVisualTabState() {
       setActiveTab('ui');
+      if (uiDirty) return;
       const visualState = parseVisualState(definitionInput.value);
       if (!visualState.supported) {
         setVisualBuilderVisible(false);
@@ -4511,13 +4549,14 @@
       }
       setVisualBuilderVisible(true);
       if (visualState.parsed) {
-        applyParsedUiState(visualState.parsed).catch(function (err) {
+        applyUiBuilderState(visualState.parsed.baseTable, null, visualState.parsed).catch(function (err) {
           showUiError(err.message || 'ビジュアル編集状態の復元に失敗しました');
         });
       }
     }
 
     function switchToUiTab() {
+      if (activeTab === 'ui') return;
       refreshVisualTabState();
     }
 
@@ -4542,6 +4581,7 @@
       baseTableSelect.addEventListener('change', function () {
         if (unsupportedNotice) unsupportedNotice.hidden = true;
         hideUiError();
+        setUiDirty(false);
         loadColumnsForTable(baseTableSelect.value, null);
       });
     }
@@ -4597,6 +4637,7 @@
           };
         }
         columnsList.appendChild(createColumnRow(newColumn));
+        setUiDirty(true);
         if (addColumnSelect) addColumnSelect.value = '';
         if (addColumnExpression) addColumnExpression.value = '';
         toggleAddColumnExpressionInput();
@@ -4606,8 +4647,15 @@
     }
 
     form.addEventListener('submit', function (event) {
-      if (activeTab !== 'ui' || !isVisualEditingSupported()) return;
+      if (activeTab !== 'ui' || !builderEl || builderEl.hidden) return;
+      if (columnsLoading) {
+        event.preventDefault();
+        clearServerErrorBanner();
+        showUiError('カラム一覧の読み込み中です。完了してから保存してください。');
+        return;
+      }
       hideUiError();
+      clearServerErrorBanner();
       const table = baseTableSelect ? baseTableSelect.value : '';
       if (!table) {
         event.preventDefault();
@@ -4636,7 +4684,7 @@
           setActiveTab('ui');
           if (isVisualEditingSupported()) {
             setVisualBuilderVisible(true);
-            applyUiSpec(initial);
+            applyUiBuilderState(initial.base_table, initial.columns || []);
           } else {
             setVisualBuilderVisible(false);
           }

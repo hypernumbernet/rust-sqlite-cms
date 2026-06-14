@@ -229,7 +229,8 @@ async fn database_create_user_table_and_view() {
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("ビューを編集"));
     assert!(html.contains("SELECT id, body FROM custom_notes"));
-    assert!(html.contains(r#"name="name" type="text" maxlength="120" value="custom_notes_view" readonly"#));
+    assert!(html.contains(r#"name="name" type="text" maxlength="120" value="custom_notes_view""#));
+    assert!(!html.contains(r#"value="custom_notes_view" readonly"#));
     assert!(html.contains("view-form-tabs"));
     assert!(html.contains("view-tab-ui"));
     assert!(html.contains("ビジュアル編集"));
@@ -807,6 +808,277 @@ async fn database_view_data_survives_definition_change_with_stale_sort() {
     assert_eq!(json["columns"], serde_json::json!(["user_id"]));
     assert_eq!(json["rows"].as_array().unwrap().len(), 2);
     assert!(json["sort"].as_array().unwrap().is_empty());
+}
+
+async fn setup_rename_view_src(app: &common::TestApp, table_name: &str, view_name: &str) {
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some(&format!(
+                "name={table_name}&col_name=body&col_type=text&col_nullable=0"
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        r#"INSERT INTO "{table_name}" ("body") VALUES ('alpha'), ('beta')"#
+    )))
+    .execute(&app.state.pool())
+    .await
+    .unwrap();
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some(&format!(
+                "name={view_name}&definition=SELECT+%22id%22%2C+%22body%22+FROM+%22{table_name}%22"
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn database_view_rename_preserves_ui_meta() {
+    let app = common::TestApp::new().await;
+    setup_rename_view_src(&app, "rename_meta_src", "rename_meta_view").await;
+
+    let save_body = r#"{"sort":[{"column":"body","direction":"asc"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_meta_view/data/sort",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let definition = "SELECT \"id\", \"body\" FROM \"rename_meta_src\"";
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_meta_view/edit",
+            Some(&format!(
+                "name=renamed_meta_view&definition={}",
+                urlencoding::encode(definition)
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let old_meta: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'rename_meta_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(old_meta.is_none());
+
+    let stored_sort: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'renamed_meta_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(stored_sort.unwrap().contains(r#""column":"body""#));
+
+    let view_exists: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'renamed_meta_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert_eq!(view_exists.as_deref(), Some("renamed_meta_view"));
+
+    let old_view: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'rename_meta_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(old_view.is_none());
+}
+
+#[tokio::test]
+async fn database_view_rename_redirects_to_new_data_url() {
+    let app = common::TestApp::new().await;
+    setup_rename_view_src(&app, "rename_redirect_src", "rename_redirect_view").await;
+
+    let definition = "SELECT \"id\", \"body\" FROM \"rename_redirect_src\"";
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_redirect_view/edit",
+            Some(&format!(
+                "name=renamed_redirect_view&definition={}",
+                urlencoding::encode(definition)
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok()),
+        Some("/admin/database/views/renamed_redirect_view/data")
+    );
+}
+
+#[tokio::test]
+async fn database_view_rename_rejects_conflicting_name() {
+    let app = common::TestApp::new().await;
+    setup_rename_view_src(&app, "rename_conflict_src", "rename_conflict_view").await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some(
+                "name=rename_conflict_existing&definition=SELECT+%22id%22+FROM+%22rename_conflict_src%22",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let definition = "SELECT \"id\", \"body\" FROM \"rename_conflict_src\"";
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_conflict_view/edit",
+            Some(&format!(
+                "name=rename_conflict_existing&definition={}",
+                urlencoding::encode(definition)
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("既に存在します"));
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_conflict_view/edit",
+            Some(&format!(
+                "name=rename_conflict_src&definition={}",
+                urlencoding::encode(definition)
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("既に存在します"));
+
+    let view_exists: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'rename_conflict_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert_eq!(view_exists.as_deref(), Some("rename_conflict_view"));
+}
+
+#[tokio::test]
+async fn database_view_rename_with_definition_change_clears_stale_sort() {
+    let app = common::TestApp::new().await;
+    setup_rename_view_src(&app, "rename_def_src", "rename_def_view").await;
+
+    let save_body = r#"{"sort":[{"column":"body","direction":"asc"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_def_view/data/sort",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_def_view/edit",
+            Some("name=renamed_def_view&definition=SELECT+%22id%22+AS+%22user_id%22+FROM+%22rename_def_src%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let stored_sort: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'renamed_def_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert_eq!(stored_sort.as_deref(), Some("[]"));
+}
+
+#[tokio::test]
+async fn database_view_rename_rollback_on_invalid_definition() {
+    let app = common::TestApp::new().await;
+    setup_rename_view_src(&app, "rename_rollback_src", "rename_rollback_view").await;
+
+    let save_body = r#"{"sort":[{"column":"body","direction":"asc"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_rollback_view/data/sort",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/rename_rollback_view/edit",
+            Some("name=renamed_rollback_view&definition=SELECT+DROP(%22body%22)+FROM+%22rename_rollback_src%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("使用できない SQL キーワード"));
+
+    let view_exists: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'rename_rollback_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert_eq!(view_exists.as_deref(), Some("rename_rollback_view"));
+
+    let renamed_view: Option<String> = sqlx::query_scalar(
+        "SELECT name FROM sqlite_master WHERE type = 'view' AND name = 'renamed_rollback_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(renamed_view.is_none());
+
+    let stored_sort: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'rename_rollback_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(stored_sort.unwrap().contains(r#""column":"body""#));
 }
 
 #[tokio::test]

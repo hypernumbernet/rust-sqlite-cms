@@ -3890,6 +3890,7 @@
       });
       sqlPanel.hidden = tab !== 'sql';
       uiPanel.hidden = tab !== 'ui';
+      definitionInput.required = tab === 'sql';
       if (tab === 'ui') {
         hideUiError();
       }
@@ -4011,23 +4012,36 @@
         });
     }
 
+    function selectedBaseTable() {
+      return baseTableSelect ? baseTableSelect.value : '';
+    }
+
     function updateColumnsWrapVisibility() {
-      const hasColumns = !!columnsList && columnsList.children.length > 0;
-      if (columnsWrap) columnsWrap.hidden = !hasColumns;
-      if (emptyEl) emptyEl.hidden = hasColumns;
+      const hasTable = !!selectedBaseTable();
+      if (columnsWrap) columnsWrap.hidden = !hasTable || columnsLoading;
+      if (emptyEl) emptyEl.hidden = hasTable || columnsLoading;
     }
 
     function setColumnsLoadingState(loading) {
       columnsLoading = loading;
       if (submitBtn) submitBtn.disabled = loading;
-      if (loading) {
-        if (loadingEl) loadingEl.hidden = false;
-        if (columnsWrap) columnsWrap.hidden = true;
-        if (emptyEl) emptyEl.hidden = true;
-        hideUiError();
-      } else if (loadingEl) {
-        loadingEl.hidden = true;
-      }
+      if (loadingEl) loadingEl.hidden = !loading;
+      if (loading) hideUiError();
+      updateColumnsWrapVisibility();
+    }
+
+    function blockUiSubmit(event, message) {
+      event.preventDefault();
+      clearServerErrorBanner();
+      showUiError(message);
+    }
+
+    function reportDefinitionRequired() {
+      definitionInput.setCustomValidity('ビュー定義を入力してください');
+      const valid = definitionInput.reportValidity();
+      definitionInput.setCustomValidity('');
+      if (!valid) definitionInput.focus();
+      return valid;
     }
 
     function fetchTableColumns(tableName) {
@@ -4367,7 +4381,6 @@
         item.remove();
         setUiDirty(true);
         updateAddColumnSelect();
-        updateColumnsWrapVisibility();
       });
     }
 
@@ -4456,16 +4469,15 @@
       updateColumnsWrapVisibility();
     }
 
-    function syncUiToSql() {
-      if (!baseTableSelect) return;
-      const table = baseTableSelect.value;
+    function syncUiToSql(columns) {
+      const table = selectedBaseTable();
       if (!table) return;
-      const columns = readColumnState();
-      if (columns.length === 0) return;
-      const columnSql = columns
+      const columnState = columns || readColumnState();
+      if (columnState.length === 0) return;
+      const columnSql = columnState
         .map(formatSimpleViewSelectColumn)
         .join(', ');
-      const whereParts = columns
+      const whereParts = columnState
         .filter(function (column) {
           return column.where_condition && !column.expression;
         })
@@ -4501,7 +4513,6 @@
       if (!tableName) {
         tableApiColumns = [];
         renderColumns([]);
-        updateColumnsWrapVisibility();
         return Promise.resolve();
       }
 
@@ -4642,39 +4653,39 @@
         if (addColumnExpression) addColumnExpression.value = '';
         toggleAddColumnExpressionInput();
         updateAddColumnSelect();
-        updateColumnsWrapVisibility();
       });
     }
 
     form.addEventListener('submit', function (event) {
-      if (activeTab !== 'ui' || !builderEl || builderEl.hidden) return;
+      if (activeTab === 'sql') {
+        if (!definitionInput.value.trim()) {
+          event.preventDefault();
+          reportDefinitionRequired();
+        }
+        return;
+      }
+      if (!builderEl || builderEl.hidden) return;
       if (columnsLoading) {
-        event.preventDefault();
-        clearServerErrorBanner();
-        showUiError('カラム一覧の読み込み中です。完了してから保存してください。');
+        blockUiSubmit(event, 'カラム一覧の読み込み中です。完了してから保存してください。');
         return;
       }
       hideUiError();
       clearServerErrorBanner();
-      const table = baseTableSelect ? baseTableSelect.value : '';
-      if (!table) {
-        event.preventDefault();
-        showUiError('元テーブルを選択してください。');
+      if (!selectedBaseTable()) {
+        blockUiSubmit(event, '元テーブルを選択してください。');
         return;
       }
       const columns = readColumnState();
       if (columns.length === 0) {
-        event.preventDefault();
-        showUiError('ビューに含めるカラムを1つ以上選択してください。');
+        blockUiSubmit(event, 'ビューに含めるカラムを1つ以上選択してください。');
         return;
       }
       const outputNameError = validateViewOutputColumnNames(columns);
       if (outputNameError) {
-        event.preventDefault();
-        showUiError(outputNameError);
+        blockUiSubmit(event, outputNameError);
         return;
       }
-      syncUiToSql();
+      syncUiToSql(columns);
     });
 
     if (initialEl && initialEl.textContent.trim()) {

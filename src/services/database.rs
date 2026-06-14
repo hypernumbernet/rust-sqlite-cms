@@ -1070,33 +1070,76 @@ pub async fn load_user_view_definition(pool: &SqlitePool, name: &str) -> DomainR
 
 pub async fn update_user_view(
     pool: &SqlitePool,
-    name: &str,
+    old_name: &str,
+    new_name: &str,
     definition: &str,
 ) -> DomainResult<()> {
-    let name = ensure_editable_user_table(name)?;
-    if !object_name_exists(pool, name, "view").await? {
+    let old_name = ensure_editable_user_table(old_name)?;
+    let new_name = validate_user_object_name(new_name)?;
+    if !object_name_exists(pool, old_name, "view").await? {
         return Err(DomainError::NotFound);
     }
 
     let definition = validate_view_definition(definition)?;
-    let quoted_name = quote_sql_identifier(name);
+    let old_definition = load_user_view_definition(pool, old_name).await?;
+    let definition_changed = old_definition.trim() != definition.trim();
+    let renaming = old_name != new_name;
+
+    if renaming {
+        if object_name_exists(pool, &new_name, "view").await? {
+            return Err(DomainError::Conflict(format!(
+                "ビュー `{new_name}` は既に存在します"
+            )));
+        }
+        if object_name_exists(pool, &new_name, "table").await? {
+            return Err(DomainError::Conflict(format!(
+                "同名のテーブル `{new_name}` が既に存在します"
+            )));
+        }
+    }
+
+    let quoted_old = quote_sql_identifier(old_name);
     let mut tx = pool.begin().await?;
-    let drop_ddl = format!("DROP VIEW IF EXISTS {quoted_name}");
-    sqlx::query(sqlx::AssertSqlSafe(drop_ddl))
-        .execute(&mut *tx)
+
+    if renaming {
+        sqlx::query(sqlx::AssertSqlSafe(create_view_ddl(&new_name, &definition)))
+            .execute(&mut *tx)
+            .await?;
+        migrate_user_table_meta_key_in_tx(&mut tx, old_name, &new_name).await?;
+        let drop_ddl = format!("DROP VIEW IF EXISTS {quoted_old}");
+        sqlx::query(sqlx::AssertSqlSafe(drop_ddl))
+            .execute(&mut *tx)
+            .await?;
+        if definition_changed {
+            sanitize_data_ui_preferences_in_tx(
+                &mut tx,
+                &new_name,
+                SanitizeUiPreferencesOptions {
+                    clear_sort_filter: true,
+                    column_renames: &[],
+                },
+            )
+            .await?;
+        }
+    } else {
+        let drop_ddl = format!("DROP VIEW IF EXISTS {quoted_old}");
+        sqlx::query(sqlx::AssertSqlSafe(drop_ddl))
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(sqlx::AssertSqlSafe(create_view_ddl(old_name, &definition)))
+            .execute(&mut *tx)
+            .await?;
+        sanitize_data_ui_preferences_in_tx(
+            &mut tx,
+            old_name,
+            SanitizeUiPreferencesOptions {
+                clear_sort_filter: true,
+                column_renames: &[],
+            },
+        )
         .await?;
-    sqlx::query(sqlx::AssertSqlSafe(create_view_ddl(name, &definition)))
-        .execute(&mut *tx)
-        .await?;
-    sanitize_data_ui_preferences_in_tx(
-        &mut tx,
-        name,
-        SanitizeUiPreferencesOptions {
-            clear_sort_filter: true,
-            column_renames: &[],
-        },
-    )
-    .await?;
+    }
+
     tx.commit().await?;
     Ok(())
 }
@@ -2386,6 +2429,45 @@ async fn sanitize_data_ui_preferences(
         sanitized.column_widths,
     )
     .await
+}
+
+async fn migrate_user_table_meta_key_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    old_name: &str,
+    new_name: &str,
+) -> DomainResult<()> {
+    if old_name == new_name {
+        return Ok(());
+    }
+
+    let has_old: bool = match sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM user_table_meta WHERE table_name = ?",
+    )
+    .bind(old_name)
+    .fetch_optional(&mut **tx)
+    .await
+    {
+        Ok(row) => row.is_some(),
+        Err(err) if is_missing_user_table_meta_error(&err) => return Ok(()),
+        Err(err) => return Err(err.into()),
+    };
+
+    if !has_old {
+        return Ok(());
+    }
+
+    sqlx::query("DELETE FROM user_table_meta WHERE table_name = ?")
+        .bind(new_name)
+        .execute(&mut **tx)
+        .await?;
+
+    sqlx::query("UPDATE user_table_meta SET table_name = ? WHERE table_name = ?")
+        .bind(new_name)
+        .bind(old_name)
+        .execute(&mut **tx)
+        .await?;
+
+    Ok(())
 }
 
 async fn sanitize_data_ui_preferences_in_tx(

@@ -1072,18 +1072,26 @@ async fn update_view(
     Path(name): Path<String>,
     Form(form): Form<ViewCreateForm>,
 ) -> AppResult<Response> {
-    if form.name != name {
+    let submitted_name = form.name.trim();
+    if submitted_name.is_empty() {
         let html = render_view_form(
             &auth,
             &state.pool(),
-            view_edit_form_params(&name, &form.definition, "ビュー名は変更できません"),
+            view_edit_form_params(&name, &form.definition, "ビュー名は必須です"),
         )
         .await?;
         return Ok(Html(html).into_response());
     }
 
-    match database::update_user_view(&state.pool(), &name, &form.definition).await {
-        Ok(()) => Ok(Redirect::to(&view_url(&name, "/data")).into_response()),
+    match database::update_user_view(
+        &state.pool(),
+        &name,
+        submitted_name,
+        &form.definition,
+    )
+    .await
+    {
+        Ok(()) => Ok(Redirect::to(&view_url(submitted_name, "/data")).into_response()),
         Err(DomainError::SystemTable(message)) => {
             Ok(system_table_notice_response(&auth, &name, &message).await?)
         }
@@ -1092,7 +1100,11 @@ async fn update_view(
             let html = render_view_form(
                 &auth,
                 &state.pool(),
-                view_edit_form_params(&name, &form.definition, &domain_error_message(&err)),
+                view_edit_form_params(
+                    submitted_name,
+                    &form.definition,
+                    &domain_error_message(&err),
+                ),
             )
             .await?;
             Ok(Html(html).into_response())
@@ -1184,7 +1196,7 @@ fn view_edit_form_params<'a>(
         action: view_url(name, "/edit"),
         submit_label: "保存する",
         name,
-        name_readonly: true,
+        name_readonly: false,
         is_edit: true,
         definition,
         error_message,

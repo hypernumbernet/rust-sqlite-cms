@@ -1191,7 +1191,9 @@ fn validate_view_definition(definition: &str) -> DomainResult<String> {
     if definition.is_empty() {
         return Err(DomainError::Validation("SELECT 文は必須です".into()));
     }
-    if !definition.to_ascii_uppercase().starts_with("SELECT") {
+    let stripped = strip_sql_comments(definition);
+    let without_comments = stripped.trim();
+    if !without_comments.to_ascii_uppercase().starts_with("SELECT") {
         return Err(DomainError::Validation(
             "ビュー定義は SELECT で始めてください".into(),
         ));
@@ -1276,7 +1278,8 @@ pub async fn resolve_view_ui_spec(
 
 /// 単純な `SELECT ... FROM table` 形式のビュー定義を UI 状態へ復元する。
 pub(crate) fn parse_simple_view_select(definition: &str) -> Option<ParsedSimpleViewSelect> {
-    let trimmed = definition.trim();
+    let stripped = strip_sql_comments(definition.trim());
+    let trimmed = stripped.trim();
     let upper = trimmed.to_ascii_uppercase();
     if !upper.starts_with("SELECT") {
         return None;
@@ -1691,6 +1694,99 @@ fn parse_qualified_column_name(
     } else {
         None
     }
+}
+
+/// SQL の `--` / `/* */` コメントを除去する。文字列・識別子リテラル内は保護する。
+fn strip_sql_comments(sql: &str) -> String {
+    let mut result = String::with_capacity(sql.len());
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let bytes = sql.as_bytes();
+    let mut i = 0usize;
+
+    while i < bytes.len() {
+        let ch = sql[i..].chars().next().unwrap();
+        let ch_len = ch.len_utf8();
+
+        if in_single_quote {
+            result.push(ch);
+            if ch == '\'' {
+                if bytes.get(i + ch_len) == Some(&b'\'') {
+                    result.push('\'');
+                    i += ch_len * 2;
+                    continue;
+                }
+                in_single_quote = false;
+            }
+            i += ch_len;
+            continue;
+        }
+
+        if in_double_quote {
+            result.push(ch);
+            if ch == '"' {
+                if bytes.get(i + ch_len) == Some(&b'"') {
+                    result.push('"');
+                    i += ch_len * 2;
+                    continue;
+                }
+                in_double_quote = false;
+            }
+            i += ch_len;
+            continue;
+        }
+
+        if ch == '\'' {
+            in_single_quote = true;
+            result.push(ch);
+            i += ch_len;
+            continue;
+        }
+
+        if ch == '"' {
+            in_double_quote = true;
+            result.push(ch);
+            i += ch_len;
+            continue;
+        }
+
+        if ch == '-' && bytes.get(i + ch_len) == Some(&b'-') {
+            i += ch_len * 2;
+            while i < bytes.len() {
+                let c = sql[i..].chars().next().unwrap();
+                if c == '\n' || c == '\r' {
+                    result.push(' ');
+                    i += c.len_utf8();
+                    break;
+                }
+                i += c.len_utf8();
+            }
+            continue;
+        }
+
+        if ch == '/' && bytes.get(i + ch_len) == Some(&b'*') {
+            i += ch_len * 2;
+            while i < bytes.len() {
+                let c = sql[i..].chars().next().unwrap();
+                let c_len = c.len_utf8();
+                if c == '*' && bytes.get(i + c_len) == Some(&b'/') {
+                    i += c_len + 1;
+                    result.push(' ');
+                    break;
+                }
+                if c == '\n' || c == '\r' {
+                    result.push(' ');
+                }
+                i += c_len;
+            }
+            continue;
+        }
+
+        result.push(ch);
+        i += ch_len;
+    }
+
+    result
 }
 
 fn find_sql_keyword(sql: &str, keyword: &str, start: usize) -> Option<usize> {
@@ -2193,7 +2289,7 @@ fn validate_ddl_fragment(fragment: &str, label: &str) -> DomainResult<()> {
             "{label}にセミコロンは使用できません"
         )));
     }
-    if contains_forbidden_keyword(fragment) {
+    if contains_forbidden_keyword(&strip_sql_comments(fragment)) {
         return Err(DomainError::Validation(format!(
             "{label}に使用できない SQL キーワードが含まれています"
         )));
@@ -4408,6 +4504,16 @@ mod tests {
     }
 
     #[test]
+    fn validate_view_definition_allows_leading_comment() {
+        assert!(validate_view_definition("-- notes view\nSELECT id FROM posts").is_ok());
+        assert!(validate_view_definition("/* notes */ SELECT id FROM posts").is_ok());
+        assert!(validate_view_definition(
+            "-- DROP TABLE posts\nSELECT id FROM posts"
+        )
+        .is_ok());
+    }
+
+    #[test]
     fn build_table_definition_adds_id_and_columns() {
         let definition = build_table_definition(&[
             TableColumnInput {
@@ -5248,6 +5354,80 @@ mod tests {
     #[test]
     fn parse_simple_view_select_rejects_join() {
         assert!(parse_simple_view_select("SELECT id FROM posts JOIN users ON 1 = 1").is_none());
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_leading_line_comment() {
+        let parsed = parse_simple_view_select(
+            "-- notes view\nSELECT \"id\", \"body\" FROM \"custom_notes\"",
+        )
+        .expect("parsed");
+        assert_eq!(parsed.base_table, "custom_notes");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 2
+                    && columns[0].name == "id"
+                    && columns[1].name == "body"
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_leading_block_comment() {
+        let parsed =
+            parse_simple_view_select("/* notes */ SELECT \"id\" FROM \"custom_notes\"")
+                .expect("parsed");
+        assert_eq!(parsed.base_table, "custom_notes");
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_inline_select_comment() {
+        let parsed = parse_simple_view_select(
+            "SELECT \"id\" -- id column\n, \"body\" FROM \"custom_notes\"",
+        )
+        .expect("parsed");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 2
+                    && columns[0].name == "id"
+                    && columns[1].name == "body"
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_distinct_with_block_comment() {
+        let parsed = parse_simple_view_select(
+            "SELECT /* cols */ DISTINCT \"id\" FROM \"custom_notes\" WHERE \"body\" IS NOT NULL",
+        )
+        .expect("parsed");
+        assert!(parsed.distinct);
+        assert_eq!(
+            parsed.where_conditions,
+            vec![ParsedWhereCondition {
+                column: "body".to_string(),
+                suffix: "IS NOT NULL".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn parse_simple_view_select_preserves_dash_in_quoted_identifier() {
+        let parsed =
+            parse_simple_view_select(r#"SELECT "col--name" FROM "custom_notes""#).expect("parsed");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 1 && columns[0].name == "col--name"
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_rejects_join_with_comment() {
+        assert!(parse_simple_view_select(
+            "-- join view\nSELECT id FROM posts JOIN users ON 1 = 1"
+        )
+        .is_none());
     }
 
     #[test]

@@ -468,6 +468,78 @@ async fn database_view_ui_spec_api_parses_simple_select() {
 }
 
 #[tokio::test]
+async fn database_view_ui_spec_api_parses_simple_select_with_comments() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=comment_ui_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let body = r#"{"definition":"-- notes view\nSELECT \"id\", \"body\" FROM \"comment_ui_notes\""}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/ui-spec",
+            Some(body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    assert_eq!(json["supported"], true);
+    assert_eq!(json["spec"]["base_table"], "comment_ui_notes");
+    assert_eq!(json["spec"]["columns"].as_array().map(|v| v.len()), Some(2));
+}
+
+#[tokio::test]
+async fn database_view_form_edit_with_leading_comment() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=comment_form_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=comment_form_view&definition=--+notes+view%0ASELECT+%22id%22%2C+%22body%22+FROM+%22comment_form_notes%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/comment_form_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains("ビジュアル編集"));
+    assert!(html.contains(r#""base_table":"comment_form_notes""#));
+    assert!(!html.contains(r#"<script type="application/json" id="view-ui-initial">null</script>"#));
+    assert!(html.contains(r#"id="view-ui-unsupported" class="notice info" hidden"#));
+}
+
+#[tokio::test]
 async fn database_view_ui_spec_api_rejects_join() {
     let app = common::TestApp::new().await;
 

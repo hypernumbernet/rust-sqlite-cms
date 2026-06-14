@@ -281,6 +281,79 @@ async fn install_corporate_tables_conflicts_on_second_install() {
 }
 
 #[tokio::test]
+async fn install_distinct_tables_sample_set_succeeds() {
+    let app = common::TestApp::new().await;
+
+    let result = samples::install_sample_set(&app.state, "distinct-tables")
+        .await
+        .expect("install should succeed");
+
+    let InstallResult::Tables {
+        tables_count,
+        views_count,
+        rows_count,
+        ..
+    } = result
+    else {
+        panic!("expected Tables result");
+    };
+
+    assert_eq!(tables_count, 1);
+    assert_eq!(views_count, 3);
+    assert_eq!(rows_count, 14);
+
+    let employees_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM distinct_employees")
+            .fetch_one(&app.state.pool())
+            .await
+            .expect("employees count");
+    assert_eq!(employees_count, 14);
+
+    let departments_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM distinct_departments")
+            .fetch_one(&app.state.pool())
+            .await
+            .expect("departments view count");
+    assert_eq!(departments_count, 3);
+
+    let offices_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM distinct_offices")
+        .fetch_one(&app.state.pool())
+        .await
+        .expect("offices view count");
+    assert_eq!(offices_count, 2);
+
+    let department_offices_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM distinct_department_offices")
+            .fetch_one(&app.state.pool())
+            .await
+            .expect("department offices view count");
+    assert_eq!(department_offices_count, 6);
+}
+
+#[tokio::test]
+async fn install_distinct_tables_conflicts_on_second_install() {
+    let app = common::TestApp::new().await;
+
+    samples::install_sample_set(&app.state, "distinct-tables")
+        .await
+        .expect("first install");
+
+    let err = samples::install_sample_set(&app.state, "distinct-tables")
+        .await
+        .expect_err("second install should conflict");
+
+    match err {
+        AppError::Conflict(msg) => {
+            assert!(msg.contains("distinct_employees")
+                || msg.contains("distinct_departments")
+                || msg.contains("distinct_offices")
+                || msg.contains("distinct_department_offices"));
+        }
+        other => panic!("expected Conflict, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn layout_and_table_sets_install_independently() {
     let app = common::TestApp::new().await;
 

@@ -370,6 +370,88 @@ textarea::placeholder {
 .view-form-tabs {
   margin-top: 8px;
 }
+.field-row.view-ui-base-row {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+.view-ui-base-table-field {
+  display: contents;
+}
+.view-ui-base-table-field > label {
+  grid-column: 1;
+  grid-row: 1;
+  margin-bottom: 0;
+}
+.view-ui-base-table-field > select {
+  grid-column: 1;
+  grid-row: 2;
+}
+.view-ui-distinct-control {
+  align-items: center;
+  align-self: center;
+  display: flex;
+  gap: 8px;
+  grid-column: 2;
+  grid-row: 2;
+}
+.view-ui-distinct-control .checkbox {
+  margin: 0;
+}
+.view-ui-distinct-help {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: help;
+  display: inline-flex;
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  height: 16px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  position: relative;
+  width: 16px;
+}
+.view-ui-distinct-help::after {
+  background: var(--text);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(29, 35, 39, 0.18);
+  color: var(--panel);
+  content: attr(data-tooltip);
+  font-size: 12px;
+  font-weight: 400;
+  left: 50%;
+  line-height: 1.5;
+  max-width: min(280px, calc(100vw - 16px));
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+  visibility: hidden;
+  white-space: normal;
+  width: max-content;
+  z-index: 10050;
+}
+.view-ui-distinct-help:hover::after,
+.view-ui-distinct-help:focus-visible::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  visibility: visible;
+}
+.view-ui-distinct-help:focus-visible {
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
+  outline: none;
+}
 .view-ui-columns-wrap {
   border: 1px solid var(--border);
   border-radius: 4px;

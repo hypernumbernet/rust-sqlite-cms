@@ -45,13 +45,23 @@ pub const SAMPLE_LAYOUT_SETS: &[SampleLayoutSetMeta] = &[
 ];
 
 /// 利用可能な DBテーブルセット一覧。
-pub const SAMPLE_TABLE_SETS: &[SampleTableSetMeta] = &[SampleTableSetMeta {
-    key: "corporate-tables",
-    label: "業務データ（コーポレート向け）",
-    description: "サービス一覧・チーム紹介のサンプルテーブルとビューを追加します。",
-    tags: &["2テーブル", "1ビュー", "サンプル行"],
-    table_names: &["corporate_services", "corporate_team"],
-}];
+pub const SAMPLE_TABLE_SETS: &[SampleTableSetMeta] = &[
+    SampleTableSetMeta {
+        key: "corporate-tables",
+        label: "業務データ（コーポレート向け）",
+        description: "サービス一覧・チーム紹介のサンプルテーブルとビューを追加します。",
+        tags: &["2テーブル", "1ビュー", "サンプル行"],
+        table_names: &["corporate_services", "corporate_team"],
+    },
+    SampleTableSetMeta {
+        key: "distinct-tables",
+        label: "DISTINCT デモ（部署・オフィス）",
+        description:
+            "部署とオフィスに重複を含む社員テーブルと、DISTINCT で重複を除いた一覧ビューを追加します。",
+        tags: &["1テーブル", "3ビュー", "DISTINCT", "サンプル14行"],
+        table_names: &["distinct_employees"],
+    },
+];
 
 /// インストール結果（UI 表示用）。
 #[derive(Debug, Clone)]
@@ -78,6 +88,7 @@ pub async fn install_sample_set(state: &AppState, key: &str) -> AppResult<Instal
         "corporate" => sets::corporate::install(state).await,
         "bicycle" => sets::bicycle::install(state).await,
         "corporate-tables" => sets::corporate_tables::install(state).await,
+        "distinct-tables" => sets::distinct_tables::install(state).await,
         _ => Err(AppError::Conflict(format!(
             "不明なサンプルセットです: {key}"
         ))),

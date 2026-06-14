@@ -527,6 +527,55 @@ async fn database_view_ui_spec_api_parses_distinct_and_extra_where() {
 }
 
 #[tokio::test]
+async fn database_view_form_distinct_checkbox_and_initial_state() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request("GET", "/admin/database/views/new", None, None)
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains(r#"id="view-ui-distinct""#));
+    assert!(html.contains("重複除去"));
+    assert!(html.contains(r#"data-tooltip="ON にすると SELECT DISTINCT を付与し、同一行を除きます。""#));
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=distinct_ui_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=distinct_ui_view&definition=SELECT+DISTINCT+%22id%22+FROM+%22distinct_ui_notes%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/distinct_ui_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains(r#""base_table":"distinct_ui_notes""#));
+    assert!(html.contains(r#""distinct":true"#));
+}
+
+#[tokio::test]
 async fn database_view_form_where_condition() {
     let app = common::TestApp::new().await;
 

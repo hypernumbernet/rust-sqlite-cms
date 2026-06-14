@@ -3371,6 +3371,7 @@
     const sqlPanel = document.getElementById('view-tab-sql');
     const uiPanel = document.getElementById('view-tab-ui');
     const baseTableSelect = document.getElementById('view-ui-base-table');
+    const distinctCheckbox = document.getElementById('view-ui-distinct');
     const columnsWrap = document.getElementById('view-ui-columns-wrap');
     const columnsList = document.getElementById('view-ui-columns');
     const addColumnSelect = document.getElementById('view-ui-add-column-select');
@@ -3430,12 +3431,20 @@
       return '"' + String(name).replace(/"/g, '""') + '"';
     }
 
+    function isDistinctEnabled() {
+      if (distinctCheckbox) return distinctCheckbox.checked;
+      return !!currentUiSpecMeta.distinct;
+    }
+
     function setUiSpecMeta(spec) {
       currentUiSpecMeta = {
         distinct: !!(spec && spec.distinct),
         extra_where:
           spec && Array.isArray(spec.extra_where) ? spec.extra_where.slice() : [],
       };
+      if (distinctCheckbox) {
+        distinctCheckbox.checked = currentUiSpecMeta.distinct;
+      }
     }
 
     function fetchViewUiSpec(definition) {
@@ -4158,7 +4167,7 @@
       });
       const allWhereParts = whereParts.concat(extraParts);
       let sql = 'SELECT ';
-      if (currentUiSpecMeta.distinct) {
+      if (isDistinctEnabled()) {
         sql += 'DISTINCT ';
       }
       sql += columnSql + ' FROM ' + quoteSqlIdentifier(table);
@@ -4327,6 +4336,12 @@
         lastResolvedDefinition = null;
         lastResolvedResult = null;
         loadColumnsForTable(baseTableSelect.value, null);
+      });
+    }
+
+    if (distinctCheckbox) {
+      distinctCheckbox.addEventListener('change', function () {
+        setUiDirty(true);
       });
     }
 

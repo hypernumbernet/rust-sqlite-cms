@@ -30,14 +30,23 @@
         </div>
 
         <div id="view-ui-builder">
-          <div class="field">
-            <label for="view-ui-base-table">元テーブル</label>
-            <select id="view-ui-base-table">
-              <option value="">テーブルを選択</option>
-              {% for table in table_options %}
-              <option value="{{ table.name }}">{{ table.name }}</option>
-              {% endfor %}
-            </select>
+          <div class="field-row view-ui-base-row">
+            <div class="view-ui-base-table-field">
+              <label for="view-ui-base-table">元テーブル</label>
+              <select id="view-ui-base-table">
+                <option value="">テーブルを選択</option>
+                {% for table in table_options %}
+                <option value="{{ table.name }}">{{ table.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="view-ui-distinct-control">
+              <label class="checkbox" for="view-ui-distinct">
+                <input type="checkbox" id="view-ui-distinct">
+                重複除去
+              </label>
+              <button type="button" class="view-ui-distinct-help" data-tooltip="ON にすると SELECT DISTINCT を付与し、同一行を除きます。" aria-label="重複除去の説明">?</button>
+            </div>
           </div>
 
           <div id="view-ui-error" class="error" hidden></div>

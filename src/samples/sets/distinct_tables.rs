@@ -35,7 +35,6 @@ pub async fn install(state: &AppState) -> AppResult<super::super::InstallResult>
         r#"
 SELECT DISTINCT department
 FROM distinct_employees
-ORDER BY department
         "#,
     )
     .await?;
@@ -46,7 +45,6 @@ ORDER BY department
         r#"
 SELECT DISTINCT office
 FROM distinct_employees
-ORDER BY office
         "#,
     )
     .await?;
@@ -57,7 +55,6 @@ ORDER BY office
         r#"
 SELECT DISTINCT department, office
 FROM distinct_employees
-ORDER BY department, office
         "#,
     )
     .await?;

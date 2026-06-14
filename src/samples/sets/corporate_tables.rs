@@ -38,7 +38,6 @@ pub async fn install(state: &AppState) -> AppResult<super::super::InstallResult>
 SELECT id, name, category, description, price_from
 FROM corporate_services
 WHERE is_featured = 1
-ORDER BY price_from
         "#,
     )
     .await?;

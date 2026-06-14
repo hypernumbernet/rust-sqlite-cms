@@ -4495,6 +4495,87 @@
     });
   }
 
+  function initHelpTooltipButtons() {
+    const buttons = document.querySelectorAll('.view-ui-distinct-help[data-tooltip]');
+    if (!buttons.length) return;
+
+    let tooltipEl = null;
+    let activeButton = null;
+
+    function sidebarMinLeft() {
+      const raw = getComputedStyle(document.documentElement)
+        .getPropertyValue('--admin-sidebar-width')
+        .trim();
+      const width = Number.parseFloat(raw);
+      return (Number.isFinite(width) ? width : 220) + 8;
+    }
+
+    function ensureTooltip() {
+      if (!tooltipEl) {
+        tooltipEl = document.createElement('span');
+        tooltipEl.className = 'view-ui-distinct-help-popup';
+        tooltipEl.setAttribute('role', 'tooltip');
+        tooltipEl.hidden = true;
+        document.body.appendChild(tooltipEl);
+      }
+      return tooltipEl;
+    }
+
+    function positionTooltip(button) {
+      const tooltip = ensureTooltip();
+      const rect = button.getBoundingClientRect();
+      tooltip.style.left = '0px';
+      tooltip.style.top = '-9999px';
+      tooltip.style.visibility = 'hidden';
+      const tooltipHeight = tooltip.offsetHeight;
+      const tooltipWidth = tooltip.offsetWidth;
+      let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+      const maxLeft = window.innerWidth - tooltipWidth - 8;
+      left = Math.max(sidebarMinLeft(), Math.min(left, maxLeft));
+      const top = Math.max(8, rect.top - tooltipHeight - 6);
+      tooltip.style.left = left + 'px';
+      tooltip.style.top = top + 'px';
+      tooltip.style.visibility = '';
+    }
+
+    function showTooltip(button) {
+      const text = button.getAttribute('data-tooltip');
+      if (!text) return;
+      const tooltip = ensureTooltip();
+      tooltip.textContent = text;
+      tooltip.hidden = false;
+      activeButton = button;
+      positionTooltip(button);
+      tooltip.classList.add('is-visible');
+    }
+
+    function hideTooltip() {
+      if (!tooltipEl) return;
+      tooltipEl.classList.remove('is-visible');
+      tooltipEl.hidden = true;
+      activeButton = null;
+    }
+
+    function refreshActiveTooltip() {
+      if (activeButton) positionTooltip(activeButton);
+    }
+
+    buttons.forEach(function (button) {
+      button.classList.add('help-tooltip-ready');
+      button.addEventListener('mouseenter', function () {
+        showTooltip(button);
+      });
+      button.addEventListener('mouseleave', hideTooltip);
+      button.addEventListener('focus', function () {
+        showTooltip(button);
+      });
+      button.addEventListener('blur', hideTooltip);
+    });
+
+    window.addEventListener('scroll', refreshActiveTooltip, true);
+    window.addEventListener('resize', refreshActiveTooltip);
+  }
+
   function initPageModules() {
     initTemplateRepeater();
     initSeedForm();
@@ -4505,6 +4586,7 @@
     initViewDuplicate();
     initViewForm();
     initLayoutDuplicate();
+    initHelpTooltipButtons();
   }
 
   window.Admin = {

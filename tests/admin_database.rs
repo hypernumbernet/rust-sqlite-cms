@@ -611,6 +611,13 @@ async fn database_view_form_distinct_checkbox_and_initial_state() {
     assert!(html.contains(r#"id="view-ui-distinct""#));
     assert!(html.contains("重複除去"));
     assert!(html.contains(r#"data-tooltip="ON にすると SELECT DISTINCT を付与し、同一行を除きます。""#));
+    assert!(html.contains(r#"aria-label="ビュー名の説明""#));
+    assert!(html.contains(
+        r#"data-tooltip="120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。CMS コアテーブル名は使用できません。""#
+    ));
+    assert!(!html.contains(
+        "<p class=\"help\">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\\ は使用できません。CMS コアテーブル名は使用できません。</p>"
+    ));
 
     let response = app
         .admin_request(

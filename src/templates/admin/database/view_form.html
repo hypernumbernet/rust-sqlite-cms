@@ -12,9 +12,11 @@
 <form method="post" action="{{ action }}" class="form-layout" id="view-form">
   <section class="panel">
     <div class="field">
-      <label for="name">ビュー名</label>
+      <div class="field-label-with-help">
+        <label for="name">ビュー名</label>
+        <button type="button" class="view-ui-distinct-help" data-tooltip="120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。CMS コアテーブル名は使用できません。" aria-label="ビュー名の説明">?</button>
+      </div>
       <input id="name" name="name" type="text" maxlength="120" value="{{ name }}"{% if name_readonly %} readonly{% endif %} required>
-      <p class="help">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。CMS コアテーブル名は使用できません。</p>
     </div>
 
     <div class="field">

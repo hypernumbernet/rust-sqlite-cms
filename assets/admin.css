@@ -253,6 +253,16 @@ a { color: var(--accent); }
 .field { margin-bottom: 18px; }
 .field:last-child { margin-bottom: 0; }
 label { display: block; margin-bottom: 6px; font-weight: 600; }
+.field-label-with-help {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.field-label-with-help label {
+  display: inline;
+  margin-bottom: 0;
+}
 
 input[type="text"],
 input[type="number"],
@@ -451,6 +461,36 @@ textarea::placeholder {
 .view-ui-distinct-help:focus-visible {
   box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
   outline: none;
+}
+.view-ui-distinct-help.help-tooltip-ready::after {
+  content: none;
+}
+.view-ui-distinct-help-popup {
+  background: var(--text);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(29, 35, 39, 0.18);
+  color: var(--panel);
+  font-size: 12px;
+  font-weight: 400;
+  left: 0;
+  line-height: 1.5;
+  max-width: min(280px, calc(100vw - 16px));
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+  visibility: hidden;
+  white-space: normal;
+  width: max-content;
+  z-index: 10050;
+}
+.view-ui-distinct-help-popup.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 .view-ui-columns-wrap {
   border: 1px solid var(--border);

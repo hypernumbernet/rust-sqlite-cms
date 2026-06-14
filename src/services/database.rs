@@ -792,6 +792,15 @@ async fn apply_column_migration(
     }
 
     tx.commit().await?;
+    sanitize_data_ui_preferences(
+        pool,
+        name,
+        SanitizeUiPreferencesOptions {
+            clear_sort_filter: false,
+            column_renames: &plan.renames,
+        },
+    )
+    .await?;
     Ok(())
 }
 
@@ -858,6 +867,28 @@ async fn rebuild_user_table(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+
+    let renames: Vec<(String, String)> = normalized
+        .iter()
+        .filter_map(|column| {
+            column.orig_name.as_ref().and_then(|orig_name| {
+                if orig_name == &column.name {
+                    None
+                } else {
+                    Some((orig_name.clone(), column.name.clone()))
+                }
+            })
+        })
+        .collect();
+    sanitize_data_ui_preferences(
+        pool,
+        table_name,
+        SanitizeUiPreferencesOptions {
+            clear_sort_filter: false,
+            column_renames: &renames,
+        },
+    )
+    .await?;
     Ok(())
 }
 
@@ -1055,6 +1086,15 @@ pub async fn update_user_view(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    sanitize_data_ui_preferences(
+        pool,
+        name,
+        SanitizeUiPreferencesOptions {
+            clear_sort_filter: true,
+            column_renames: &[],
+        },
+    )
+    .await?;
     Ok(())
 }
 
@@ -1649,20 +1689,18 @@ pub async fn save_table_column_widths(
     let column_set: std::collections::HashSet<&str> =
         column_names.iter().map(String::as_str).collect();
 
-    for (col, width) in widths {
-        if !column_set.contains(col.as_str()) {
-            return Err(DomainError::Validation(format!(
-                "カラム `{col}` はオブジェクト `{name}` に存在しません"
-            )));
-        }
-        if *width < COLUMN_WIDTH_MIN_PX || *width > COLUMN_WIDTH_MAX_PX {
-            return Err(DomainError::Validation(format!(
-                "列幅は {COLUMN_WIDTH_MIN_PX}〜{COLUMN_WIDTH_MAX_PX} px で指定してください"
-            )));
-        }
-    }
+    let pruned_widths: std::collections::HashMap<String, i32> = widths
+        .iter()
+        .filter(|(col, _)| column_set.contains(col.as_str()))
+        .filter_map(|(col, width)| {
+            if *width < COLUMN_WIDTH_MIN_PX || *width > COLUMN_WIDTH_MAX_PX {
+                return None;
+            }
+            Some(((*col).clone(), *width))
+        })
+        .collect();
 
-    let json = serde_json::to_string(widths).map_err(|e| {
+    let json = serde_json::to_string(&pruned_widths).map_err(|e| {
         DomainError::Internal(anyhow::anyhow!("列幅 JSON のシリアライズに失敗: {e}"))
     })?;
 
@@ -1798,9 +1836,10 @@ pub async fn save_table_sort(
         return Err(DomainError::NotFound);
     }
 
-    validate_sort_columns(pool, name, sort).await?;
+    let column_names = table_column_names(pool, name).await?;
+    let sort = filter_sort_entries_to_columns(&column_names, sort);
 
-    let json = serde_json::to_string(sort).map_err(|e| {
+    let json = serde_json::to_string(&sort).map_err(|e| {
         DomainError::Internal(anyhow::anyhow!("ソート JSON のシリアライズに失敗: {e}"))
     })?;
 
@@ -1840,8 +1879,11 @@ pub async fn save_table_filter(
         return Err(DomainError::NotFound);
     }
 
-    let filter = compact_filter_entries(filter);
-    validate_filter_columns(pool, name, &filter).await?;
+    let column_names = table_column_names(pool, name).await?;
+    let filter = filter_filter_entries_to_columns(
+        &column_names,
+        &compact_filter_entries(filter),
+    );
 
     let json = serde_json::to_string(&filter).map_err(|e| {
         DomainError::Internal(anyhow::anyhow!("フィルター JSON のシリアライズに失敗: {e}"))
@@ -1864,64 +1906,213 @@ pub async fn save_table_filter(
     Ok(())
 }
 
-fn validate_sort_against_columns(
+fn filter_sort_entries_to_columns(
     column_names: &[String],
-    table_name: &str,
     entries: &[TableSortEntry],
-) -> DomainResult<()> {
+) -> Vec<TableSortEntry> {
     if entries.is_empty() {
-        return Ok(());
+        return Vec::new();
     }
 
     let column_set: std::collections::HashSet<&str> =
         column_names.iter().map(String::as_str).collect();
 
-    for entry in entries {
-        if !column_set.contains(entry.column.as_str()) {
-            return Err(DomainError::Validation(format!(
-                "カラム `{}` はテーブル `{table_name}` に存在しません",
-                entry.column
-            )));
+    entries
+        .iter()
+        .filter(|entry| column_set.contains(entry.column.as_str()))
+        .cloned()
+        .collect()
+}
+
+fn filter_filter_entries_to_columns(
+    column_names: &[String],
+    entries: &[TableFilterEntry],
+) -> Vec<TableFilterEntry> {
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    let column_set: std::collections::HashSet<&str> =
+        column_names.iter().map(String::as_str).collect();
+
+    entries
+        .iter()
+        .filter(|entry| column_set.contains(entry.column.as_str()))
+        .cloned()
+        .collect()
+}
+
+fn prune_column_widths(
+    column_names: &[String],
+    widths: Option<std::collections::HashMap<String, i32>>,
+) -> Option<std::collections::HashMap<String, i32>> {
+    let widths = widths?;
+    let column_set: std::collections::HashSet<&str> =
+        column_names.iter().map(String::as_str).collect();
+    let pruned: std::collections::HashMap<String, i32> = widths
+        .into_iter()
+        .filter(|(name, _)| column_set.contains(name.as_str()))
+        .collect();
+    if pruned.is_empty() {
+        None
+    } else {
+        Some(pruned)
+    }
+}
+
+#[derive(Debug, Default)]
+struct SanitizeUiPreferencesOptions<'a> {
+    clear_sort_filter: bool,
+    column_renames: &'a [(String, String)],
+}
+
+fn apply_column_renames_to_sort(
+    entries: &mut [TableSortEntry],
+    renames: &[(String, String)],
+) {
+    let rename_map: std::collections::HashMap<&str, &str> = renames
+        .iter()
+        .map(|(old_name, new_name)| (old_name.as_str(), new_name.as_str()))
+        .collect();
+    for entry in entries.iter_mut() {
+        if let Some(new_name) = rename_map.get(entry.column.as_str()) {
+            entry.column = (*new_name).to_string();
         }
     }
+}
+
+fn apply_column_renames_to_filter(
+    entries: &mut [TableFilterEntry],
+    renames: &[(String, String)],
+) {
+    let rename_map: std::collections::HashMap<&str, &str> = renames
+        .iter()
+        .map(|(old_name, new_name)| (old_name.as_str(), new_name.as_str()))
+        .collect();
+    for entry in entries.iter_mut() {
+        if let Some(new_name) = rename_map.get(entry.column.as_str()) {
+            entry.column = (*new_name).to_string();
+        }
+    }
+}
+
+fn apply_column_renames_to_widths(
+    widths: &mut Option<std::collections::HashMap<String, i32>>,
+    renames: &[(String, String)],
+) {
+    let Some(width_map) = widths.as_mut() else {
+        return;
+    };
+    let rename_map: std::collections::HashMap<&str, &str> = renames
+        .iter()
+        .map(|(old_name, new_name)| (old_name.as_str(), new_name.as_str()))
+        .collect();
+    let mut renamed = std::collections::HashMap::new();
+    for (key, value) in width_map.drain() {
+        let new_key = rename_map
+            .get(key.as_str())
+            .map(|name| (*name).to_string())
+            .unwrap_or(key);
+        renamed.insert(new_key, value);
+    }
+    *width_map = renamed;
+}
+
+async fn persist_sanitized_table_ui_meta(
+    pool: &SqlitePool,
+    name: &str,
+    sort: &[TableSortEntry],
+    filter: &[TableFilterEntry],
+    column_widths: Option<std::collections::HashMap<String, i32>>,
+) -> DomainResult<()> {
+    let has_meta_row: bool = match sqlx::query_scalar::<_, i32>(
+        "SELECT 1 FROM user_table_meta WHERE table_name = ?",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(row) => row.is_some(),
+        Err(err) if is_missing_user_table_meta_error(&err) => false,
+        Err(err) => return Err(err.into()),
+    };
+
+    if !has_meta_row && sort.is_empty() && filter.is_empty() && column_widths.is_none() {
+        return Ok(());
+    }
+
+    let sort_json = serde_json::to_string(sort).map_err(|e| {
+        DomainError::Internal(anyhow::anyhow!("ソート JSON のシリアライズに失敗: {e}"))
+    })?;
+    let filter_json = serde_json::to_string(filter).map_err(|e| {
+        DomainError::Internal(anyhow::anyhow!("フィルター JSON のシリアライズに失敗: {e}"))
+    })?;
+    let widths_json = match column_widths {
+        Some(widths) if !widths.is_empty() => serde_json::to_string(&widths).map_err(|e| {
+            DomainError::Internal(anyhow::anyhow!("列幅 JSON のシリアライズに失敗: {e}"))
+        })?,
+        _ => "{}".to_string(),
+    };
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_table_meta (table_name, column_widths_json, sort_json, filter_json, updated_at)
+        VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        ON CONFLICT(table_name) DO UPDATE SET
+            column_widths_json = excluded.column_widths_json,
+            sort_json = excluded.sort_json,
+            filter_json = excluded.filter_json,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(name)
+    .bind(widths_json)
+    .bind(sort_json)
+    .bind(filter_json)
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
 
-fn validate_filter_against_columns(
-    column_names: &[String],
-    table_name: &str,
-    entries: &[TableFilterEntry],
+async fn sanitize_data_ui_preferences(
+    pool: &SqlitePool,
+    name: &str,
+    options: SanitizeUiPreferencesOptions<'_>,
 ) -> DomainResult<()> {
-    if entries.is_empty() {
-        return Ok(());
+    let column_names = table_column_names(pool, name).await?;
+    let meta = get_table_ui_meta(pool, name).await?;
+
+    let mut sort = if options.clear_sort_filter {
+        Vec::new()
+    } else {
+        meta.sort.unwrap_or_default()
+    };
+    let mut filter = if options.clear_sort_filter {
+        Vec::new()
+    } else {
+        meta.filter.unwrap_or_default()
+    };
+    let mut column_widths = meta.column_widths;
+
+    if !options.clear_sort_filter && !options.column_renames.is_empty() {
+        apply_column_renames_to_sort(&mut sort, options.column_renames);
+        apply_column_renames_to_filter(&mut filter, options.column_renames);
+        apply_column_renames_to_widths(&mut column_widths, options.column_renames);
     }
 
-    let column_set: std::collections::HashSet<&str> =
-        column_names.iter().map(String::as_str).collect();
+    sort = filter_sort_entries_to_columns(&column_names, &sort);
+    filter = filter_filter_entries_to_columns(&column_names, &filter);
+    column_widths = prune_column_widths(&column_names, column_widths);
 
-    for entry in entries {
-        if entry.text.is_empty() {
-            continue;
-        }
-        if !column_set.contains(entry.column.as_str()) {
-            return Err(DomainError::Validation(format!(
-                "カラム `{}` はテーブル `{table_name}` に存在しません",
-                entry.column
-            )));
-        }
-    }
-
-    Ok(())
+    persist_sanitized_table_ui_meta(pool, name, &sort, &filter, column_widths).await
 }
 
 fn build_where_from_filter(
-    column_names: &[String],
-    table_name: &str,
+    _column_names: &[String],
+    _table_name: &str,
     entries: &[TableFilterEntry],
 ) -> DomainResult<(String, Vec<String>)> {
-    validate_filter_against_columns(column_names, table_name, entries)?;
-
     let active: Vec<&TableFilterEntry> = entries
         .iter()
         .filter(|entry| !entry.text.is_empty())
@@ -1949,25 +2140,11 @@ fn build_where_from_filter(
     Ok((format!("WHERE {}", parts.join(" AND ")), binds))
 }
 
-async fn validate_filter_columns(
-    pool: &SqlitePool,
-    table_name: &str,
-    entries: &[TableFilterEntry],
-) -> DomainResult<()> {
-    if entries.is_empty() {
-        return Ok(());
-    }
-    let column_names = table_column_names(pool, table_name).await?;
-    validate_filter_against_columns(&column_names, table_name, entries)
-}
-
 fn build_order_by_from_sort(
-    column_names: &[String],
-    table_name: &str,
+    _column_names: &[String],
+    _table_name: &str,
     sort_entries: &[TableSortEntry],
 ) -> DomainResult<String> {
-    validate_sort_against_columns(column_names, table_name, sort_entries)?;
-
     let parts: Vec<String> = sort_entries
         .iter()
         .map(|entry| {
@@ -2098,18 +2275,6 @@ async fn get_table_ui_meta(pool: &SqlitePool, name: &str) -> DomainResult<TableU
     })
 }
 
-async fn validate_sort_columns(
-    pool: &SqlitePool,
-    table_name: &str,
-    entries: &[TableSortEntry],
-) -> DomainResult<()> {
-    if entries.is_empty() {
-        return Ok(());
-    }
-    let column_names = table_column_names(pool, table_name).await?;
-    validate_sort_against_columns(&column_names, table_name, entries)
-}
-
 pub async fn list_user_table_rows(
     pool: &SqlitePool,
     name: &str,
@@ -2136,21 +2301,23 @@ pub async fn list_user_table_rows(
         None
     };
 
-    let effective_sort: Vec<TableSortEntry> = match sort_override {
+    let mut effective_sort: Vec<TableSortEntry> = match sort_override {
         Some(entries) => entries.to_vec(),
         None => ui_meta
             .as_ref()
             .and_then(|meta| meta.sort.clone())
             .unwrap_or_default(),
     };
+    effective_sort = filter_sort_entries_to_columns(&columns, &effective_sort);
 
-    let effective_filter = compact_filter_entries(match filter_override {
+    let mut effective_filter = compact_filter_entries(match filter_override {
         Some(entries) => entries,
         None => ui_meta
             .as_ref()
             .and_then(|meta| meta.filter.as_deref())
             .unwrap_or_default(),
     });
+    effective_filter = filter_filter_entries_to_columns(&columns, &effective_filter);
 
     let (where_clause, where_binds) =
         build_where_from_filter(&columns, name, &effective_filter)?;
@@ -2178,10 +2345,11 @@ pub async fn list_user_table_rows(
     let has_more = offset + fetched < total_count;
 
     let column_widths = if offset == 0 {
-        match &ui_meta {
+        let widths = match &ui_meta {
             Some(meta) => meta.column_widths.clone(),
             None => get_table_column_widths(pool, name).await?,
-        }
+        };
+        prune_column_widths(&columns, widths)
     } else {
         None
     };
@@ -4487,6 +4655,18 @@ mod tests {
             columns: vec![],
         };
         assert!(build_simple_view_select(&spec).is_err());
+    }
+
+    #[test]
+    fn filter_sort_entries_to_columns_drops_missing_columns() {
+        let filtered = filter_sort_entries_to_columns(
+            &["user_id".to_string()],
+            &[TableSortEntry {
+                column: "body".to_string(),
+                direction: TableSortDirection::Asc,
+            }],
+        );
+        assert!(filtered.is_empty());
     }
 
     #[test]

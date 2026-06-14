@@ -1122,18 +1122,39 @@
       return map;
     }
 
+    function pruneDataStacksToColumns() {
+      if (!columns.length) return;
+      const columnSet = new Set(columns);
+      sortStack = sortStack.filter(function (entry) {
+        return columnSet.has(entry.column);
+      });
+      filterStack = filterStack.filter(function (entry) {
+        return columnSet.has(entry.column);
+      });
+    }
+
     function dataViewQueryString() {
       let query = '';
-      if (sortStack.length) {
+      const columnSet =
+        columns.length > 0 ? new Set(columns) : null;
+      const sortEntries =
+        columnSet === null
+          ? sortStack
+          : sortStack.filter(function (entry) {
+              return columnSet.has(entry.column);
+            });
+      if (sortEntries.length) {
         query +=
           '&sort=' +
-          sortStack
+          sortEntries
             .map(function (entry) {
               return encodeURIComponent(entry.column) + ':' + entry.direction;
             })
             .join(',');
       }
-      const activeFilters = activeFilterEntries();
+      const activeFilters = activeFilterEntries().filter(function (entry) {
+        return columnSet === null || columnSet.has(entry.column);
+      });
       if (activeFilters.length) {
         query +=
           '&filter=' +
@@ -2526,6 +2547,7 @@
                 return entry.text;
               })
             : [];
+          pruneDataStacksToColumns();
           updateSortIndicator();
           updateFilterIndicator();
           updateFitAllColumnsButton();

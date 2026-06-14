@@ -535,6 +535,185 @@ async fn database_view_form_column_alias() {
 }
 
 #[tokio::test]
+async fn database_view_data_survives_definition_change_with_stale_sort() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=stale_sort_src&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "stale_sort_src" ("body") VALUES ('alpha'), ('beta')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some(
+                "name=stale_sort_view&definition=SELECT+%22id%22%2C+%22body%22+FROM+%22stale_sort_src%22",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let save_body = r#"{"sort":[{"column":"body","direction":"asc"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/stale_sort_view/data/sort",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/stale_sort_view/edit",
+            Some("name=stale_sort_view&definition=SELECT+%22id%22+AS+%22user_id%22+FROM+%22stale_sort_src%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let stored_sort: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'stale_sort_view'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert_eq!(stored_sort.as_deref(), Some("[]"));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/stale_sort_view/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["user_id"]));
+    assert_eq!(json["rows"].as_array().unwrap().len(), 2);
+    assert!(json["sort"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn database_table_data_survives_column_rename_with_stale_sort() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=rename_sort_src&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "rename_sort_src" ("body") VALUES ('alpha'), ('beta')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let save_body = r#"{"sort":[{"column":"body","direction":"asc"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/rename_sort_src/data/sort",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/rename_sort_src/edit",
+            Some(
+                "name=rename_sort_src&col_orig_name=body&col_name=title&col_type=text&col_nullable=0",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let stored_sort: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'rename_sort_src'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(stored_sort.unwrap().contains(r#""column":"title""#));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/rename_sort_src/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["id", "title"]));
+    assert_eq!(json["sort"][0]["column"], "title");
+    assert_eq!(
+        json["rows"].as_array().unwrap()[0][1],
+        serde_json::json!("alpha")
+    );
+}
+
+#[tokio::test]
+async fn database_table_data_rows_ignore_invalid_sort_query_param() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=bad_sort_query&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "bad_sort_query" ("body") VALUES ('only')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/tables/bad_sort_query/data/rows?offset=0&sort=missing:asc",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["rows"].as_array().unwrap().len(), 1);
+    assert!(json["sort"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn database_create_table_with_sqlite_types() {
     let app = common::TestApp::new().await;
 
@@ -1107,7 +1286,7 @@ async fn database_table_data_column_widths_save_and_load() {
 }
 
 #[tokio::test]
-async fn database_table_data_column_widths_rejects_invalid_column() {
+async fn database_table_data_column_widths_ignores_invalid_column() {
     let app = common::TestApp::new().await;
 
     let response = app
@@ -1120,7 +1299,7 @@ async fn database_table_data_column_widths_rejects_invalid_column() {
         .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
-    let save_body = r#"{"widths":{"missing_col":100}}"#;
+    let save_body = r#"{"widths":{"missing_col":100,"body":120}}"#;
     let response = app
         .admin_request(
             "POST",
@@ -1129,13 +1308,16 @@ async fn database_table_data_column_widths_rejects_invalid_column() {
             Some("application/json"),
         )
         .await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    let body = response.into_body().collect().await.unwrap().to_bytes();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-    assert!(json["error"]["message"]
-        .as_str()
-        .unwrap_or("")
-        .contains("missing_col"));
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let stored: String = sqlx::query_scalar(
+        "SELECT column_widths_json FROM user_table_meta WHERE table_name = 'col_widths_bad'",
+    )
+    .fetch_one(&app.state.pool())
+    .await
+    .unwrap();
+    assert!(stored.contains(r#""body":120"#));
+    assert!(!stored.contains("missing_col"));
 }
 
 #[tokio::test]
@@ -1236,28 +1418,37 @@ async fn database_table_data_rows_multi_column_sort() {
 }
 
 #[tokio::test]
-async fn database_table_data_rows_rejects_unknown_sort_column() {
+async fn database_table_data_rows_ignore_invalid_filter_query_param() {
     let app = common::TestApp::new().await;
 
     let response = app
         .admin_request(
             "POST",
             "/admin/database/tables/new",
-            Some("name=sort_bad&col_name=body&col_type=text&col_nullable=0"),
+            Some("name=bad_filter_query&col_name=body&col_type=text&col_nullable=0"),
             Some("application/x-www-form-urlencoded"),
         )
         .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
+    sqlx::query(r#"INSERT INTO "bad_filter_query" ("body") VALUES ('only')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
     let response = app
         .admin_request(
             "GET",
-            "/admin/database/tables/sort_bad/data/rows?offset=0&sort=missing:asc",
+            "/admin/database/tables/bad_filter_query/data/rows?offset=0&filter=missing:abc",
             None,
             None,
         )
         .await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["rows"].as_array().unwrap().len(), 1);
+    assert!(json["filter"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]
@@ -1467,28 +1658,107 @@ async fn database_table_data_rows_multi_column_filter() {
 }
 
 #[tokio::test]
-async fn database_table_data_rows_rejects_unknown_filter_column() {
+async fn database_table_data_sort_save_ignores_invalid_columns() {
     let app = common::TestApp::new().await;
 
     let response = app
         .admin_request(
             "POST",
             "/admin/database/tables/new",
-            Some("name=filter_bad&col_name=body&col_type=text&col_nullable=0"),
+            Some("name=sort_prune&col_name=body&col_type=text&col_nullable=0"),
             Some("application/x-www-form-urlencoded"),
         )
         .await;
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
 
+    let save_body =
+        r#"{"sort":[{"column":"missing","direction":"asc"},{"column":"body","direction":"desc"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/sort_prune/data/sort",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let stored: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'sort_prune'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    let stored = stored.unwrap();
+    assert!(!stored.contains("missing"));
+    assert!(stored.contains(r#""column":"body""#));
+}
+
+#[tokio::test]
+async fn database_table_data_survives_column_drop_with_stale_sort() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some(
+                "name=drop_sort_src&col_name=keep&col_type=text&col_nullable=0\
+                 &col_name=drop_me&col_type=text&col_nullable=0",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "drop_sort_src" ("keep", "drop_me") VALUES ('a', 'b')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let save_body = r#"{"sort":[{"column":"drop_me","direction":"asc"}]}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/drop_sort_src/data/sort",
+            Some(save_body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/drop_sort_src/edit",
+            Some("name=drop_sort_src&col_orig_name=keep&col_name=keep&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let stored_sort: Option<String> = sqlx::query_scalar(
+        "SELECT sort_json FROM user_table_meta WHERE table_name = 'drop_sort_src'",
+    )
+    .fetch_optional(&app.state.pool())
+    .await
+    .unwrap();
+    assert_eq!(stored_sort.as_deref(), Some("[]"));
+
     let response = app
         .admin_request(
             "GET",
-            "/admin/database/tables/filter_bad/data/rows?offset=0&filter=missing:abc",
+            "/admin/database/tables/drop_sort_src/data/rows?offset=0",
             None,
             None,
         )
         .await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["id", "keep"]));
+    assert_eq!(json["rows"].as_array().unwrap().len(), 1);
+    assert!(json["sort"].as_array().unwrap().is_empty());
 }
 
 #[tokio::test]

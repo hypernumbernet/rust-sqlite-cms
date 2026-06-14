@@ -171,7 +171,6 @@ struct TableFormTemplate {
     columns: Vec<ColumnFormRow>,
     error_message: String,
     success_message: String,
-    data_url: String,
 }
 
 #[derive(Debug, Clone)]
@@ -514,7 +513,7 @@ async fn edit_table_form(
             let html = table_form_template(
                 &auth,
                 TableFormParams {
-                    heading: "列を編集",
+                    heading: "列編集",
                     action: table_url(&name, "/edit"),
                     submit_label: "保存する",
                     name: &name,
@@ -533,7 +532,7 @@ async fn edit_table_form(
     let html = table_form_template(
         &auth,
         TableFormParams {
-            heading: "列を編集",
+            heading: "列編集",
             action: table_url(&name, "/edit"),
             submit_label: "保存する",
             name: &name,
@@ -908,7 +907,7 @@ async fn update_table(
             let html = table_form_template(
                 &auth,
                 TableFormParams {
-                    heading: "列を編集",
+                    heading: "列編集",
                     action: table_url(&name, "/edit"),
                     submit_label: "保存する",
                     name: &name,
@@ -927,7 +926,7 @@ async fn update_table(
         let html = table_form_template(
             &auth,
             TableFormParams {
-                heading: "列を編集",
+                heading: "列編集",
                 action: table_url(&name, "/edit"),
                 submit_label: "保存する",
                 name: &name,
@@ -949,7 +948,7 @@ async fn update_table(
             let html = table_form_template(
                 &auth,
                 TableFormParams {
-                    heading: "列を編集",
+                    heading: "列編集",
                     action: table_url(&name, "/edit"),
                     submit_label: "保存する",
                     name: &name,
@@ -971,7 +970,7 @@ async fn update_table(
             let html = table_form_template(
                 &auth,
                 TableFormParams {
-                    heading: "列を編集",
+                    heading: "列編集",
                     action: table_url(&name, "/edit"),
                     submit_label: "保存する",
                     name: &name,
@@ -1362,7 +1361,6 @@ fn table_form_template(auth: &AuthUser, params: TableFormParams<'_>) -> AppResul
         columns: params.columns.to_vec(),
         error_message: params.error_message.to_string(),
         success_message: params.success_message.to_string(),
-        data_url,
     }
     .render()?)
 }
@@ -1379,8 +1377,13 @@ async fn render_view_form(
         .collect::<Vec<_>>();
     let ui_builder_json = build_view_ui_builder_json(pool, params.definition).await;
 
+    let data_url = if params.is_edit {
+        view_url(params.name, "/data")
+    } else {
+        String::new()
+    };
     let breadcrumbs = if params.is_edit {
-        breadcrumb::database_view_edit(params.name)
+        breadcrumb::database_view_edit(params.name, &data_url)
     } else {
         breadcrumb::database_view_new()
     };

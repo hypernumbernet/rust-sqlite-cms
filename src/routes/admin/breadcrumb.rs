@@ -214,7 +214,7 @@ pub fn database_table_edit(name: &str, data_url: &str) -> Vec<BreadcrumbItem> {
     trail(vec![
         link("DB管理", "/admin/database"),
         link(format!("{name} データ"), data_url),
-        current("列を編集"),
+        current("列編集"),
     ])
 }
 
@@ -240,10 +240,11 @@ pub fn database_view_new() -> Vec<BreadcrumbItem> {
     ])
 }
 
-pub fn database_view_edit(name: &str) -> Vec<BreadcrumbItem> {
+pub fn database_view_edit(name: &str, data_url: &str) -> Vec<BreadcrumbItem> {
     trail(vec![
         link("DB管理", "/admin/database?tab=views"),
-        current(name.to_string()),
+        link(format!("{name} データ"), data_url),
+        current("定義編集"),
     ])
 }
 

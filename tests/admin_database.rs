@@ -6,7 +6,7 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 fn assert_system_table_row_hidden(html: &str, table: &str) {
-    let needle = format!(">{table}</span>");
+    let needle = format!(">{table}</a>");
     assert!(html.contains(&needle), "missing table row: {table}");
     let idx = html.find(&needle).expect("table row");
     let tr_start = html[..idx].rfind("<tr").expect("tr start");
@@ -77,13 +77,16 @@ async fn database_index_lists_cms_tables() {
     ] {
         assert_system_table_row_hidden(&html, table);
     }
-    let meta_row = html.split("user_table_meta</span>").nth(1).unwrap_or("");
+    let meta_row = html.split("user_table_meta</a>").nth(1).unwrap_or("");
     assert!(meta_row.contains("システム"));
     assert!(!meta_row.contains("列編集"));
     assert!(meta_row.contains("データ"));
     assert!(html.contains("システム"));
     assert!(!html.contains("リードオンリー"));
-    let posts_row = html.split("posts</span>").nth(1).unwrap_or("");
+    assert!(html.contains(
+        r#"<a class="text-mono" href="/admin/database/tables/user_table_meta/data">user_table_meta</a>"#
+    ));
+    let posts_row = html.split("posts</a>").nth(1).unwrap_or("");
     assert!(posts_row.contains("システム"));
 }
 
@@ -144,7 +147,10 @@ async fn database_create_user_table_and_view() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("custom_notes"));
-    let custom_row = html.split("custom_notes</span>").nth(1).unwrap_or("");
+    assert!(html.contains(
+        r#"<a class="text-mono" href="/admin/database/tables/custom_notes/data">custom_notes</a>"#
+    ));
+    let custom_row = html.split("custom_notes</a>").nth(1).unwrap_or("");
     assert!(custom_row.contains("ユーザー"));
     assert!(html.contains(r#"/admin/database/tables/custom_notes/edit"#));
     assert!(html.contains(r#"/admin/database/tables/custom_notes/data"#));
@@ -153,12 +159,12 @@ async fn database_create_user_table_and_view() {
     assert!(html.contains(r#"id="db-tables-empty" hidden"#));
     assert_system_table_row_hidden(&html, "posts");
 
-    let posts_row = html.split("posts</span>").nth(1).unwrap_or("");
+    let posts_row = html.split("posts</a>").nth(1).unwrap_or("");
     assert!(!posts_row.contains(r#"/admin/database/tables/posts/edit"#));
     assert!(posts_row.contains(r#"/admin/database/tables/posts/data"#));
     assert!(!posts_row.contains("列編集"));
     assert!(posts_row.contains("データ"));
-    let users_row = html.split("users</span>").nth(1).unwrap_or("");
+    let users_row = html.split("users</a>").nth(1).unwrap_or("");
     assert!(!users_row.contains(r#"/admin/database/tables/users/edit"#));
     assert!(users_row.contains(r#"/admin/database/tables/users/data"#));
     assert!(users_row.contains("システム"));
@@ -180,10 +186,13 @@ async fn database_create_user_table_and_view() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("custom_notes_view"));
+    assert!(html.contains(
+        r#"<a class="text-mono" href="/admin/database/views/custom_notes_view/data">custom_notes_view</a>"#
+    ));
     assert!(html.contains("SELECT id, body FROM custom_notes"));
-    let view_row = html.split("custom_notes_view</span>").nth(1).unwrap_or("");
+    let view_row = html.split("custom_notes_view</a>").nth(1).unwrap_or("");
     assert!(view_row.contains("データ"));
-    assert!(view_row.contains("編集"));
+    assert!(view_row.contains("定義編集"));
     assert!(html.contains(r#"/admin/database/views/custom_notes_view/data"#));
     assert!(html.contains(r#"/admin/database/views/custom_notes_view/edit"#));
 
@@ -200,6 +209,8 @@ async fn database_create_user_table_and_view() {
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("db-table-data-panel"));
     assert!(html.contains("定義編集"));
+    assert!(html.contains("ビュー一覧"));
+    assert!(html.contains(r#"/admin/database?tab=views"#));
     assert!(html.contains(r#"/admin/database/views/custom_notes_view/data/rows"#));
 
     let response = app
@@ -228,6 +239,10 @@ async fn database_create_user_table_and_view() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("ビューを編集"));
+    assert!(html.contains("定義編集"));
+    assert!(html.contains(
+        r#"<a href="/admin/database/views/custom_notes_view/data">custom_notes_view データ</a>"#
+    ));
     assert!(html.contains("SELECT id, body FROM custom_notes"));
     assert!(html.contains(r#"name="name" type="text" maxlength="120" value="custom_notes_view""#));
     assert!(!html.contains(r#"value="custom_notes_view" readonly"#));
@@ -1303,7 +1318,7 @@ async fn database_edit_user_table_updates_columns() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
-    assert!(html.contains("列を編集"));
+    assert!(html.contains("列編集"));
     assert!(html.contains("value=\"body\""));
     assert!(html.contains("保存する"));
 
@@ -1319,7 +1334,7 @@ async fn database_edit_user_table_updates_columns() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("列定義を保存しました"));
-    assert!(html.contains("列を編集"));
+    assert!(html.contains("列編集"));
 
     let definition = sqlx::query_scalar::<_, String>(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'edit_me'",
@@ -1591,6 +1606,7 @@ async fn database_table_data_lists_rows() {
     assert!(html.contains("行 —"));
     assert!(html.contains("列編集"));
     assert!(html.contains("テストデータ生成"));
+    assert!(!html.contains("ビュー一覧"));
     assert!(html.contains("db-data-fit-all-columns"));
     assert!(html.contains("全列幅調整"));
     assert!(html.contains(r#"/admin/database/tables/data_rows/data/seed"#));
@@ -3201,7 +3217,7 @@ async fn database_index_shows_duplicate_button_for_user_views() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
 
-    let view_row = html.split("dup_view_src_view</span>").nth(1).unwrap_or("");
+    let view_row = html.split("dup_view_src_view</a>").nth(1).unwrap_or("");
     assert!(view_row.contains("data-view-duplicate"));
     assert!(view_row.contains("複製"));
 }
@@ -3225,11 +3241,11 @@ async fn database_index_shows_duplicate_button_for_user_tables() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
 
-    let custom_row = html.split("custom_notes</span>").nth(1).unwrap_or("");
+    let custom_row = html.split("custom_notes</a>").nth(1).unwrap_or("");
     assert!(custom_row.contains("data-table-duplicate"));
     assert!(custom_row.contains("複製"));
 
-    let posts_row = html.split("posts</span>").nth(1).unwrap_or("");
+    let posts_row = html.split("posts</a>").nth(1).unwrap_or("");
     assert!(!posts_row.contains("data-table-duplicate"));
 }
 

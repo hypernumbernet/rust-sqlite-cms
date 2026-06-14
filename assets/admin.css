@@ -981,6 +981,13 @@ tr:last-child td { border-bottom: 0; }
   font-family: var(--code-editor-font-family);
   font-size: 13px;
 }
+a.text-mono {
+  color: var(--accent);
+  text-decoration: none;
+}
+a.text-mono:hover {
+  text-decoration: underline;
+}
 .text-mono-sm {
   font-family: var(--code-editor-font-family);
   font-size: 12px;

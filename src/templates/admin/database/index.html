@@ -53,7 +53,13 @@
       <tbody id="db-tables-body">
         {% for item in tables %}
         <tr{% if item.is_system %} class="db-table-row-system" hidden{% endif %}>
-          <td><span class="text-mono">{{ item.name }}</span></td>
+          <td>
+            {% if item.can_view_data %}
+            <a class="text-mono" href="{{ item.data_url }}">{{ item.name }}</a>
+            {% else %}
+            <span class="text-mono">{{ item.name }}</span>
+            {% endif %}
+          </td>
           <td class="row-count">
             {% if let Some(count) = item.row_count %}{{ count }}{% else %}—{% endif %}
           </td>
@@ -101,7 +107,11 @@
         {% for item in views %}
         <tr>
           <td>
+            {% if item.can_view_data %}
+            <a class="text-mono" href="{{ item.data_url }}">{{ item.name }}</a>
+            {% else %}
             <span class="text-mono">{{ item.name }}</span>
+            {% endif %}
             {% if item.is_system %}
             <span class="badge-pill">システム</span>
             {% endif %}
@@ -114,7 +124,7 @@
               <a class="button secondary" href="{{ item.data_url }}">データ</a>
               {% endif %}
               {% if item.can_edit %}
-              <a class="button secondary" href="{{ item.edit_url }}">編集</a>
+              <a class="button secondary" href="{{ item.edit_url }}">定義編集</a>
               <button type="button" class="button secondary"
                 data-view-duplicate
                 data-view-name="{{ item.name }}">複製</button>

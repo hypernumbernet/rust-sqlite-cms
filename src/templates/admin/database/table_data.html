@@ -34,6 +34,9 @@
     {% endif %}
   </div>
   <div class="toolbar-actions">
+    {% if is_view %}
+    <a class="button secondary" href="/admin/database?tab=views">ビュー一覧</a>
+    {% endif %}
     {% if !read_only %}
     <a class="button secondary" href="{{ seed_url }}">テストデータ生成</a>
     <a class="button secondary" href="{{ edit_url }}">{{ edit_label }}</a>

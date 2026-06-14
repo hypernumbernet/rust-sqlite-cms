@@ -404,7 +404,6 @@ textarea::placeholder {
   display: flex;
   flex: 0 0 auto;
   gap: 12px;
-  max-width: 168px;
   min-width: 0;
   user-select: none;
 }
@@ -418,13 +417,20 @@ textarea::placeholder {
   line-height: 1;
 }
 .view-ui-column-name {
-  flex: 1 1 auto;
+  flex: 0 0 160px;
   font-family: var(--mono, monospace);
   font-size: 13px;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  width: 160px;
+}
+.view-ui-column-alias {
+  flex: 0 1 140px;
+  min-width: 0;
+}
+.view-ui-column-alias input {
+  width: 100%;
 }
 .view-ui-column-where {
   flex: 1 1 auto;
@@ -432,11 +438,6 @@ textarea::placeholder {
 }
 .view-ui-column-where input {
   width: 100%;
-}
-.view-ui-column-type {
-  color: var(--muted);
-  flex: 0 0 auto;
-  font-size: 12px;
 }
 .view-ui-icon-btn {
   align-items: center;

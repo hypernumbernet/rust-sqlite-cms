@@ -480,6 +480,61 @@ async fn database_view_form_where_condition() {
 }
 
 #[tokio::test]
+async fn database_view_form_column_alias() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=alias_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some(
+                "name=alias_notes_view&definition=SELECT+%22id%22+AS+%22user_id%22%2C+%22body%22+FROM+%22alias_notes%22",
+            ),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/alias_notes_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains(r#""base_table":"alias_notes""#));
+    assert!(html.contains(r#""name":"id""#));
+    assert!(html.contains(r#""alias":"user_id""#));
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/alias_notes_view/data/rows",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["user_id", "body"]));
+}
+
+#[tokio::test]
 async fn database_create_table_with_sqlite_types() {
     let app = common::TestApp::new().await;
 

@@ -3480,24 +3480,38 @@
       if (findTopLevelKeyword(wherePart, 'OR') !== -1) return null;
       const parts = splitTopLevelAnd(wherePart);
       if (!parts) return null;
-      const conditions = {};
+      const conditions = [];
       for (let idx = 0; idx < parts.length; idx += 1) {
         const parsed = parseColumnWhereCondition(parts[idx]);
         if (!parsed) return null;
-        if (conditions[parsed.column]) return null;
-        conditions[parsed.column] = parsed.suffix;
+        conditions.push(parsed);
       }
       return conditions;
     }
 
     function parseOptionalWhereConditions(afterTable) {
-      if (!afterTable) return {};
+      if (!afterTable) return [];
       const wherePos = findSqlKeyword(afterTable, 'WHERE', 0);
       if (wherePos === -1) return null;
       if (wherePos !== 0) return null;
       const wherePart = afterTable.slice('WHERE'.length).trim();
       if (!wherePart) return null;
       return parseSimpleWhereConditions(wherePart);
+    }
+
+    function assignWhereConditionsToSelectColumns(columns, whereConditions) {
+      const used = whereConditions.map(function () {
+        return false;
+      });
+      return columns.map(function (item) {
+        for (let i = 0; i < whereConditions.length; i += 1) {
+          if (!used[i] && whereConditions[i].column === item.name) {
+            used[i] = true;
+            return whereConditions[i].suffix;
+          }
+        }
+        return null;
+      });
     }
 
     function parseSqlIdentifierPrefix(input) {
@@ -3526,19 +3540,86 @@
       return { name: match[1], rest: input.slice(match[1].length) };
     }
 
-    function parseCommaSeparatedIdentifiers(input) {
-      const names = [];
+    function parseCommaSeparatedSelectItems(input) {
+      const items = [];
       let rest = input.trim();
       while (rest) {
         const parsed = parseSqlIdentifierPrefix(rest);
         if (!parsed) return null;
-        names.push(parsed.name);
+        let alias = null;
         rest = parsed.rest.trim();
+        if (findSqlKeyword(rest, 'AS', 0) === 0) {
+          const afterAs = rest.slice('AS'.length).trim();
+          const aliasParsed = parseSqlIdentifierPrefix(afterAs);
+          if (!aliasParsed) return null;
+          alias = aliasParsed.name;
+          rest = aliasParsed.rest.trim();
+        }
+        items.push({ name: parsed.name, alias: alias });
         if (!rest) break;
         if (!rest.startsWith(',')) return null;
         rest = rest.slice(1).trim();
       }
-      return names;
+      return items;
+    }
+
+    function effectiveViewColumnName(column) {
+      const alias =
+        column.alias != null ? String(column.alias).trim() : '';
+      return alias || column.name;
+    }
+
+    function selectOutputNamesUnique(columns) {
+      const seen = new Set();
+      for (let i = 0; i < columns.length; i += 1) {
+        const outputName = effectiveViewColumnName(columns[i]);
+        if (seen.has(outputName)) return false;
+        seen.add(outputName);
+      }
+      return true;
+    }
+
+    function validateViewColumnAlias(alias) {
+      const trimmed = String(alias).trim();
+      if (!trimmed) return null;
+      if (trimmed.length > 120) {
+        return '別名は 120 文字以内で指定してください';
+      }
+      for (let i = 0; i < trimmed.length; i += 1) {
+        const ch = trimmed.charAt(i);
+        const code = trimmed.charCodeAt(i);
+        if (code < 32 || ch === '"' || ch === ';') {
+          return '別名に使用できない文字が含まれています';
+        }
+      }
+      return null;
+    }
+
+    function validateViewOutputColumnNames(columns) {
+      const seen = new Set();
+      for (let i = 0; i < columns.length; i += 1) {
+        const column = columns[i];
+        const alias =
+          column.alias != null ? String(column.alias).trim() : '';
+        if (alias) {
+          const aliasError = validateViewColumnAlias(alias);
+          if (aliasError) return aliasError;
+        }
+        const outputName = effectiveViewColumnName(column);
+        if (seen.has(outputName)) {
+          return '出力列名が重複しています。別名で区別してください。';
+        }
+        seen.add(outputName);
+      }
+      return null;
+    }
+
+    function formatSimpleViewSelectColumn(column) {
+      const quoted = quoteSqlIdentifier(column.name);
+      const alias =
+        column.alias != null ? String(column.alias).trim() : '';
+      if (!alias) return quoted;
+      return quoted + ' AS ' + quoteSqlIdentifier(alias);
     }
 
     function parseSimpleSelect(definition) {
@@ -3563,8 +3644,9 @@
           whereConditions: whereConditions,
         };
       }
-      const columns = parseCommaSeparatedIdentifiers(selectPart);
+      const columns = parseCommaSeparatedSelectItems(selectPart);
       if (!columns || columns.length === 0) return null;
+      if (!selectOutputNamesUnique(columns)) return null;
       return {
         baseTable: tableParsed.name,
         allColumns: false,
@@ -3618,11 +3700,14 @@
     function readColumnState() {
       if (!columnsList) return [];
       return Array.from(columnsList.querySelectorAll('.view-ui-column-item')).map(function (item) {
+        const aliasInput = item.querySelector('.view-ui-column-alias-input');
         const whereInput = item.querySelector('.view-ui-column-where-input');
+        const aliasValue = aliasInput ? aliasInput.value.trim() : '';
         const whereValue = whereInput ? whereInput.value.trim() : '';
         return {
           name: item.dataset.columnName || '',
           type_key: item.dataset.columnType || 'text',
+          alias: aliasValue || null,
           where_condition: whereValue || null,
         };
       });
@@ -3637,28 +3722,35 @@
     }
 
     function toUiColumn(column, typeByName) {
+      const aliasValue = column.alias != null ? String(column.alias).trim() : '';
       const whereValue =
         column.where_condition != null ? String(column.where_condition).trim() : '';
       return {
         name: column.name,
         type_key: typeByName[column.name] || column.type_key || 'text',
+        alias: aliasValue || null,
         where_condition: whereValue || null,
       };
     }
 
     function buildColumnsFromParsed(apiColumns, parsed) {
       const typeByName = columnTypeByName(apiColumns);
-      const names = parsed.allColumns
+      const items = parsed.allColumns
         ? apiColumns.map(function (column) {
-            return column.name;
+            return { name: column.name, alias: null };
           })
         : parsed.columns;
-      return names.map(function (name) {
+      const whereConditions = Array.isArray(parsed.whereConditions)
+        ? parsed.whereConditions
+        : [];
+      const assignedWhere = assignWhereConditionsToSelectColumns(items, whereConditions);
+      return items.map(function (item, index) {
         return toUiColumn(
           {
-            name: name,
-            type_key: typeByName[name],
-            where_condition: parsed.whereConditions[name] || null,
+            name: item.name,
+            type_key: typeByName[item.name],
+            alias: item.alias,
+            where_condition: assignedWhere[index] || null,
           },
           typeByName
         );
@@ -3718,30 +3810,22 @@
 
     function updateAddColumnSelect() {
       if (!addColumnSelect) return;
-      const used = new Set(
-        readColumnState().map(function (column) {
-          return column.name;
-        })
-      );
-      const available = tableApiColumns.filter(function (column) {
-        return !used.has(column.name);
-      });
 
       addColumnSelect.replaceChildren();
       const emptyOption = document.createElement('option');
       emptyOption.value = '';
       emptyOption.textContent =
-        available.length === 0 ? '追加できるカラムがありません' : 'カラムを選択';
+        tableApiColumns.length === 0 ? 'カラムがありません' : 'カラムを選択';
       addColumnSelect.appendChild(emptyOption);
-      available.forEach(function (column) {
+      tableApiColumns.forEach(function (column) {
         const option = document.createElement('option');
         option.value = column.name;
-        option.textContent = column.name + ' (' + (column.type_key || 'text') + ')';
+        option.textContent = column.name;
         addColumnSelect.appendChild(option);
       });
 
       if (addColumnBtn) {
-        addColumnBtn.disabled = available.length === 0;
+        addColumnBtn.disabled = tableApiColumns.length === 0;
       }
     }
 
@@ -3948,6 +4032,15 @@
       dragZone.appendChild(handle);
       dragZone.appendChild(nameLabel);
 
+      const aliasWrap = document.createElement('div');
+      aliasWrap.className = 'view-ui-column-alias';
+      const aliasInput = document.createElement('input');
+      aliasInput.type = 'text';
+      aliasInput.className = 'view-ui-column-alias-input';
+      aliasInput.placeholder = '別名（任意）';
+      aliasInput.value = column.alias || '';
+      aliasWrap.appendChild(aliasInput);
+
       const whereWrap = document.createElement('div');
       whereWrap.className = 'view-ui-column-where';
       const whereInput = document.createElement('input');
@@ -3957,10 +4050,6 @@
       whereInput.value = column.where_condition || '';
       whereWrap.appendChild(whereInput);
 
-      const typeLabel = document.createElement('span');
-      typeLabel.className = 'view-ui-column-type';
-      typeLabel.textContent = column.type_key || 'text';
-
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
       removeBtn.className = 'view-ui-icon-btn view-ui-column-remove-btn';
@@ -3968,8 +4057,8 @@
       removeBtn.textContent = '−';
 
       item.appendChild(dragZone);
+      item.appendChild(aliasWrap);
       item.appendChild(whereWrap);
-      item.appendChild(typeLabel);
       item.appendChild(removeBtn);
       return item;
     }
@@ -3992,9 +4081,7 @@
       const columns = readColumnState();
       if (columns.length === 0) return;
       const columnSql = columns
-        .map(function (column) {
-          return quoteSqlIdentifier(column.name);
-        })
+        .map(formatSimpleViewSelectColumn)
         .join(', ');
       const whereParts = columns
         .filter(function (column) {
@@ -4021,6 +4108,7 @@
         return {
           name: column.name,
           type_key: column.type_key,
+          alias: null,
           where_condition: null,
         };
       });
@@ -4118,6 +4206,7 @@
           createColumnRow({
             name: column.name,
             type_key: column.type_key,
+            alias: null,
             where_condition: null,
           })
         );
@@ -4140,6 +4229,12 @@
       if (columns.length === 0) {
         event.preventDefault();
         showUiError('ビューに含めるカラムを1つ以上選択してください。');
+        return;
+      }
+      const outputNameError = validateViewOutputColumnNames(columns);
+      if (outputNameError) {
+        event.preventDefault();
+        showUiError(outputNameError);
         return;
       }
       syncUiToSql();

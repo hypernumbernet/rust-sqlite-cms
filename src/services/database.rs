@@ -192,6 +192,8 @@ pub struct SimpleViewUiColumn {
     pub name: String,
     pub type_key: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub where_condition: Option<String>,
 }
 
@@ -203,9 +205,22 @@ pub struct SimpleViewUiSpec {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ParsedViewColumn {
+    pub(crate) name: String,
+    pub(crate) alias: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum ParsedViewColumnList {
     All,
-    Names(Vec<String>),
+    Columns(Vec<ParsedViewColumn>),
+}
+
+/// 単純な WHERE 条件（列名 + サフィックス）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ParsedWhereCondition {
+    pub(crate) column: String,
+    pub(crate) suffix: String,
 }
 
 /// 単純な `SELECT ... FROM table` 定義の解析結果。
@@ -213,7 +228,7 @@ pub(crate) enum ParsedViewColumnList {
 pub(crate) struct ParsedSimpleViewSelect {
     pub(crate) base_table: String,
     pub(crate) columns: ParsedViewColumnList,
-    pub(crate) where_conditions: std::collections::HashMap<String, String>,
+    pub(crate) where_conditions: Vec<ParsedWhereCondition>,
 }
 
 /// セル更新リクエスト。
@@ -1143,11 +1158,14 @@ pub(crate) fn parse_simple_view_select(definition: &str) -> Option<ParsedSimpleV
     let columns = if select_part == "*" {
         ParsedViewColumnList::All
     } else {
-        let names = parse_comma_separated_sql_identifiers(select_part)?;
-        if names.is_empty() {
+        let items = parse_comma_separated_select_items(select_part)?;
+        if items.is_empty() {
             return None;
         }
-        ParsedViewColumnList::Names(names)
+        if !select_output_names_unique(&items) {
+            return None;
+        }
+        ParsedViewColumnList::Columns(items)
     };
 
     Some(ParsedSimpleViewSelect {
@@ -1167,23 +1185,31 @@ pub(crate) fn build_simple_view_ui_spec(
         .map(|column| (column.name.as_str(), column.type_key.as_str()))
         .collect();
 
-    let ordered_names: Vec<String> = match &parsed.columns {
+    let ordered_columns: Vec<ParsedViewColumn> = match &parsed.columns {
         ParsedViewColumnList::All => table_columns
             .iter()
-            .map(|column| column.name.clone())
+            .map(|column| ParsedViewColumn {
+                name: column.name.clone(),
+                alias: None,
+            })
             .collect(),
-        ParsedViewColumnList::Names(selected) => selected.clone(),
+        ParsedViewColumnList::Columns(selected) => selected.clone(),
     };
 
-    let columns = ordered_names
+    let where_conditions =
+        assign_where_conditions_to_select_columns(&ordered_columns, &parsed.where_conditions);
+
+    let columns = ordered_columns
         .into_iter()
-        .map(|name| SimpleViewUiColumn {
+        .zip(where_conditions)
+        .map(|(column, where_condition)| SimpleViewUiColumn {
             type_key: type_by_name
-                .get(name.as_str())
+                .get(column.name.as_str())
                 .map(|value| (*value).to_string())
                 .unwrap_or_else(|| "text".to_string()),
-            where_condition: parsed.where_conditions.get(&name).cloned(),
-            name,
+            where_condition,
+            alias: column.alias,
+            name: column.name,
         })
         .collect();
 
@@ -1201,10 +1227,12 @@ pub fn build_simple_view_select(spec: &SimpleViewUiSpec) -> DomainResult<String>
         ));
     }
 
+    validate_view_output_column_names(&spec.columns)?;
+
     let column_sql = spec
         .columns
         .iter()
-        .map(|column| quote_sql_identifier(&column.name))
+        .map(format_simple_view_select_column)
         .collect::<Vec<_>>()
         .join(", ");
 
@@ -1213,6 +1241,89 @@ pub fn build_simple_view_select(spec: &SimpleViewUiSpec) -> DomainResult<String>
         "SELECT {column_sql} FROM {}{where_sql}",
         quote_sql_identifier(&spec.base_table)
     ))
+}
+
+fn effective_view_column_name(column: &SimpleViewUiColumn) -> String {
+    column
+        .alias
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| column.name.clone())
+}
+
+fn format_simple_view_select_column(column: &SimpleViewUiColumn) -> String {
+    let quoted = quote_sql_identifier(&column.name);
+    let alias = column
+        .alias
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    match alias {
+        Some(alias) => format!("{} AS {}", quoted, quote_sql_identifier(alias)),
+        None => quoted,
+    }
+}
+
+fn validate_view_column_alias(alias: &str) -> DomainResult<()> {
+    validate_identifier_chars(alias.trim(), "別名")
+}
+
+fn validate_view_output_column_names(columns: &[SimpleViewUiColumn]) -> DomainResult<()> {
+    let mut seen = std::collections::HashSet::new();
+    for column in columns {
+        if let Some(alias) = column
+            .alias
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        {
+            validate_view_column_alias(alias)?;
+        }
+        let output_name = effective_view_column_name(column);
+        if !seen.insert(output_name.clone()) {
+            return Err(DomainError::Validation(
+                "出力列名が重複しています。別名で区別してください".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn select_output_name(column: &ParsedViewColumn) -> String {
+    column
+        .alias
+        .as_ref()
+        .cloned()
+        .unwrap_or_else(|| column.name.clone())
+}
+
+fn select_output_names_unique(columns: &[ParsedViewColumn]) -> bool {
+    let mut seen = std::collections::HashSet::new();
+    columns
+        .iter()
+        .map(select_output_name)
+        .all(|name| seen.insert(name))
+}
+
+fn assign_where_conditions_to_select_columns(
+    columns: &[ParsedViewColumn],
+    where_conditions: &[ParsedWhereCondition],
+) -> Vec<Option<String>> {
+    let mut used = vec![false; where_conditions.len()];
+    columns
+        .iter()
+        .map(|column| {
+            for (index, condition) in where_conditions.iter().enumerate() {
+                if !used[index] && condition.column == column.name {
+                    used[index] = true;
+                    return Some(condition.suffix.clone());
+                }
+            }
+            None
+        })
+        .collect()
 }
 
 fn build_simple_view_where_clause(columns: &[SimpleViewUiColumn]) -> String {
@@ -1266,11 +1377,9 @@ fn contains_unsupported_trailing_clause(remainder: &str) -> bool {
     CLAUSES.iter().any(|clause| find_sql_keyword(remainder, clause, 0).is_some())
 }
 
-fn parse_optional_where_conditions(
-    after_table: &str,
-) -> Option<std::collections::HashMap<String, String>> {
+fn parse_optional_where_conditions(after_table: &str) -> Option<Vec<ParsedWhereCondition>> {
     if after_table.is_empty() {
-        return Some(std::collections::HashMap::new());
+        return Some(Vec::new());
     }
 
     let where_pos = find_sql_keyword(after_table, "WHERE", 0)?;
@@ -1286,21 +1395,17 @@ fn parse_optional_where_conditions(
     parse_simple_where_conditions(where_part)
 }
 
-fn parse_simple_where_conditions(
-    where_part: &str,
-) -> Option<std::collections::HashMap<String, String>> {
+fn parse_simple_where_conditions(where_part: &str) -> Option<Vec<ParsedWhereCondition>> {
     if contains_top_level_keyword(where_part, "OR") {
         return None;
     }
 
     let parts = split_top_level_and(where_part)?;
-    let mut conditions = std::collections::HashMap::new();
+    let mut conditions = Vec::with_capacity(parts.len());
 
     for part in parts {
         let (column, suffix) = parse_column_where_condition(&part)?;
-        if conditions.insert(column.clone(), suffix).is_some() {
-            return None;
-        }
+        conditions.push(ParsedWhereCondition { column, suffix });
     }
 
     Some(conditions)
@@ -1386,24 +1491,31 @@ fn has_unclosed_string_literal(input: &str) -> bool {
     in_single_quote
 }
 
-fn parse_comma_separated_sql_identifiers(input: &str) -> Option<Vec<String>> {
-    let mut names = Vec::new();
+fn parse_comma_separated_select_items(input: &str) -> Option<Vec<ParsedViewColumn>> {
+    let mut items = Vec::new();
     let mut rest = input.trim();
 
     while !rest.is_empty() {
         let (name, remaining) = parse_sql_identifier_prefix(rest)?;
-        names.push(name);
-        rest = remaining.trim();
-        if rest.is_empty() {
+        let mut alias = None;
+        let mut remaining = remaining.trim();
+        if find_sql_keyword(remaining, "AS", 0) == Some(0) {
+            let after_as = remaining["AS".len()..].trim();
+            let (alias_name, after_alias) = parse_sql_identifier_prefix(after_as)?;
+            alias = Some(alias_name);
+            remaining = after_alias.trim();
+        }
+        items.push(ParsedViewColumn { name, alias });
+        if remaining.is_empty() {
             break;
         }
-        if !rest.starts_with(',') {
+        if !remaining.starts_with(',') {
             return None;
         }
-        rest = rest[1..].trim();
+        rest = remaining[1..].trim();
     }
 
-    Some(names)
+    Some(items)
 }
 
 fn parse_sql_identifier_prefix(input: &str) -> Option<(String, &str)> {
@@ -4110,7 +4222,15 @@ mod tests {
     fn parse_simple_view_select_parses_column_list() {
         let parsed = parse_simple_view_select("SELECT id, body FROM custom_notes").expect("parsed");
         assert_eq!(parsed.base_table, "custom_notes");
-        assert!(matches!(parsed.columns, ParsedViewColumnList::Names(ref names) if names == &["id", "body"]));
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 2
+                    && columns[0].name == "id"
+                    && columns[0].alias.is_none()
+                    && columns[1].name == "body"
+                    && columns[1].alias.is_none()
+        ));
     }
 
     #[test]
@@ -4118,7 +4238,52 @@ mod tests {
         let parsed =
             parse_simple_view_select(r#"SELECT "id", "body" FROM "custom_notes""#).expect("parsed");
         assert_eq!(parsed.base_table, "custom_notes");
-        assert!(matches!(parsed.columns, ParsedViewColumnList::Names(ref names) if names == &["id", "body"]));
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 2
+                    && columns[0].name == "id"
+                    && columns[1].name == "body"
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_column_aliases() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT "id" AS "user_id", "body" FROM "custom_notes""#,
+        )
+        .expect("parsed");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 2
+                    && columns[0].name == "id"
+                    && columns[0].alias.as_deref() == Some("user_id")
+                    && columns[1].name == "body"
+                    && columns[1].alias.is_none()
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_duplicate_columns_with_alias() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT "id", "id" AS "id2" FROM "custom_notes""#,
+        )
+        .expect("parsed");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 2
+                    && columns[0].name == "id"
+                    && columns[0].alias.is_none()
+                    && columns[1].name == "id"
+                    && columns[1].alias.as_deref() == Some("id2")
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_rejects_duplicate_output_names() {
+        assert!(parse_simple_view_select(r#"SELECT "id", "id" FROM "custom_notes""#).is_none());
     }
 
     #[test]
@@ -4140,8 +4305,11 @@ mod tests {
                 .expect("parsed");
         assert_eq!(parsed.base_table, "join_src");
         assert_eq!(
-            parsed.where_conditions.get("body").map(String::as_str),
-            Some("IS NOT NULL")
+            parsed.where_conditions,
+            vec![ParsedWhereCondition {
+                column: "body".to_string(),
+                suffix: "IS NOT NULL".to_string(),
+            }]
         );
     }
 
@@ -4152,13 +4320,73 @@ mod tests {
         )
         .expect("parsed");
         assert_eq!(
-            parsed.where_conditions.get("body").map(String::as_str),
-            Some("IS NOT NULL")
+            parsed.where_conditions,
+            vec![
+                ParsedWhereCondition {
+                    column: "body".to_string(),
+                    suffix: "IS NOT NULL".to_string(),
+                },
+                ParsedWhereCondition {
+                    column: "id".to_string(),
+                    suffix: "> 0".to_string(),
+                },
+            ]
         );
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_duplicate_column_where_conditions() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT "id", "id" AS "id2" FROM "custom_notes" WHERE "id" > 0 AND "id" IS NOT NULL"#,
+        )
+        .expect("parsed");
         assert_eq!(
-            parsed.where_conditions.get("id").map(String::as_str),
+            parsed.where_conditions,
+            vec![
+                ParsedWhereCondition {
+                    column: "id".to_string(),
+                    suffix: "> 0".to_string(),
+                },
+                ParsedWhereCondition {
+                    column: "id".to_string(),
+                    suffix: "IS NOT NULL".to_string(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn build_simple_view_ui_spec_assigns_where_per_select_row() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT "id", "id" AS "id2", "body" FROM "custom_notes" WHERE "id" > 0 AND "id" IS NOT NULL"#,
+        )
+        .expect("parsed");
+        let table_columns = vec![
+            TableColumnUiInfo {
+                name: "id".to_string(),
+                type_key: "integer".to_string(),
+                pk: true,
+                nullable: false,
+            },
+            TableColumnUiInfo {
+                name: "body".to_string(),
+                type_key: "text".to_string(),
+                pk: false,
+                nullable: false,
+            },
+        ];
+
+        let spec = build_simple_view_ui_spec(&parsed, &table_columns);
+        assert_eq!(spec.columns.len(), 3);
+        assert_eq!(
+            spec.columns[0].where_condition.as_deref(),
             Some("> 0")
         );
+        assert_eq!(
+            spec.columns[1].where_condition.as_deref(),
+            Some("IS NOT NULL")
+        );
+        assert!(spec.columns[2].where_condition.is_none());
     }
 
     #[test]
@@ -4176,12 +4404,53 @@ mod tests {
             columns: vec![SimpleViewUiColumn {
                 name: "body".to_string(),
                 type_key: "text".to_string(),
+                alias: None,
                 where_condition: None,
             }],
         };
 
         let sql = build_simple_view_select(&spec).expect("sql");
         assert_eq!(sql, r#"SELECT "body" FROM "custom_notes""#);
+    }
+
+    #[test]
+    fn build_simple_view_select_generates_column_alias() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            columns: vec![SimpleViewUiColumn {
+                name: "id".to_string(),
+                type_key: "integer".to_string(),
+                alias: Some("user_id".to_string()),
+                where_condition: None,
+            }],
+        };
+
+        let sql = build_simple_view_select(&spec).expect("sql");
+        assert_eq!(sql, r#"SELECT "id" AS "user_id" FROM "custom_notes""#);
+    }
+
+    #[test]
+    fn build_simple_view_select_rejects_duplicate_output_names() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            columns: vec![
+                SimpleViewUiColumn {
+                    name: "id".to_string(),
+                    type_key: "integer".to_string(),
+                    alias: None,
+                    where_condition: None,
+                },
+                SimpleViewUiColumn {
+                    name: "id".to_string(),
+                    type_key: "integer".to_string(),
+                    alias: None,
+                    where_condition: None,
+                },
+            ],
+        };
+
+        let err = build_simple_view_select(&spec).unwrap_err();
+        assert!(matches!(err, DomainError::Validation(ref msg) if msg.contains("出力列名が重複")));
     }
 
     #[test]
@@ -4192,11 +4461,13 @@ mod tests {
                 SimpleViewUiColumn {
                     name: "id".to_string(),
                     type_key: "integer".to_string(),
+                    alias: None,
                     where_condition: Some("> 0".to_string()),
                 },
                 SimpleViewUiColumn {
                     name: "body".to_string(),
                     type_key: "text".to_string(),
+                    alias: None,
                     where_condition: Some("IS NOT NULL".to_string()),
                 },
             ],

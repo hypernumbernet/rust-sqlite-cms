@@ -199,11 +199,32 @@ pub struct SimpleViewUiColumn {
     pub where_condition: Option<String>,
 }
 
+/// SELECT 列に含まれない列への WHERE 条件。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExtraWhereCondition {
+    pub column: String,
+    pub suffix: String,
+}
+
 /// ビュー UI ビルダーの完全な状態。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SimpleViewUiSpec {
     pub base_table: String,
+    #[serde(default)]
+    pub distinct: bool,
     pub columns: Vec<SimpleViewUiColumn>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_where: Vec<ExtraWhereCondition>,
+}
+
+/// ビュー定義の UI 展開結果。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ViewUiSpecResolveResult {
+    pub supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spec: Option<SimpleViewUiSpec>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub table_columns: Option<Vec<TableColumnUiInfo>>,
 }
 
 #[derive(Debug, Clone)]
@@ -230,6 +251,7 @@ pub(crate) struct ParsedWhereCondition {
 #[derive(Debug, Clone)]
 pub(crate) struct ParsedSimpleViewSelect {
     pub(crate) base_table: String,
+    pub(crate) distinct: bool,
     pub(crate) columns: ParsedViewColumnList,
     pub(crate) where_conditions: Vec<ParsedWhereCondition>,
 }
@@ -1219,6 +1241,39 @@ pub async fn table_columns_for_ui(
         .collect()
 }
 
+/// ビュー定義 SQL を UI ビルダー状態へ展開する。
+pub async fn resolve_view_ui_spec(
+    pool: &SqlitePool,
+    definition: &str,
+) -> ViewUiSpecResolveResult {
+    let trimmed = definition.trim();
+    if trimmed.is_empty() {
+        return ViewUiSpecResolveResult {
+            supported: true,
+            spec: None,
+            table_columns: None,
+        };
+    }
+
+    let Some(parsed) = parse_simple_view_select(trimmed) else {
+        return ViewUiSpecResolveResult {
+            supported: false,
+            spec: None,
+            table_columns: None,
+        };
+    };
+
+    let Ok(table_columns) = table_columns_for_ui(pool, &parsed.base_table).await else {
+        return ViewUiSpecResolveResult {
+            supported: false,
+            spec: None,
+            table_columns: None,
+        };
+    };
+
+    view_ui_spec_resolve_success(build_simple_view_ui_spec(&parsed, &table_columns), table_columns)
+}
+
 /// 単純な `SELECT ... FROM table` 形式のビュー定義を UI 状態へ復元する。
 pub(crate) fn parse_simple_view_select(definition: &str) -> Option<ParsedSimpleViewSelect> {
     let trimmed = definition.trim();
@@ -1228,34 +1283,33 @@ pub(crate) fn parse_simple_view_select(definition: &str) -> Option<ParsedSimpleV
     }
 
     let from_pos = find_sql_keyword(trimmed, "FROM", "SELECT".len())?;
-    let select_part = trimmed["SELECT".len()..from_pos].trim();
+    let mut select_part = trimmed["SELECT".len()..from_pos].trim();
     let after_from = trimmed[from_pos + "FROM".len()..].trim();
     if after_from.is_empty() {
         return None;
     }
 
-    let (base_table, after_table) = parse_sql_identifier_prefix(after_from)?;
-    let after_table = after_table.trim();
-    if contains_unsupported_trailing_clause(after_table) {
-        return None;
-    }
-
-    let where_conditions = parse_optional_where_conditions(after_table)?;
-    let columns = if select_part == "*" {
-        ParsedViewColumnList::All
+    let distinct = if find_sql_keyword(select_part, "DISTINCT", 0) == Some(0) {
+        select_part = select_part["DISTINCT".len()..].trim();
+        true
+    } else if find_sql_keyword(select_part, "ALL", 0) == Some(0) {
+        select_part = select_part["ALL".len()..].trim();
+        false
     } else {
-        let items = parse_comma_separated_select_items(select_part)?;
-        if items.is_empty() {
-            return None;
-        }
-        if !select_output_names_unique(&items) {
-            return None;
-        }
-        ParsedViewColumnList::Columns(items)
+        false
     };
 
+    let from_clause = parse_from_clause(after_from)?;
+    let where_conditions = parse_optional_where_conditions(&from_clause.remainder, &from_clause.base_table, from_clause.table_alias.as_deref())?;
+    let columns = parse_select_column_list(
+        select_part,
+        &from_clause.base_table,
+        from_clause.table_alias.as_deref(),
+    )?;
+
     Some(ParsedSimpleViewSelect {
-        base_table,
+        base_table: from_clause.base_table,
+        distinct,
         columns,
         where_conditions,
     })
@@ -1283,12 +1337,12 @@ pub(crate) fn build_simple_view_ui_spec(
         ParsedViewColumnList::Columns(selected) => selected.clone(),
     };
 
-    let where_conditions =
-        assign_where_conditions_to_select_columns(&ordered_columns, &parsed.where_conditions);
+    let (column_where, extra_where) =
+        partition_where_conditions(&ordered_columns, &parsed.where_conditions);
 
     let columns = ordered_columns
         .into_iter()
-        .zip(where_conditions)
+        .zip(column_where)
         .map(|(column, where_condition)| SimpleViewUiColumn {
             type_key: type_by_name
                 .get(column.name.as_str())
@@ -1303,7 +1357,26 @@ pub(crate) fn build_simple_view_ui_spec(
 
     SimpleViewUiSpec {
         base_table: parsed.base_table.clone(),
+        distinct: parsed.distinct,
         columns,
+        extra_where: extra_where
+            .into_iter()
+            .map(|condition| ExtraWhereCondition {
+                column: condition.column,
+                suffix: condition.suffix,
+            })
+            .collect(),
+    }
+}
+
+fn view_ui_spec_resolve_success(
+    spec: SimpleViewUiSpec,
+    table_columns: Vec<TableColumnUiInfo>,
+) -> ViewUiSpecResolveResult {
+    ViewUiSpecResolveResult {
+        supported: true,
+        spec: Some(spec),
+        table_columns: Some(table_columns),
     }
 }
 
@@ -1324,9 +1397,10 @@ pub fn build_simple_view_select(spec: &SimpleViewUiSpec) -> DomainResult<String>
         .collect::<Vec<_>>()
         .join(", ");
 
-    let where_sql = build_simple_view_where_clause(&spec.columns);
+    let distinct_kw = if spec.distinct { "DISTINCT " } else { "" };
+    let where_sql = build_simple_view_where_clause(&spec.columns, &spec.extra_where);
     Ok(format!(
-        "SELECT {column_sql} FROM {}{where_sql}",
+        "SELECT {distinct_kw}{column_sql} FROM {}{where_sql}",
         quote_sql_identifier(&spec.base_table)
     ))
 }
@@ -1418,12 +1492,12 @@ fn select_output_names_unique(columns: &[ParsedViewColumn]) -> bool {
         .all(|name| seen.insert(name))
 }
 
-fn assign_where_conditions_to_select_columns(
+fn partition_where_conditions(
     columns: &[ParsedViewColumn],
     where_conditions: &[ParsedWhereCondition],
-) -> Vec<Option<String>> {
+) -> (Vec<Option<String>>, Vec<ParsedWhereCondition>) {
     let mut used = vec![false; where_conditions.len()];
-    columns
+    let column_where = columns
         .iter()
         .map(|column| {
             for (index, condition) in where_conditions.iter().enumerate() {
@@ -1434,11 +1508,28 @@ fn assign_where_conditions_to_select_columns(
             }
             None
         })
-        .collect()
+        .collect();
+
+    let extra_where = where_conditions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, condition)| {
+            if used[index] {
+                None
+            } else {
+                Some(condition.clone())
+            }
+        })
+        .collect();
+
+    (column_where, extra_where)
 }
 
-fn build_simple_view_where_clause(columns: &[SimpleViewUiColumn]) -> String {
-    let conditions: Vec<String> = columns
+fn build_simple_view_where_clause(
+    columns: &[SimpleViewUiColumn],
+    extra_where: &[ExtraWhereCondition],
+) -> String {
+    let mut conditions: Vec<String> = columns
         .iter()
         .filter_map(|column| {
             if column.expression.is_some() {
@@ -1453,6 +1544,17 @@ fn build_simple_view_where_clause(columns: &[SimpleViewUiColumn]) -> String {
         })
         .collect();
 
+    for condition in extra_where {
+        let suffix = condition.suffix.trim();
+        if suffix.is_empty() {
+            continue;
+        }
+        conditions.push(format!(
+            "{} {suffix}",
+            quote_sql_identifier(&condition.column)
+        ));
+    }
+
     if conditions.is_empty() {
         String::new()
     } else {
@@ -1460,20 +1562,165 @@ fn build_simple_view_where_clause(columns: &[SimpleViewUiColumn]) -> String {
     }
 }
 
-fn find_sql_keyword(sql: &str, keyword: &str, start: usize) -> Option<usize> {
-    let upper = sql.to_ascii_uppercase();
-    let keyword_upper = keyword.to_ascii_uppercase();
-    let mut search_start = start;
+#[derive(Debug, Clone)]
+struct ParsedFromClause<'a> {
+    base_table: String,
+    table_alias: Option<String>,
+    remainder: &'a str,
+}
 
-    while let Some(rel_pos) = upper[search_start..].find(&keyword_upper) {
-        let pos = search_start + rel_pos;
-        let before_ok = pos == 0 || !is_identifier_char(upper.as_bytes()[pos - 1]);
-        let after_pos = pos + keyword_upper.len();
-        let after_ok = after_pos >= upper.len() || !is_identifier_char(upper.as_bytes()[after_pos]);
-        if before_ok && after_ok {
-            return Some(pos);
+fn parse_from_clause(input: &str) -> Option<ParsedFromClause<'_>> {
+    let (base_table, mut rest) = parse_table_reference(input)?;
+    rest = rest.trim();
+
+    let table_alias = if find_sql_keyword(rest, "AS", 0) == Some(0) {
+        let after_as = rest["AS".len()..].trim();
+        let (alias, after_alias) = parse_sql_identifier_prefix(after_as)?;
+        rest = after_alias.trim();
+        Some(alias)
+    } else if let Some((candidate, after_candidate)) = parse_sql_identifier_prefix(rest) {
+        if !is_sql_clause_keyword(&candidate) {
+            let after_trimmed = after_candidate.trim();
+            if after_trimmed.is_empty() || find_sql_keyword(after_trimmed, "WHERE", 0) == Some(0) {
+                rest = after_trimmed;
+                Some(candidate)
+            } else {
+                None
+            }
+        } else {
+            None
         }
-        search_start = pos + 1;
+    } else {
+        None
+    };
+
+    if contains_unsupported_trailing_clause(rest) {
+        return None;
+    }
+
+    Some(ParsedFromClause {
+        base_table,
+        table_alias,
+        remainder: rest,
+    })
+}
+
+fn parse_table_reference(input: &str) -> Option<(String, &str)> {
+    let (first, rest) = parse_sql_identifier_prefix(input)?;
+    let rest = rest.trim();
+    if rest.starts_with('.') {
+        let (table, after_table) = parse_sql_identifier_prefix(rest[1..].trim())?;
+        return Some((table, after_table));
+    }
+    Some((first, rest))
+}
+
+fn is_sql_clause_keyword(word: &str) -> bool {
+    matches!(
+        word.to_ascii_uppercase().as_str(),
+        "WHERE" | "JOIN" | "GROUP" | "HAVING" | "ORDER" | "LIMIT" | "UNION" | "EXCEPT" | "INTERSECT" | "ON"
+    )
+}
+
+fn qualifier_matches(qualifier: &str, base_table: &str, table_alias: Option<&str>) -> bool {
+    qualifier == base_table
+        || table_alias.is_some_and(|alias| qualifier == alias)
+}
+
+fn parse_select_column_list(
+    select_part: &str,
+    base_table: &str,
+    table_alias: Option<&str>,
+) -> Option<ParsedViewColumnList> {
+    if select_part == "*" || is_matching_qualified_star(select_part, base_table, table_alias) {
+        return Some(ParsedViewColumnList::All);
+    }
+
+    let items = parse_comma_separated_select_items(select_part, base_table, table_alias)?;
+    if items.is_empty() {
+        return None;
+    }
+    if !select_output_names_unique(&items) {
+        return None;
+    }
+    Some(ParsedViewColumnList::Columns(items))
+}
+
+fn is_matching_qualified_star(
+    expr: &str,
+    base_table: &str,
+    table_alias: Option<&str>,
+) -> bool {
+    let expr = expr.trim();
+    if !expr.ends_with(".*") {
+        return false;
+    }
+    let qualifier = expr[..expr.len() - 2].trim();
+    if qualifier.is_empty() {
+        return false;
+    }
+    match parse_sql_identifier_prefix(qualifier) {
+        Some((name, rest)) if rest.trim().is_empty() => {
+            qualifier_matches(&name, base_table, table_alias)
+        }
+        _ => false,
+    }
+}
+
+fn parse_dotted_identifier(input: &str) -> Option<(String, String)> {
+    let (qualifier, rest) = parse_sql_identifier_prefix(input)?;
+    let rest = rest.trim();
+    if !rest.starts_with('.') {
+        return None;
+    }
+    let (name, after_name) = parse_sql_identifier_prefix(rest[1..].trim())?;
+    if !after_name.trim().is_empty() {
+        return None;
+    }
+    Some((qualifier, name))
+}
+
+fn parse_qualified_column_name(
+    expr: &str,
+    base_table: &str,
+    table_alias: Option<&str>,
+) -> Option<String> {
+    let (qualifier, column) = parse_dotted_identifier(expr)?;
+    if qualifier_matches(&qualifier, base_table, table_alias) {
+        Some(column)
+    } else {
+        None
+    }
+}
+
+fn find_sql_keyword(sql: &str, keyword: &str, start: usize) -> Option<usize> {
+    let keyword_bytes = keyword.as_bytes();
+    let keyword_len = keyword_bytes.len();
+    if keyword_len == 0 {
+        return None;
+    }
+
+    let sql_bytes = sql.as_bytes();
+    if start >= sql_bytes.len() {
+        return None;
+    }
+
+    let mut pos = start;
+    while pos + keyword_len <= sql_bytes.len() {
+        if sql_bytes[pos..pos + keyword_len]
+            .iter()
+            .zip(keyword_bytes.iter())
+            .all(|(left, right)| left.eq_ignore_ascii_case(right))
+        {
+            let before_ok = pos == 0 || !is_identifier_char(sql_bytes[pos - 1]);
+            let after_pos = pos + keyword_len;
+            let after_ok =
+                after_pos >= sql_bytes.len() || !is_identifier_char(sql_bytes[after_pos]);
+            if before_ok && after_ok {
+                return Some(pos);
+            }
+        }
+        pos += 1;
     }
 
     None
@@ -1491,7 +1738,11 @@ fn contains_unsupported_trailing_clause(remainder: &str) -> bool {
     CLAUSES.iter().any(|clause| find_sql_keyword(remainder, clause, 0).is_some())
 }
 
-fn parse_optional_where_conditions(after_table: &str) -> Option<Vec<ParsedWhereCondition>> {
+fn parse_optional_where_conditions(
+    after_table: &str,
+    base_table: &str,
+    table_alias: Option<&str>,
+) -> Option<Vec<ParsedWhereCondition>> {
     if after_table.is_empty() {
         return Some(Vec::new());
     }
@@ -1506,10 +1757,14 @@ fn parse_optional_where_conditions(after_table: &str) -> Option<Vec<ParsedWhereC
         return None;
     }
 
-    parse_simple_where_conditions(where_part)
+    parse_simple_where_conditions(where_part, base_table, table_alias)
 }
 
-fn parse_simple_where_conditions(where_part: &str) -> Option<Vec<ParsedWhereCondition>> {
+fn parse_simple_where_conditions(
+    where_part: &str,
+    base_table: &str,
+    table_alias: Option<&str>,
+) -> Option<Vec<ParsedWhereCondition>> {
     if contains_top_level_keyword(where_part, "OR") {
         return None;
     }
@@ -1518,8 +1773,8 @@ fn parse_simple_where_conditions(where_part: &str) -> Option<Vec<ParsedWhereCond
     let mut conditions = Vec::with_capacity(parts.len());
 
     for part in parts {
-        let (column, suffix) = parse_column_where_condition(&part)?;
-        conditions.push(ParsedWhereCondition { column, suffix });
+        let condition = parse_column_where_condition(&part, base_table, table_alias)?;
+        conditions.push(condition);
     }
 
     Some(conditions)
@@ -1582,13 +1837,41 @@ fn split_top_level_and(input: &str) -> Option<Vec<String>> {
     Some(parts)
 }
 
-fn parse_column_where_condition(part: &str) -> Option<(String, String)> {
-    let (column, rest) = parse_sql_identifier_prefix(part.trim())?;
+fn parse_column_where_condition(
+    part: &str,
+    base_table: &str,
+    table_alias: Option<&str>,
+) -> Option<ParsedWhereCondition> {
+    let trimmed = part.trim();
+    if let Some((qualifier, rest)) = parse_sql_identifier_prefix(trimmed) {
+        let rest = rest.trim();
+        if rest.starts_with('.') {
+            let after_dot = rest[1..].trim();
+            if let Some((column, suffix_rest)) = parse_sql_identifier_prefix(after_dot) {
+                if qualifier_matches(&qualifier, base_table, table_alias) {
+                    let suffix = suffix_rest.trim();
+                    if suffix.is_empty() {
+                        return None;
+                    }
+                    return Some(ParsedWhereCondition {
+                        column,
+                        suffix: suffix.to_string(),
+                    });
+                }
+                return None;
+            }
+        }
+    }
+
+    let (column, rest) = parse_sql_identifier_prefix(trimmed)?;
     let suffix = rest.trim();
     if suffix.is_empty() {
         return None;
     }
-    Some((column, suffix.to_string()))
+    Some(ParsedWhereCondition {
+        column,
+        suffix: suffix.to_string(),
+    })
 }
 
 fn contains_top_level_keyword(input: &str, keyword: &str) -> bool {
@@ -1605,18 +1888,39 @@ fn has_unclosed_string_literal(input: &str) -> bool {
     in_single_quote
 }
 
-fn parse_comma_separated_select_items(input: &str) -> Option<Vec<ParsedViewColumn>> {
+fn parse_comma_separated_select_items(
+    input: &str,
+    base_table: &str,
+    table_alias: Option<&str>,
+) -> Option<Vec<ParsedViewColumn>> {
     let parts = split_top_level_commas(input)?;
     parts
         .iter()
-        .map(|part| parse_single_select_item(part))
+        .map(|part| parse_single_select_item(part, base_table, table_alias))
         .collect()
 }
 
-fn parse_single_select_item(item: &str) -> Option<ParsedViewColumn> {
-    let (expr_part, alias) = split_select_item_alias(item.trim())?;
+fn parse_single_select_item(
+    item: &str,
+    base_table: &str,
+    table_alias: Option<&str>,
+) -> Option<ParsedViewColumn> {
+    let trimmed = item.trim();
+    if trimmed == "*" || is_matching_qualified_star(trimmed, base_table, table_alias) {
+        return None;
+    }
+
+    let (expr_part, alias) = split_select_item_alias(trimmed)?;
     if expr_part.is_empty() {
         return None;
+    }
+
+    if let Some(column_name) = parse_qualified_column_name(&expr_part, base_table, table_alias) {
+        return Some(ParsedViewColumn {
+            name: column_name,
+            alias,
+            expression: None,
+        });
     }
 
     if let Some((name, rest)) = parse_sql_identifier_prefix(&expr_part) {
@@ -1647,7 +1951,72 @@ fn split_select_item_alias(item: &str) -> Option<(String, Option<String>)> {
         return Some((expr_part.to_string(), Some(alias_name)));
     }
 
+    if let Some((expr_part, alias)) = split_trailing_implicit_alias(item) {
+        return Some((expr_part, Some(alias)));
+    }
+
     Some((item.to_string(), None))
+}
+
+fn split_trailing_implicit_alias(item: &str) -> Option<(String, String)> {
+    let mut paren_depth = 0i32;
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    let mut last_space: Option<usize> = None;
+    let mut i = 0usize;
+
+    while i < item.len() {
+        let ch = item[i..].chars().next()?;
+        let ch_len = ch.len_utf8();
+
+        if in_single_quote {
+            if ch == '\'' {
+                in_single_quote = false;
+            }
+            i += ch_len;
+            continue;
+        }
+
+        if in_double_quote {
+            if ch == '"' {
+                let next_byte = item.as_bytes().get(i + ch_len).copied();
+                if next_byte == Some(b'"') {
+                    i += ch_len * 2;
+                    continue;
+                }
+                in_double_quote = false;
+            }
+            i += ch_len;
+            continue;
+        }
+
+        match ch {
+            '\'' => in_single_quote = true,
+            '"' => in_double_quote = true,
+            '(' => paren_depth += 1,
+            ')' => {
+                if paren_depth > 0 {
+                    paren_depth -= 1;
+                }
+            }
+            ch if ch.is_whitespace() && paren_depth == 0 => last_space = Some(i),
+            _ => {}
+        }
+
+        i += ch_len;
+    }
+
+    let split_at = last_space?;
+    let expr_part = item[..split_at].trim();
+    let alias_part = item[split_at..].trim();
+    if expr_part.is_empty() || alias_part.is_empty() {
+        return None;
+    }
+    let (alias, rest) = parse_sql_identifier_prefix(alias_part)?;
+    if !rest.trim().is_empty() || is_sql_clause_keyword(&alias) {
+        return None;
+    }
+    Some((expr_part.to_string(), alias))
 }
 
 fn split_top_level_commas(input: &str) -> Option<Vec<String>> {
@@ -4984,6 +5353,8 @@ mod tests {
     fn build_simple_view_select_generates_quoted_sql() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
             columns: vec![SimpleViewUiColumn {
                 name: "body".to_string(),
                 type_key: "text".to_string(),
@@ -5001,6 +5372,8 @@ mod tests {
     fn build_simple_view_select_generates_column_alias() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
             columns: vec![SimpleViewUiColumn {
                 name: "id".to_string(),
                 type_key: "integer".to_string(),
@@ -5018,6 +5391,8 @@ mod tests {
     fn build_simple_view_select_rejects_duplicate_output_names() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
             columns: vec![
                 SimpleViewUiColumn {
                     name: "id".to_string(),
@@ -5044,6 +5419,8 @@ mod tests {
     fn build_simple_view_select_generates_where_clause() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
             columns: vec![
                 SimpleViewUiColumn {
                     name: "id".to_string(),
@@ -5073,6 +5450,8 @@ mod tests {
     fn build_simple_view_select_requires_column() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
             columns: vec![],
         };
         assert!(build_simple_view_select(&spec).is_err());
@@ -5100,6 +5479,8 @@ mod tests {
     fn build_simple_view_select_generates_expression_column() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
             columns: vec![
                 SimpleViewUiColumn {
                     name: String::new(),
@@ -5152,6 +5533,8 @@ mod tests {
     fn build_simple_view_select_rejects_duplicate_expression_output_names() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
             columns: vec![
                 SimpleViewUiColumn {
                     name: String::new(),
@@ -5178,6 +5561,8 @@ mod tests {
     fn build_simple_view_select_rejects_forbidden_keyword_in_expression() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
             columns: vec![SimpleViewUiColumn {
                 name: String::new(),
                 type_key: "text".to_string(),
@@ -5189,6 +5574,131 @@ mod tests {
 
         let err = build_simple_view_select(&spec).unwrap_err();
         assert!(matches!(err, DomainError::Validation(ref msg) if msg.contains("式")));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_distinct() {
+        let parsed =
+            parse_simple_view_select(r#"SELECT DISTINCT "id" FROM "custom_notes""#).expect("parsed");
+        assert!(parsed.distinct);
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns) if columns.len() == 1 && columns[0].name == "id"
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_table_alias() {
+        let parsed =
+            parse_simple_view_select(r#"SELECT "id" FROM "custom_notes" AS "n""#).expect("parsed");
+        assert_eq!(parsed.base_table, "custom_notes");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns) if columns.len() == 1 && columns[0].name == "id"
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_implicit_table_alias() {
+        let parsed = parse_simple_view_select(r#"SELECT n."id" FROM "custom_notes" n"#).expect("parsed");
+        assert_eq!(parsed.base_table, "custom_notes");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns) if columns.len() == 1 && columns[0].name == "id"
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_schema_qualified_table() {
+        let parsed =
+            parse_simple_view_select(r#"SELECT "id" FROM main."custom_notes""#).expect("parsed");
+        assert_eq!(parsed.base_table, "custom_notes");
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_implicit_column_alias() {
+        let parsed =
+            parse_simple_view_select(r#"SELECT "id" user_id FROM "custom_notes""#).expect("parsed");
+        assert!(matches!(
+            parsed.columns,
+            ParsedViewColumnList::Columns(ref columns)
+                if columns.len() == 1
+                    && columns[0].name == "id"
+                    && columns[0].alias.as_deref() == Some("user_id")
+        ));
+    }
+
+    #[test]
+    fn parse_simple_view_select_parses_qualified_where() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT "id" FROM "custom_notes" n WHERE n."body" IS NOT NULL"#,
+        )
+        .expect("parsed");
+        assert_eq!(
+            parsed.where_conditions,
+            vec![ParsedWhereCondition {
+                column: "body".to_string(),
+                suffix: "IS NOT NULL".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn build_simple_view_ui_spec_splits_extra_where() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT "id" FROM "custom_notes" WHERE "body" IS NOT NULL"#,
+        )
+        .expect("parsed");
+        let table_columns = vec![
+            TableColumnUiInfo {
+                name: "id".to_string(),
+                type_key: "integer".to_string(),
+                pk: true,
+                nullable: false,
+            },
+            TableColumnUiInfo {
+                name: "body".to_string(),
+                type_key: "text".to_string(),
+                pk: false,
+                nullable: false,
+            },
+        ];
+
+        let spec = build_simple_view_ui_spec(&parsed, &table_columns);
+        assert_eq!(spec.columns.len(), 1);
+        assert!(spec.columns[0].where_condition.is_none());
+        assert_eq!(
+            spec.extra_where,
+            vec![ExtraWhereCondition {
+                column: "body".to_string(),
+                suffix: "IS NOT NULL".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn build_simple_view_select_generates_distinct_and_extra_where() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            distinct: true,
+            extra_where: vec![ExtraWhereCondition {
+                column: "body".to_string(),
+                suffix: "IS NOT NULL".to_string(),
+            }],
+            columns: vec![SimpleViewUiColumn {
+                name: "id".to_string(),
+                type_key: "integer".to_string(),
+                alias: None,
+                expression: None,
+                where_condition: None,
+            }],
+        };
+
+        let sql = build_simple_view_select(&spec).expect("sql");
+        assert_eq!(
+            sql,
+            r#"SELECT DISTINCT "id" FROM "custom_notes" WHERE "body" IS NOT NULL"#
+        );
     }
 
     #[test]

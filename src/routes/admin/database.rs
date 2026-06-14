@@ -307,6 +307,10 @@ pub fn router() -> Router<AppState> {
             get(table_seed_form).post(generate_table_seed),
         )
         .route(
+            "/admin/database/views/ui-spec",
+            post(view_ui_spec_json),
+        )
+        .route(
             "/admin/database/views/new",
             get(new_view_form).post(create_view),
         )
@@ -1119,6 +1123,20 @@ async fn table_columns_json(
     Ok(Json(json!({ "columns": columns })))
 }
 
+#[derive(Debug, Deserialize)]
+struct ViewUiSpecRequest {
+    definition: String,
+}
+
+async fn view_ui_spec_json(
+    _auth: AuthUser,
+    State(state): State<AppState>,
+    Json(body): Json<ViewUiSpecRequest>,
+) -> ApiResult<Json<database::ViewUiSpecResolveResult>> {
+    let result = database::resolve_view_ui_spec(&state.pool(), &body.definition).await;
+    Ok(Json(result))
+}
+
 fn object_admin_url(kind: DbAdminObjectKind, name: &str, suffix: &str) -> String {
     let segment = match kind {
         DbAdminObjectKind::Table => "tables",
@@ -1404,14 +1422,12 @@ async fn render_view_form(
 }
 
 async fn build_view_ui_builder_json(pool: &sqlx::SqlitePool, definition: &str) -> String {
-    let Some(parsed) = database::parse_simple_view_select(definition) else {
-        return "null".to_string();
-    };
-    let Ok(table_columns) = database::table_columns_for_ui(pool, &parsed.base_table).await else {
-        return "null".to_string();
-    };
-    let spec = database::build_simple_view_ui_spec(&parsed, &table_columns);
-    serde_json::to_string(&spec).unwrap_or_else(|_| "null".to_string())
+    let result = database::resolve_view_ui_spec(pool, definition).await;
+    if result.supported && result.spec.is_some() {
+        serde_json::to_string(&result).unwrap_or_else(|_| "null".to_string())
+    } else {
+        "null".to_string()
+    }
 }
 
 fn domain_error_message(err: &DomainError) -> String {

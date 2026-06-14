@@ -3409,7 +3409,11 @@
     let tableApiColumns = [];
     let columnsLoading = false;
     let columnsLoadSeq = 0;
+    let uiSpecParseSeq = 0;
     let uiDirty = false;
+    let currentUiSpecMeta = { distinct: false, extra_where: [] };
+    let lastResolvedDefinition = null;
+    let lastResolvedResult = null;
     let dragSourceItem = null;
     let dragGhostEl = null;
     let dragPointerOffset = { x: 0, y: 0 };
@@ -3426,279 +3430,25 @@
       return '"' + String(name).replace(/"/g, '""') + '"';
     }
 
-    function isIdentifierChar(ch) {
-      return /[A-Za-z0-9_]/.test(ch);
+    function setUiSpecMeta(spec) {
+      currentUiSpecMeta = {
+        distinct: !!(spec && spec.distinct),
+        extra_where:
+          spec && Array.isArray(spec.extra_where) ? spec.extra_where.slice() : [],
+      };
     }
 
-    function findSqlKeyword(sql, keyword, start) {
-      const upper = sql.toUpperCase();
-      const kw = keyword.toUpperCase();
-      let searchStart = start;
-      while (true) {
-        const rel = upper.indexOf(kw, searchStart);
-        if (rel === -1) return -1;
-        const pos = rel;
-        const beforeOk = pos === 0 || !isIdentifierChar(upper.charAt(pos - 1));
-        const afterPos = pos + kw.length;
-        const afterOk = afterPos >= upper.length || !isIdentifierChar(upper.charAt(afterPos));
-        if (beforeOk && afterOk) return pos;
-        searchStart = pos + 1;
-      }
-    }
-
-    function containsUnsupportedTrailingClause(remainder) {
-      const clauses = [
-        'JOIN',
-        'GROUP',
-        'HAVING',
-        'ORDER',
-        'LIMIT',
-        'UNION',
-        'EXCEPT',
-        'INTERSECT',
-      ];
-      return clauses.some(function (clause) {
-        return findSqlKeyword(remainder, clause, 0) !== -1;
+    function fetchViewUiSpec(definition) {
+      return fetch('/admin/database/views/ui-spec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ definition: definition }),
+      }).then(function (response) {
+        if (!response.ok) {
+          throw new Error('ビジュアル編集状態の解析に失敗しました');
+        }
+        return response.json();
       });
-    }
-
-    function hasUnclosedStringLiteral(input) {
-      let inSingleQuote = false;
-      for (let i = 0; i < input.length; i += 1) {
-        if (input.charAt(i) === "'") {
-          inSingleQuote = !inSingleQuote;
-        }
-      }
-      return inSingleQuote;
-    }
-
-    function findTopLevelKeyword(input, keyword) {
-      let inSingleQuote = false;
-      let i = 0;
-      while (i < input.length) {
-        const ch = input.charAt(i);
-        if (ch === "'") {
-          inSingleQuote = !inSingleQuote;
-          i += 1;
-          continue;
-        }
-        if (!inSingleQuote && findSqlKeyword(input.slice(i), keyword, 0) === 0) {
-          return i;
-        }
-        i += 1;
-      }
-      return -1;
-    }
-
-    function splitTopLevelAnd(input) {
-      if (hasUnclosedStringLiteral(input)) return null;
-      const parts = [];
-      let segmentStart = 0;
-      let i = 0;
-      while (true) {
-        const andPos = findTopLevelKeyword(input.slice(i), 'AND');
-        if (andPos === -1) break;
-        const splitAt = i + andPos;
-        const segment = input.slice(segmentStart, splitAt).trim();
-        if (!segment) return null;
-        parts.push(segment);
-        i = splitAt + 'AND'.length;
-        while (i < input.length && /\s/.test(input.charAt(i))) {
-          i += 1;
-        }
-        segmentStart = i;
-      }
-      const last = input.slice(segmentStart).trim();
-      if (!last) {
-        return parts.length > 0 ? parts : null;
-      }
-      parts.push(last);
-      return parts;
-    }
-
-    function parseColumnWhereCondition(part) {
-      const parsed = parseSqlIdentifierPrefix(part.trim());
-      if (!parsed) return null;
-      const suffix = parsed.rest.trim();
-      if (!suffix) return null;
-      return { column: parsed.name, suffix: suffix };
-    }
-
-    function parseSimpleWhereConditions(wherePart) {
-      if (findTopLevelKeyword(wherePart, 'OR') !== -1) return null;
-      const parts = splitTopLevelAnd(wherePart);
-      if (!parts) return null;
-      const conditions = [];
-      for (let idx = 0; idx < parts.length; idx += 1) {
-        const parsed = parseColumnWhereCondition(parts[idx]);
-        if (!parsed) return null;
-        conditions.push(parsed);
-      }
-      return conditions;
-    }
-
-    function parseOptionalWhereConditions(afterTable) {
-      if (!afterTable) return [];
-      const wherePos = findSqlKeyword(afterTable, 'WHERE', 0);
-      if (wherePos === -1) return null;
-      if (wherePos !== 0) return null;
-      const wherePart = afterTable.slice('WHERE'.length).trim();
-      if (!wherePart) return null;
-      return parseSimpleWhereConditions(wherePart);
-    }
-
-    function assignWhereConditionsToSelectColumns(columns, whereConditions) {
-      const used = whereConditions.map(function () {
-        return false;
-      });
-      return columns.map(function (item) {
-        for (let i = 0; i < whereConditions.length; i += 1) {
-          if (!used[i] && whereConditions[i].column === item.name) {
-            used[i] = true;
-            return whereConditions[i].suffix;
-          }
-        }
-        return null;
-      });
-    }
-
-    function parseSqlIdentifierPrefix(input) {
-      input = input.trim();
-      if (!input) return null;
-      if (input.charAt(0) === '"') {
-        let i = 1;
-        let name = '';
-        while (i < input.length) {
-          if (input.charAt(i) === '"') {
-            if (i + 1 < input.length && input.charAt(i + 1) === '"') {
-              name += '"';
-              i += 2;
-            } else {
-              return { name: name, rest: input.slice(i + 1) };
-            }
-          } else {
-            name += input.charAt(i);
-            i += 1;
-          }
-        }
-        return null;
-      }
-      const match = input.match(/^([A-Za-z_][A-Za-z0-9_]*)/);
-      if (!match) return null;
-      return { name: match[1], rest: input.slice(match[1].length) };
-    }
-
-    function findTopLevelKeywordWithParens(input, keyword) {
-      let parenDepth = 0;
-      let inSingleQuote = false;
-      let inDoubleQuote = false;
-      let i = 0;
-      while (i < input.length) {
-        const ch = input.charAt(i);
-        if (inSingleQuote) {
-          if (ch === "'") inSingleQuote = false;
-          i += 1;
-          continue;
-        }
-        if (inDoubleQuote) {
-          if (ch === '"') {
-            if (i + 1 < input.length && input.charAt(i + 1) === '"') {
-              i += 2;
-              continue;
-            }
-            inDoubleQuote = false;
-          }
-          i += 1;
-          continue;
-        }
-        if (ch === "'") inSingleQuote = true;
-        else if (ch === '"') inDoubleQuote = true;
-        else if (ch === '(') parenDepth += 1;
-        else if (ch === ')' && parenDepth > 0) parenDepth -= 1;
-        else if (parenDepth === 0 && findSqlKeyword(input.slice(i), keyword, 0) === 0) {
-          return i;
-        }
-        i += 1;
-      }
-      return -1;
-    }
-
-    function splitTopLevelCommas(input) {
-      if (hasUnclosedStringLiteral(input)) return null;
-      const parts = [];
-      let segmentStart = 0;
-      let parenDepth = 0;
-      let inSingleQuote = false;
-      let inDoubleQuote = false;
-      let i = 0;
-      while (i < input.length) {
-        const ch = input.charAt(i);
-        if (inSingleQuote) {
-          if (ch === "'") inSingleQuote = false;
-          i += 1;
-          continue;
-        }
-        if (inDoubleQuote) {
-          if (ch === '"') {
-            if (i + 1 < input.length && input.charAt(i + 1) === '"') {
-              i += 2;
-              continue;
-            }
-            inDoubleQuote = false;
-          }
-          i += 1;
-          continue;
-        }
-        if (ch === "'") inSingleQuote = true;
-        else if (ch === '"') inDoubleQuote = true;
-        else if (ch === '(') parenDepth += 1;
-        else if (ch === ')' && parenDepth > 0) parenDepth -= 1;
-        else if (ch === ',' && parenDepth === 0) {
-          const segment = input.slice(segmentStart, i).trim();
-          if (!segment) return null;
-          parts.push(segment);
-          segmentStart = i + 1;
-        }
-        i += 1;
-      }
-      const last = input.slice(segmentStart).trim();
-      if (!last) return parts.length > 0 ? parts : null;
-      parts.push(last);
-      return parts;
-    }
-
-    function splitSelectItemAlias(item) {
-      const asPos = findTopLevelKeywordWithParens(item, 'AS');
-      if (asPos !== -1) {
-        const exprPart = item.slice(0, asPos).trim();
-        const afterAs = item.slice(asPos + 'AS'.length).trim();
-        const aliasParsed = parseSqlIdentifierPrefix(afterAs);
-        if (!aliasParsed || aliasParsed.rest.trim()) return null;
-        return { exprPart: exprPart, alias: aliasParsed.name };
-      }
-      return { exprPart: item.trim(), alias: null };
-    }
-
-    function parseSingleSelectItem(item) {
-      const split = splitSelectItemAlias(item);
-      if (!split || !split.exprPart) return null;
-      const identifierParsed = parseSqlIdentifierPrefix(split.exprPart);
-      if (identifierParsed && !identifierParsed.rest.trim()) {
-        return { name: identifierParsed.name, alias: split.alias, expression: null };
-      }
-      return { name: '', alias: split.alias, expression: split.exprPart };
-    }
-
-    function parseCommaSeparatedSelectItems(input) {
-      const parts = splitTopLevelCommas(input.trim());
-      if (!parts) return null;
-      const items = [];
-      for (let idx = 0; idx < parts.length; idx += 1) {
-        const parsed = parseSingleSelectItem(parts[idx]);
-        if (!parsed) return null;
-        items.push(parsed);
-      }
-      return items;
     }
 
     function isSimpleSelectIdentifier(value) {
@@ -3729,16 +3479,6 @@
         column.expression != null ? String(column.expression).trim() : '';
       if (expression) return expression;
       return column.name;
-    }
-
-    function selectOutputNamesUnique(columns) {
-      const seen = new Set();
-      for (let i = 0; i < columns.length; i += 1) {
-        const outputName = effectiveViewColumnName(columns[i]);
-        if (seen.has(outputName)) return false;
-        seen.add(outputName);
-      }
-      return true;
     }
 
     function validateViewColumnAlias(alias) {
@@ -3810,39 +3550,6 @@
       return selectPart + ' AS ' + quoteSqlIdentifier(alias);
     }
 
-    function parseSimpleSelect(definition) {
-      const trimmed = definition.trim();
-      if (!trimmed.toUpperCase().startsWith('SELECT')) return null;
-      const fromPos = findSqlKeyword(trimmed, 'FROM', 'SELECT'.length);
-      if (fromPos === -1) return null;
-      const selectPart = trimmed.slice('SELECT'.length, fromPos).trim();
-      const afterFrom = trimmed.slice(fromPos + 'FROM'.length).trim();
-      if (!afterFrom) return null;
-      const tableParsed = parseSqlIdentifierPrefix(afterFrom);
-      if (!tableParsed) return null;
-      const afterTable = tableParsed.rest.trim();
-      if (containsUnsupportedTrailingClause(afterTable)) return null;
-      const whereConditions = parseOptionalWhereConditions(afterTable);
-      if (whereConditions === null) return null;
-      if (selectPart === '*') {
-        return {
-          baseTable: tableParsed.name,
-          allColumns: true,
-          columns: [],
-          whereConditions: whereConditions,
-        };
-      }
-      const columns = parseCommaSeparatedSelectItems(selectPart);
-      if (!columns || columns.length === 0) return null;
-      if (!selectOutputNamesUnique(columns)) return null;
-      return {
-        baseTable: tableParsed.name,
-        allColumns: false,
-        columns: columns,
-        whereConditions: whereConditions,
-      };
-    }
-
     function setUiDirty(dirty) {
       uiDirty = dirty;
     }
@@ -3863,19 +3570,6 @@
       if (!uiError) return;
       uiError.textContent = message;
       uiError.hidden = false;
-    }
-
-    function parseVisualState(definition) {
-      const trimmed = definition.trim();
-      if (!trimmed) {
-        return { supported: true, parsed: null };
-      }
-      const parsed = parseSimpleSelect(trimmed);
-      return { supported: parsed !== null, parsed: parsed };
-    }
-
-    function isVisualEditingSupported() {
-      return parseVisualState(definitionInput.value).supported;
     }
 
     function setVisualBuilderVisible(visible) {
@@ -3965,31 +3659,6 @@
         alias: aliasValue || null,
         where_condition: whereValue || null,
       };
-    }
-
-    function buildColumnsFromParsed(apiColumns, parsed) {
-      const typeByName = columnTypeByName(apiColumns);
-      const items = parsed.allColumns
-        ? apiColumns.map(function (column) {
-            return { name: column.name, alias: null };
-          })
-        : parsed.columns;
-      const whereConditions = Array.isArray(parsed.whereConditions)
-        ? parsed.whereConditions
-        : [];
-      const assignedWhere = assignWhereConditionsToSelectColumns(items, whereConditions);
-      return items.map(function (item, index) {
-        return toUiColumn(
-          {
-            name: item.name,
-            expression: item.expression || null,
-            type_key: typeByName[item.name],
-            alias: item.alias,
-            where_condition: assignedWhere[index] || null,
-          },
-          typeByName
-        );
-      });
     }
 
     function normalizeColumnState(apiColumns, state) {
@@ -4484,18 +4153,23 @@
         .map(function (column) {
           return quoteSqlIdentifier(column.name) + ' ' + column.where_condition;
         });
-      let sql = 'SELECT ' + columnSql + ' FROM ' + quoteSqlIdentifier(table);
-      if (whereParts.length > 0) {
-        sql += ' WHERE ' + whereParts.join(' AND ');
+      const extraParts = (currentUiSpecMeta.extra_where || []).map(function (condition) {
+        return quoteSqlIdentifier(condition.column) + ' ' + condition.suffix;
+      });
+      const allWhereParts = whereParts.concat(extraParts);
+      let sql = 'SELECT ';
+      if (currentUiSpecMeta.distinct) {
+        sql += 'DISTINCT ';
+      }
+      sql += columnSql + ' FROM ' + quoteSqlIdentifier(table);
+      if (allWhereParts.length > 0) {
+        sql += ' WHERE ' + allWhereParts.join(' AND ');
       }
       definitionInput.value = sql;
       setUiDirty(false);
     }
 
-    function resolveColumnsFromApi(apiColumns, columnState, parsed) {
-      if (parsed) {
-        return buildColumnsFromParsed(apiColumns, parsed);
-      }
+    function resolveColumnsFromApi(apiColumns, columnState) {
       if (columnState && columnState.length > 0) {
         return normalizeColumnState(apiColumns, columnState);
       }
@@ -4509,7 +4183,14 @@
       });
     }
 
-    function loadColumnsForTable(tableName, columnState, parsed) {
+    function loadTableColumns(tableName, prefetchedColumns) {
+      if (Array.isArray(prefetchedColumns)) {
+        return Promise.resolve(prefetchedColumns);
+      }
+      return fetchTableColumns(tableName);
+    }
+
+    function loadColumnsForTable(tableName, columnState, prefetchedColumns) {
       if (!tableName) {
         tableApiColumns = [];
         renderColumns([]);
@@ -4518,7 +4199,7 @@
 
       const seq = ++columnsLoadSeq;
       setColumnsLoadingState(true);
-      return fetchTableColumns(tableName)
+      return loadTableColumns(tableName, prefetchedColumns)
         .then(function (apiColumns) {
           if (seq !== columnsLoadSeq) return;
           tableApiColumns = apiColumns;
@@ -4526,7 +4207,7 @@
             updateAddColumnSelect();
             return;
           }
-          renderColumns(resolveColumnsFromApi(apiColumns, columnState, parsed));
+          renderColumns(resolveColumnsFromApi(apiColumns, columnState));
           setUiDirty(false);
         })
         .catch(function (err) {
@@ -4544,26 +4225,74 @@
         });
     }
 
-    function applyUiBuilderState(baseTable, columnState, parsed) {
-      if (!baseTableSelect || !baseTable) return Promise.resolve();
-      baseTableSelect.value = baseTable;
-      return loadColumnsForTable(baseTable, columnState, parsed);
+    function applyVisualResolveResult(result) {
+      if (!result || !result.supported) {
+        setVisualBuilderVisible(false);
+        return Promise.resolve();
+      }
+      setVisualBuilderVisible(true);
+      if (!result.spec) {
+        setUiSpecMeta(null);
+        if (baseTableSelect) baseTableSelect.value = '';
+        tableApiColumns = [];
+        renderColumns([]);
+        return Promise.resolve();
+      }
+      setUiSpecMeta(result.spec);
+      if (baseTableSelect) {
+        baseTableSelect.value = result.spec.base_table;
+      }
+      return loadColumnsForTable(
+        result.spec.base_table,
+        result.spec.columns || [],
+        result.table_columns
+      );
+    }
+
+    function applyUiBuilderState(spec, prefetchedColumns) {
+      if (!spec || !spec.base_table) return Promise.resolve();
+      return applyVisualResolveResult({
+        supported: true,
+        spec: spec,
+        table_columns: prefetchedColumns,
+      });
     }
 
     function refreshVisualTabState() {
       setActiveTab('ui');
       if (uiDirty) return;
-      const visualState = parseVisualState(definitionInput.value);
-      if (!visualState.supported) {
-        setVisualBuilderVisible(false);
-        return;
+
+      const definition = definitionInput.value;
+      if (definition === lastResolvedDefinition && lastResolvedResult) {
+        hideUiError();
+        return applyVisualResolveResult(lastResolvedResult);
       }
-      setVisualBuilderVisible(true);
-      if (visualState.parsed) {
-        applyUiBuilderState(visualState.parsed.baseTable, null, visualState.parsed).catch(function (err) {
-          showUiError(err.message || 'ビジュアル編集状態の復元に失敗しました');
+
+      const seq = ++uiSpecParseSeq;
+      hideUiError();
+      setColumnsLoadingState(true);
+      return fetchViewUiSpec(definition)
+        .then(function (result) {
+          if (seq !== uiSpecParseSeq) return;
+          lastResolvedDefinition = definition;
+          lastResolvedResult = result;
+          if (!result.supported) {
+            setVisualBuilderVisible(false);
+            setColumnsLoadingState(false);
+            return;
+          }
+          return applyVisualResolveResult(result);
+        })
+        .catch(function (err) {
+          if (seq !== uiSpecParseSeq) return;
+          setVisualBuilderVisible(false);
+          showUiError(err.message || 'ビジュアル編集状態の解析に失敗しました');
+        })
+        .finally(function () {
+          if (seq === uiSpecParseSeq && columnsLoading) {
+            setColumnsLoadingState(false);
+          }
         });
-      }
     }
 
     function switchToUiTab() {
@@ -4573,6 +4302,7 @@
 
     function switchToSqlTab() {
       syncUiToSql();
+      lastResolvedDefinition = definitionInput.value;
       if (unsupportedNotice) unsupportedNotice.hidden = true;
       setActiveTab('sql');
     }
@@ -4593,6 +4323,9 @@
         if (unsupportedNotice) unsupportedNotice.hidden = true;
         hideUiError();
         setUiDirty(false);
+        setUiSpecMeta(null);
+        lastResolvedDefinition = null;
+        lastResolvedResult = null;
         loadColumnsForTable(baseTableSelect.value, null);
       });
     }
@@ -4691,14 +4424,15 @@
     if (initialEl && initialEl.textContent.trim()) {
       try {
         const initial = JSON.parse(initialEl.textContent);
-        if (initial && initial.base_table) {
-          setActiveTab('ui');
-          if (isVisualEditingSupported()) {
-            setVisualBuilderVisible(true);
-            applyUiBuilderState(initial.base_table, initial.columns || []);
-          } else {
-            setVisualBuilderVisible(false);
-          }
+        setActiveTab('ui');
+        if (initial && initial.spec && initial.spec.base_table) {
+          lastResolvedDefinition = definitionInput.value;
+          lastResolvedResult = initial;
+          applyUiBuilderState(initial.spec, initial.table_columns);
+          return;
+        }
+        if (initial === null && definitionInput.value.trim()) {
+          setVisualBuilderVisible(false);
           return;
         }
       } catch (_err) {

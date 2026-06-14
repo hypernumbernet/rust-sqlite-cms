@@ -436,6 +436,97 @@ async fn database_view_form_unsupported_visual_editing_notice() {
 }
 
 #[tokio::test]
+async fn database_view_ui_spec_api_parses_simple_select() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=ui_spec_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let body = r#"{"definition":"SELECT \"id\", \"body\" FROM \"ui_spec_notes\""}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/ui-spec",
+            Some(body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    assert_eq!(json["supported"], true);
+    assert_eq!(json["spec"]["base_table"], "ui_spec_notes");
+    assert_eq!(json["spec"]["columns"].as_array().map(|v| v.len()), Some(2));
+    assert!(json["table_columns"].as_array().is_some_and(|v| !v.is_empty()));
+}
+
+#[tokio::test]
+async fn database_view_ui_spec_api_rejects_join() {
+    let app = common::TestApp::new().await;
+
+    let body = r#"{"definition":"SELECT id FROM posts JOIN users ON 1 = 1"}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/ui-spec",
+            Some(body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    assert_eq!(json["supported"], false);
+    assert!(json["spec"].is_null());
+}
+
+#[tokio::test]
+async fn database_view_ui_spec_api_parses_distinct_and_extra_where() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=extra_where_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let body = r#"{"definition":"SELECT DISTINCT \"id\" FROM \"extra_where_notes\" WHERE \"body\" IS NOT NULL"}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/ui-spec",
+            Some(body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    assert_eq!(json["supported"], true);
+    assert_eq!(json["spec"]["distinct"], true);
+    assert_eq!(json["spec"]["columns"].as_array().map(|v| v.len()), Some(1));
+    assert_eq!(
+        json["spec"]["extra_where"][0]["column"].as_str(),
+        Some("body")
+    );
+    assert_eq!(
+        json["spec"]["extra_where"][0]["suffix"].as_str(),
+        Some("IS NOT NULL")
+    );
+}
+
+#[tokio::test]
 async fn database_view_form_where_condition() {
     let app = common::TestApp::new().await;
 

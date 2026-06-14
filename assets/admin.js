@@ -3370,6 +3370,8 @@
     let lastReorderTarget = null;
     let lastReorderBefore = null;
     let emptyDragImage = null;
+    let columnNameTooltipEl = null;
+    let activeColumnNameTooltipWrap = null;
     const prefersReducedMotion =
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -3808,6 +3810,77 @@
         });
     }
 
+    function ensureColumnNameTooltip() {
+      if (!columnNameTooltipEl) {
+        columnNameTooltipEl = document.createElement('span');
+        columnNameTooltipEl.className = 'view-ui-column-name-tooltip';
+        columnNameTooltipEl.setAttribute('role', 'tooltip');
+        columnNameTooltipEl.hidden = true;
+        document.body.appendChild(columnNameTooltipEl);
+      }
+      return columnNameTooltipEl;
+    }
+
+    function updateColumnNameTooltip(nameWrap) {
+      const nameLabel = nameWrap.querySelector('.view-ui-column-name');
+      if (!nameLabel) return;
+      const truncated = nameLabel.scrollWidth > nameLabel.clientWidth + 1;
+      nameWrap.classList.toggle('is-truncated', truncated);
+    }
+
+    function updateAllColumnNameTooltips() {
+      requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+          if (!columnsList) return;
+          columnsList.querySelectorAll('.view-ui-column-name-wrap').forEach(function (wrap) {
+            updateColumnNameTooltip(wrap);
+          });
+        });
+      });
+    }
+
+    function positionColumnNameTooltip(nameWrap) {
+      const tooltip = ensureColumnNameTooltip();
+      const rect = nameWrap.getBoundingClientRect();
+      tooltip.style.left = rect.left + 'px';
+      tooltip.style.top = '-9999px';
+      tooltip.style.visibility = 'hidden';
+      const tooltipHeight = tooltip.offsetHeight;
+      const top = Math.max(8, rect.top - tooltipHeight - 6);
+      tooltip.style.top = top + 'px';
+      tooltip.style.visibility = '';
+    }
+
+    function showColumnNameTooltip(nameWrap) {
+      if (!nameWrap.classList.contains('is-truncated')) return;
+      const nameLabel = nameWrap.querySelector('.view-ui-column-name');
+      if (!nameLabel) return;
+      const tooltip = ensureColumnNameTooltip();
+      tooltip.textContent = nameLabel.textContent;
+      tooltip.hidden = false;
+      activeColumnNameTooltipWrap = nameWrap;
+      positionColumnNameTooltip(nameWrap);
+      tooltip.classList.add('is-visible');
+    }
+
+    function hideColumnNameTooltip() {
+      if (!columnNameTooltipEl) return;
+      columnNameTooltipEl.classList.remove('is-visible');
+      columnNameTooltipEl.hidden = true;
+      activeColumnNameTooltipWrap = null;
+    }
+
+    function bindColumnNameTooltip(nameWrap) {
+      nameWrap.addEventListener('mouseenter', function () {
+        showColumnNameTooltip(nameWrap);
+      });
+      nameWrap.addEventListener('mouseleave', function () {
+        if (activeColumnNameTooltipWrap === nameWrap) {
+          hideColumnNameTooltip();
+        }
+      });
+    }
+
     function updateAddColumnSelect() {
       if (!addColumnSelect) return;
 
@@ -3964,6 +4037,7 @@
         if (!item) return;
         dragSourceItem = item;
         resetDragReorderState();
+        hideColumnNameTooltip();
         item.classList.add('is-dragging');
         columnsList.classList.add('is-drag-active');
         hideNativeDragImage(event);
@@ -4025,12 +4099,19 @@
       handle.setAttribute('aria-hidden', 'true');
       handle.textContent = '⠿';
 
+      const nameWrap = document.createElement('span');
+      nameWrap.className = 'view-ui-column-name-wrap';
+
       const nameLabel = document.createElement('span');
       nameLabel.className = 'view-ui-column-name';
       nameLabel.textContent = column.name;
 
+      nameWrap.appendChild(nameLabel);
+      bindColumnNameTooltip(nameWrap);
+      updateColumnNameTooltip(nameWrap);
+
       dragZone.appendChild(handle);
-      dragZone.appendChild(nameLabel);
+      dragZone.appendChild(nameWrap);
 
       const aliasWrap = document.createElement('div');
       aliasWrap.className = 'view-ui-column-alias';
@@ -4070,6 +4151,7 @@
         fragment.appendChild(createColumnRow(column));
       });
       columnsList.replaceChildren(fragment);
+      updateAllColumnNameTooltips();
       updateAddColumnSelect();
       updateColumnsWrapVisibility();
     }
@@ -4194,6 +4276,18 @@
 
     bindColumnListInteractions();
 
+    window.addEventListener('resize', function () {
+      updateAllColumnNameTooltips();
+      if (activeColumnNameTooltipWrap) {
+        positionColumnNameTooltip(activeColumnNameTooltipWrap);
+      }
+    });
+    window.addEventListener('scroll', function () {
+      if (activeColumnNameTooltipWrap) {
+        positionColumnNameTooltip(activeColumnNameTooltipWrap);
+      }
+    }, true);
+
     if (addColumnBtn) {
       addColumnBtn.addEventListener('click', function () {
         const name = addColumnSelect ? addColumnSelect.value : '';
@@ -4211,6 +4305,7 @@
           })
         );
         if (addColumnSelect) addColumnSelect.value = '';
+        updateAllColumnNameTooltips();
         updateAddColumnSelect();
         updateColumnsWrapVisibility();
       });

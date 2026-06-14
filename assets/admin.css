@@ -330,7 +330,7 @@ textarea::placeholder {
   border: 1px solid var(--border);
   border-radius: 4px;
   margin: 12px 0 0;
-  overflow: hidden;
+  overflow: visible;
 }
 .view-ui-column-list {
   border: none;
@@ -416,14 +416,51 @@ textarea::placeholder {
   font-size: 16px;
   line-height: 1;
 }
+.view-ui-column-name-wrap {
+  cursor: default;
+  flex: 0 0 200px;
+  min-width: 0;
+  position: relative;
+  width: 200px;
+}
+.view-ui-column-name-wrap.is-truncated {
+  cursor: help;
+}
 .view-ui-column-name {
-  flex: 0 0 160px;
+  display: block;
   font-family: var(--mono, monospace);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  width: 160px;
+  width: 100%;
+}
+.view-ui-column-name-tooltip {
+  background: var(--text);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(29, 35, 39, 0.18);
+  color: var(--panel);
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  left: 0;
+  line-height: 1.4;
+  max-width: min(320px, calc(100vw - 16px));
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  transform: translateY(4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s ease;
+  visibility: hidden;
+  white-space: normal;
+  word-break: break-all;
+  z-index: 10050;
+}
+.view-ui-column-name-tooltip.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
 }
 .view-ui-column-alias {
   flex: 0 1 140px;

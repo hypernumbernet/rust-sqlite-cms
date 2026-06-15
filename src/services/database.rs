@@ -1053,13 +1053,14 @@ pub async fn duplicate_user_view(
         return Err(DomainError::NotFound);
     }
 
-    create_user_view(pool, target, definition).await
+    create_user_view(pool, target, definition, ViewEditMode::Sql).await
 }
 
 pub async fn create_user_view(
     pool: &SqlitePool,
     name: &str,
     definition: &str,
+    edit_mode: ViewEditMode,
 ) -> DomainResult<()> {
     let name = validate_user_object_name(name)?;
     let definition = validate_view_definition(definition)?;
@@ -1074,6 +1075,7 @@ pub async fn create_user_view(
     }
 
     execute_ddl(pool, &create_view_ddl(&name, &definition)).await?;
+    save_view_edit_mode(pool, &name, edit_mode).await?;
     Ok(())
 }
 
@@ -1095,6 +1097,7 @@ pub async fn update_user_view(
     old_name: &str,
     new_name: &str,
     definition: &str,
+    edit_mode: ViewEditMode,
 ) -> DomainResult<()> {
     let old_name = ensure_editable_user_table(old_name)?;
     let new_name = validate_user_object_name(new_name)?;
@@ -1161,6 +1164,9 @@ pub async fn update_user_view(
         )
         .await?;
     }
+
+    let meta_name = if renaming { &new_name } else { old_name };
+    save_view_edit_mode_in_tx(&mut tx, meta_name, edit_mode).await?;
 
     tx.commit().await?;
     Ok(())
@@ -2581,6 +2587,109 @@ pub async fn save_table_filter(
     .execute(pool)
     .await?;
 
+    Ok(())
+}
+
+/// ビュー定義編集画面のタブ（SQL / ビジュアル）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewEditMode {
+    Sql,
+    Ui,
+}
+
+impl ViewEditMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Sql => "sql",
+            Self::Ui => "ui",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "ui" => Self::Ui,
+            _ => Self::Sql,
+        }
+    }
+}
+
+async fn save_view_edit_mode_in_tx(
+    tx: &mut Transaction<'_, Sqlite>,
+    name: &str,
+    mode: ViewEditMode,
+) -> DomainResult<()> {
+    if mode == ViewEditMode::Sql {
+        let has_row = match sqlx::query_scalar::<_, i32>(
+            "SELECT 1 FROM user_table_meta WHERE table_name = ?",
+        )
+        .bind(name)
+        .fetch_optional(&mut **tx)
+        .await
+        {
+            Ok(row) => row.is_some(),
+            Err(err) if is_missing_user_table_meta_error(&err) => false,
+            Err(err) => return Err(err.into()),
+        };
+        if !has_row {
+            return Ok(());
+        }
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO user_table_meta (table_name, view_edit_mode, updated_at)
+        VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+        ON CONFLICT(table_name) DO UPDATE SET
+            view_edit_mode = excluded.view_edit_mode,
+            updated_at = excluded.updated_at
+        "#,
+    )
+    .bind(name)
+    .bind(mode.as_str())
+    .execute(&mut **tx)
+    .await?;
+
+    Ok(())
+}
+
+/// 保存済みのビュー定義編集タブを取得する。未保存の場合は SQL。
+pub async fn get_view_edit_mode(pool: &SqlitePool, name: &str) -> DomainResult<ViewEditMode> {
+    let name = ensure_editable_user_table(name)?;
+    if !object_name_exists(pool, name, "view").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    let mode = match sqlx::query_scalar::<_, String>(
+        "SELECT view_edit_mode FROM user_table_meta WHERE table_name = ?",
+    )
+    .bind(name)
+    .fetch_optional(pool)
+    .await
+    {
+        Ok(row) => row,
+        Err(err) if is_missing_user_table_meta_error(&err) => None,
+        Err(err) => return Err(err.into()),
+    };
+
+    Ok(mode
+        .map(|value| ViewEditMode::parse(&value))
+        .unwrap_or(ViewEditMode::Sql))
+}
+
+/// ビュー定義編集タブを保存する（UPSERT）。
+pub async fn save_view_edit_mode(
+    pool: &SqlitePool,
+    name: &str,
+    mode: ViewEditMode,
+) -> DomainResult<()> {
+    let name = ensure_editable_user_table(name)?;
+    if !object_name_exists(pool, name, "view").await? {
+        return Err(DomainError::NotFound);
+    }
+
+    let mut tx = pool.begin().await?;
+    save_view_edit_mode_in_tx(&mut tx, name, mode).await?;
+    tx.commit().await?;
     Ok(())
 }
 

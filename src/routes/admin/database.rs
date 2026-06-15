@@ -192,6 +192,7 @@ struct ViewFormTemplate {
     error_message: String,
     table_options: Vec<ViewSourceTableOption>,
     ui_builder_json: String,
+    edit_mode: String,
 }
 
 struct ViewFormParams<'a> {
@@ -203,6 +204,9 @@ struct ViewFormParams<'a> {
     is_edit: bool,
     definition: &'a str,
     error_message: &'a str,
+    edit_mode: &'a str,
+    /// メタデータ取得・フォーム action 用の既存ビュー名。未指定時は `name`。
+    meta_name: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -260,6 +264,8 @@ struct ViewCreateForm {
     name: String,
     #[serde(default)]
     definition: String,
+    #[serde(default)]
+    edit_mode: String,
 }
 
 pub fn router() -> Router<AppState> {
@@ -1003,6 +1009,8 @@ async fn new_view_form(auth: AuthUser, State(state): State<AppState>) -> AppResu
             is_edit: false,
             definition: "",
             error_message: "",
+            edit_mode: "sql",
+            meta_name: None,
         },
     )
     .await?;
@@ -1019,7 +1027,7 @@ async fn edit_view_form(
             let html = render_view_form(
                 &auth,
                 &state.pool(),
-                view_edit_form_params(&name, &definition, ""),
+                view_edit_form_params(&name, &definition, "", "sql"),
             )
             .await?;
             Ok(Html(html).into_response())
@@ -1032,7 +1040,7 @@ async fn edit_view_form(
             let html = render_view_form(
                 &auth,
                 &state.pool(),
-                view_edit_form_params(&name, "", &domain_error_message(&err)),
+                view_edit_form_params(&name, "", &domain_error_message(&err), "sql"),
             )
             .await?;
             Ok(Html(html).into_response())
@@ -1045,7 +1053,14 @@ async fn create_view(
     State(state): State<AppState>,
     Form(form): Form<ViewCreateForm>,
 ) -> AppResult<Response> {
-    match database::create_user_view(&state.pool(), &form.name, &form.definition).await {
+    match database::create_user_view(
+        &state.pool(),
+        &form.name,
+        &form.definition,
+        database::ViewEditMode::parse(&form.edit_mode),
+    )
+    .await
+    {
         Ok(()) => Ok(Redirect::to(&view_url(&form.name, "/data")).into_response()),
         Err(err) => {
             let html = render_view_form(
@@ -1060,6 +1075,8 @@ async fn create_view(
                     is_edit: false,
                     definition: &form.definition,
                     error_message: &domain_error_message(&err),
+                    edit_mode: &form.edit_mode,
+                    meta_name: None,
                 },
             )
             .await?;
@@ -1079,7 +1096,7 @@ async fn update_view(
         let html = render_view_form(
             &auth,
             &state.pool(),
-            view_edit_form_params(&name, &form.definition, "ビュー名は必須です"),
+            view_edit_form_params(&name, &form.definition, "ビュー名は必須です", &form.edit_mode),
         )
         .await?;
         return Ok(Html(html).into_response());
@@ -1090,6 +1107,7 @@ async fn update_view(
         &name,
         submitted_name,
         &form.definition,
+        database::ViewEditMode::parse(&form.edit_mode),
     )
     .await
     {
@@ -1102,10 +1120,12 @@ async fn update_view(
             let html = render_view_form(
                 &auth,
                 &state.pool(),
-                view_edit_form_params(
+                view_edit_form_params_with_meta(
                     submitted_name,
+                    &name,
                     &form.definition,
                     &domain_error_message(&err),
+                    &form.edit_mode,
                 ),
             )
             .await?;
@@ -1206,16 +1226,33 @@ fn view_edit_form_params<'a>(
     name: &'a str,
     definition: &'a str,
     error_message: &'a str,
+    edit_mode: &'a str,
+) -> ViewFormParams<'a> {
+    view_edit_form_params_with_meta(name, name, definition, error_message, edit_mode)
+}
+
+fn view_edit_form_params_with_meta<'a>(
+    name: &'a str,
+    meta_name: &'a str,
+    definition: &'a str,
+    error_message: &'a str,
+    edit_mode: &'a str,
 ) -> ViewFormParams<'a> {
     ViewFormParams {
         heading: "ビューを編集",
-        action: view_url(name, "/edit"),
+        action: view_url(meta_name, "/edit"),
         submit_label: "保存する",
         name,
         name_readonly: false,
         is_edit: true,
         definition,
         error_message,
+        edit_mode,
+        meta_name: if name == meta_name {
+            None
+        } else {
+            Some(meta_name)
+        },
     }
 }
 
@@ -1393,15 +1430,25 @@ async fn render_view_form(
         .into_iter()
         .map(|name| ViewSourceTableOption { name })
         .collect::<Vec<_>>();
-    let ui_builder_json = build_view_ui_builder_json(pool, params.definition).await;
+    let meta_name = params.meta_name.unwrap_or(params.name);
+    let (ui_builder_json, edit_mode) = if params.is_edit && !meta_name.is_empty() {
+        let (ui_builder_json, saved_mode) = tokio::join!(
+            build_view_ui_builder_json(pool, params.definition),
+            database::get_view_edit_mode(pool, meta_name),
+        );
+        (ui_builder_json, saved_mode?.as_str().to_string())
+    } else {
+        let ui_builder_json = build_view_ui_builder_json(pool, params.definition).await;
+        (ui_builder_json, params.edit_mode.to_string())
+    };
 
     let data_url = if params.is_edit {
-        view_url(params.name, "/data")
+        view_url(meta_name, "/data")
     } else {
         String::new()
     };
     let breadcrumbs = if params.is_edit {
-        breadcrumb::database_view_edit(params.name, &data_url)
+        breadcrumb::database_view_edit(meta_name, &data_url)
     } else {
         breadcrumb::database_view_new()
     };
@@ -1417,6 +1464,7 @@ async fn render_view_form(
         error_message: params.error_message.to_string(),
         table_options,
         ui_builder_json,
+        edit_mode,
     }
     .render()?)
 }

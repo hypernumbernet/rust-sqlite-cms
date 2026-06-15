@@ -39,6 +39,7 @@ SELECT id, name, category, description, price_from
 FROM corporate_services
 WHERE is_featured = 1
         "#,
+        database::ViewEditMode::Sql,
     )
     .await?;
 

@@ -3395,6 +3395,7 @@
     const loadingEl = document.getElementById('view-ui-loading');
     const emptyEl = document.getElementById('view-ui-empty');
     const initialEl = document.getElementById('view-ui-initial');
+    const editModeInput = document.getElementById('view-edit-mode');
     const uiSwitchConfirmDialog = document.getElementById('view-ui-switch-confirm-dialog');
     const uiSwitchConfirmOk = document.getElementById('view-ui-switch-confirm-ok');
     const uiSwitchConfirmCancel = document.getElementById('view-ui-switch-confirm-cancel');
@@ -3409,8 +3410,10 @@
         ? form.previousElementSibling
         : null;
 
-    let activeTab = 'sql';
-    let visualTabSwitchConfirmed = false;
+    const persistedEditMode =
+      editModeInput && editModeInput.value === 'ui' ? 'ui' : 'sql';
+    let activeTab = persistedEditMode;
+    let visualTabSwitchConfirmed = persistedEditMode === 'ui';
     let uiSwitchConfirmResolve = null;
     let uiSwitchConfirmPromise = null;
     const cachedPageLoadDefinition = definitionInput.value;
@@ -3606,6 +3609,7 @@
 
     function setActiveTab(tab) {
       activeTab = tab;
+      if (editModeInput) editModeInput.value = tab;
       tabButtons.forEach(function (btn) {
         btn.classList.toggle('active', btn.dataset.viewTab === tab);
       });
@@ -4422,6 +4426,7 @@
         syncUiToSql();
       }
       setUiDirty(false);
+      visualTabSwitchConfirmed = false;
       if (unsupportedNotice) unsupportedNotice.hidden = true;
       setActiveTab('sql');
     }
@@ -4577,7 +4582,11 @@
     });
 
     parseCachedPageLoadUiResult();
-    setActiveTab('sql');
+    if (persistedEditMode === 'ui') {
+      refreshVisualTabState();
+    } else {
+      setActiveTab('sql');
+    }
   }
 
   function initDatabaseIndex() {

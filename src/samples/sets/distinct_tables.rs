@@ -36,6 +36,7 @@ pub async fn install(state: &AppState) -> AppResult<super::super::InstallResult>
 SELECT DISTINCT department
 FROM distinct_employees
         "#,
+        database::ViewEditMode::Sql,
     )
     .await?;
 
@@ -46,6 +47,7 @@ FROM distinct_employees
 SELECT DISTINCT office
 FROM distinct_employees
         "#,
+        database::ViewEditMode::Sql,
     )
     .await?;
 
@@ -56,6 +58,7 @@ FROM distinct_employees
 SELECT DISTINCT department, office
 FROM distinct_employees
         "#,
+        database::ViewEditMode::Sql,
     )
     .await?;
 

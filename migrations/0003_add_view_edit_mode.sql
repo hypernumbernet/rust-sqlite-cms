@@ -1,0 +1,1 @@
+ALTER TABLE user_table_meta ADD COLUMN view_edit_mode TEXT NOT NULL DEFAULT 'sql';

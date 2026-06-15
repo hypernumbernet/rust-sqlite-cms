@@ -10,6 +10,7 @@
 {% endif %}
 
 <form method="post" action="{{ action }}" class="form-layout" id="view-form">
+  <input type="hidden" id="view-edit-mode" name="edit_mode" value="{{ edit_mode }}">
   <section class="panel">
     <div class="field">
       <div class="field-label-with-help">
@@ -22,11 +23,11 @@
     <div class="field">
       <label>ビュー定義</label>
       <nav class="tab-nav view-form-tabs" aria-label="ビュー定義">
-        <button type="button" class="active" data-view-tab="sql">SQL編集</button>
-        <button type="button" data-view-tab="ui">ビジュアル編集</button>
+        <button type="button"{% if edit_mode != "ui" %} class="active"{% endif %} data-view-tab="sql">SQL編集</button>
+        <button type="button"{% if edit_mode == "ui" %} class="active"{% endif %} data-view-tab="ui">ビジュアル編集</button>
       </nav>
 
-      <div class="tab-panel" id="view-tab-ui" hidden>
+      <div class="tab-panel" id="view-tab-ui"{% if edit_mode != "ui" %} hidden{% endif %}>
         <div id="view-ui-unsupported" class="notice info" hidden>
           この定義はビジュアル編集に対応していません。JOIN・集計・複雑な WHERE などを含む SQL は SQL編集タブで編集してください。
         </div>
@@ -70,7 +71,7 @@
         </div>
       </div>
 
-      <div class="tab-panel" id="view-tab-sql">
+      <div class="tab-panel" id="view-tab-sql"{% if edit_mode == "ui" %} hidden{% endif %}>
         <textarea id="definition" name="definition" rows="8" required>{{ definition }}</textarea>
         <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
       </div>

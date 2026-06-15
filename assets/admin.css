@@ -1802,7 +1802,8 @@ a.text-mono:hover {
 
 .db-cell-edit-dialog,
 .db-row-goto-dialog,
-.db-sorted-nav-confirm-dialog {
+.db-sorted-nav-confirm-dialog,
+.view-ui-switch-confirm-dialog {
   border: none;
   border-radius: 8px;
   padding: 0;
@@ -1814,30 +1815,35 @@ a.text-mono:hover {
 }
 .db-cell-edit-dialog::backdrop,
 .db-row-goto-dialog::backdrop,
-.db-sorted-nav-confirm-dialog::backdrop {
+.db-sorted-nav-confirm-dialog::backdrop,
+.view-ui-switch-confirm-dialog::backdrop {
   background: rgba(0, 0, 0, 0.45);
 }
 .db-cell-edit-dialog-inner,
 .db-row-goto-dialog-inner,
-.db-sorted-nav-confirm-dialog-inner {
+.db-sorted-nav-confirm-dialog-inner,
+.view-ui-switch-confirm-dialog-inner {
   display: flex;
   flex-direction: column;
 }
 .db-cell-edit-dialog-header,
 .db-row-goto-dialog-header,
-.db-sorted-nav-confirm-dialog-header {
+.db-sorted-nav-confirm-dialog-header,
+.view-ui-switch-confirm-dialog-header {
   padding: 16px 18px;
   border-bottom: 1px solid var(--border);
 }
 .db-cell-edit-dialog-header h2,
 .db-row-goto-dialog-header h2,
-.db-sorted-nav-confirm-dialog-header h2 {
+.db-sorted-nav-confirm-dialog-header h2,
+.view-ui-switch-confirm-dialog-header h2 {
   margin: 0;
   font-size: 16px;
 }
 .db-cell-edit-dialog-body,
 .db-row-goto-dialog-body,
-.db-sorted-nav-confirm-dialog-body {
+.db-sorted-nav-confirm-dialog-body,
+.view-ui-switch-confirm-dialog-body {
   padding: 16px 18px;
 }
 .db-sorted-nav-confirm-message {
@@ -1912,7 +1918,8 @@ a.text-mono:hover {
 }
 .db-cell-edit-dialog-actions,
 .db-row-goto-dialog-actions,
-.db-sorted-nav-confirm-dialog-actions {
+.db-sorted-nav-confirm-dialog-actions,
+.view-ui-switch-confirm-dialog-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

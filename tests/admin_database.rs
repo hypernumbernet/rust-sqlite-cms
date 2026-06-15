@@ -250,9 +250,14 @@ async fn database_create_user_table_and_view() {
     assert!(html.contains("view-tab-ui"));
     assert!(html.contains("ビジュアル編集"));
     assert!(!html.contains("UI編集"));
-    assert!(html.contains(r#"class="active" data-view-tab="ui""#));
-    assert!(html.contains(r#"id="view-tab-ui""#));
-    assert!(html.contains(r#"id="view-tab-sql" hidden"#));
+    let sql_tab_pos = html.find(r#"data-view-tab="sql""#).expect("sql tab");
+    let ui_tab_pos = html.find(r#"data-view-tab="ui""#).expect("ui tab");
+    assert!(sql_tab_pos < ui_tab_pos, "SQL tab should appear before visual tab");
+    assert!(html.contains(r#"class="active" data-view-tab="sql""#));
+    assert!(html.contains(r#"id="view-tab-ui" hidden"#));
+    assert!(html.contains(r#"id="view-tab-sql""#));
+    assert!(!html.contains(r#"id="view-tab-sql" hidden"#));
+    assert!(html.contains("view-ui-switch-confirm-dialog"));
     assert!(html.contains(r#""base_table":"custom_notes""#));
     assert!(html.contains(r#""name":"body""#));
 
@@ -314,9 +319,14 @@ async fn database_view_form_ui_builder() {
     assert!(html.contains(r#"data-view-tab="ui""#));
     assert!(html.contains("ビジュアル編集"));
     assert!(!html.contains("UI編集"));
-    assert!(html.contains(r#"class="active" data-view-tab="ui""#));
-    assert!(html.contains(r#"id="view-tab-ui""#));
-    assert!(html.contains(r#"id="view-tab-sql" hidden"#));
+    let sql_tab_pos = html.find(r#"data-view-tab="sql""#).expect("sql tab");
+    let ui_tab_pos = html.find(r#"data-view-tab="ui""#).expect("ui tab");
+    assert!(sql_tab_pos < ui_tab_pos, "SQL tab should appear before visual tab");
+    assert!(html.contains(r#"class="active" data-view-tab="sql""#));
+    assert!(html.contains(r#"id="view-tab-ui" hidden"#));
+    assert!(html.contains(r#"id="view-tab-sql""#));
+    assert!(!html.contains(r#"id="view-tab-sql" hidden"#));
+    assert!(html.contains("view-ui-switch-confirm-dialog"));
     assert!(html.contains("view-ui-base-table"));
     assert!(html.contains(r#"<option value="custom_notes">custom_notes</option>"#));
     assert!(html.contains(r#"<script type="application/json" id="view-ui-initial">null</script>"#));
@@ -430,7 +440,10 @@ async fn database_view_form_unsupported_visual_editing_notice() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains("ビジュアル編集"));
-    assert!(html.contains(r#"class="active" data-view-tab="ui""#));
+    assert!(html.contains(r#"class="active" data-view-tab="sql""#));
+    assert!(html.contains(r#"id="view-tab-ui" hidden"#));
+    assert!(!html.contains(r#"id="view-tab-sql" hidden"#));
+    assert!(html.contains("view-ui-switch-confirm-dialog"));
     assert!(html.contains("この定義はビジュアル編集に対応していません"));
     assert!(html.contains(r#"<script type="application/json" id="view-ui-initial">null</script>"#));
 }

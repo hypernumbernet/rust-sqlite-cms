@@ -22,11 +22,11 @@
     <div class="field">
       <label>ビュー定義</label>
       <nav class="tab-nav view-form-tabs" aria-label="ビュー定義">
-        <button type="button" class="active" data-view-tab="ui">ビジュアル編集</button>
-        <button type="button" data-view-tab="sql">SQL編集</button>
+        <button type="button" class="active" data-view-tab="sql">SQL編集</button>
+        <button type="button" data-view-tab="ui">ビジュアル編集</button>
       </nav>
 
-      <div class="tab-panel" id="view-tab-ui">
+      <div class="tab-panel" id="view-tab-ui" hidden>
         <div id="view-ui-unsupported" class="notice info" hidden>
           この定義はビジュアル編集に対応していません。JOIN・集計・複雑な WHERE などを含む SQL は SQL編集タブで編集してください。
         </div>
@@ -70,7 +70,7 @@
         </div>
       </div>
 
-      <div class="tab-panel" id="view-tab-sql" hidden>
+      <div class="tab-panel" id="view-tab-sql">
         <textarea id="definition" name="definition" rows="8" required>{{ definition }}</textarea>
         <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
       </div>
@@ -86,4 +86,19 @@
 </form>
 
 <script type="application/json" id="view-ui-initial">{{ ui_builder_json | safe }}</script>
+
+<dialog id="view-ui-switch-confirm-dialog" class="view-ui-switch-confirm-dialog">
+  <div class="view-ui-switch-confirm-dialog-inner">
+    <div class="view-ui-switch-confirm-dialog-header">
+      <h2>ビジュアル編集への切り替え</h2>
+    </div>
+    <div class="view-ui-switch-confirm-dialog-body">
+      <p class="notice info">ビジュアル編集に切り替えると、現在の SQL 定義がビジュアル編集用の形式に変換される過程で、元の定義が正確に保持されない場合があります。複雑な SQL を編集している場合は SQL編集タブの利用を推奨します。</p>
+      <div class="view-ui-switch-confirm-dialog-actions">
+        <button type="button" class="button" id="view-ui-switch-confirm-ok">続行</button>
+        <button type="button" class="button secondary" id="view-ui-switch-confirm-cancel">キャンセル</button>
+      </div>
+    </div>
+  </div>
+</dialog>
 {% endblock %}

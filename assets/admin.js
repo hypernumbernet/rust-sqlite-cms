@@ -3395,6 +3395,9 @@
     const loadingEl = document.getElementById('view-ui-loading');
     const emptyEl = document.getElementById('view-ui-empty');
     const initialEl = document.getElementById('view-ui-initial');
+    const uiSwitchConfirmDialog = document.getElementById('view-ui-switch-confirm-dialog');
+    const uiSwitchConfirmOk = document.getElementById('view-ui-switch-confirm-ok');
+    const uiSwitchConfirmCancel = document.getElementById('view-ui-switch-confirm-cancel');
 
     if (!form || !definitionInput || !tabButtons.length || !sqlPanel || !uiPanel) return;
 
@@ -3406,7 +3409,12 @@
         ? form.previousElementSibling
         : null;
 
-    let activeTab = 'ui';
+    let activeTab = 'sql';
+    let visualTabSwitchConfirmed = false;
+    let uiSwitchConfirmResolve = null;
+    let uiSwitchConfirmPromise = null;
+    const cachedPageLoadDefinition = definitionInput.value;
+    let cachedPageLoadUiResult;
     let tableApiColumns = [];
     let columnsLoading = false;
     let columnsLoadSeq = 0;
@@ -4305,23 +4313,39 @@
       );
     }
 
-    function applyUiBuilderState(spec, prefetchedColumns) {
-      if (!spec || !spec.base_table) return Promise.resolve();
-      return applyVisualResolveResult({
-        supported: true,
-        spec: spec,
-        table_columns: prefetchedColumns,
-      });
+    function parseCachedPageLoadUiResult() {
+      if (!initialEl) return;
+      try {
+        const text = initialEl.textContent.trim();
+        if (!text) return;
+        cachedPageLoadUiResult = JSON.parse(text);
+      } catch (_err) {
+        /* ignore invalid initial state */
+      }
     }
 
-    function refreshVisualTabState() {
-      setActiveTab('ui');
-      if (uiDirty) return;
+    function canUseCachedPageLoadUiResult(definition) {
+      return (
+        definition === cachedPageLoadDefinition &&
+        cachedPageLoadUiResult !== undefined
+      );
+    }
+
+    function loadVisualTabState() {
+      if (uiDirty) return Promise.resolve();
 
       const definition = definitionInput.value;
       if (!definition.trim()) {
         hideUiError();
         return applyVisualResolveResult({ supported: true, spec: null });
+      }
+
+      if (canUseCachedPageLoadUiResult(definition)) {
+        hideUiError();
+        if (cachedPageLoadUiResult === null) {
+          return applyVisualResolveResult({ supported: false });
+        }
+        return applyVisualResolveResult(cachedPageLoadUiResult);
       }
 
       const seq = ++uiSpecParseSeq;
@@ -4344,13 +4368,56 @@
         });
     }
 
+    function refreshVisualTabState() {
+      setActiveTab('ui');
+      return loadVisualTabState();
+    }
+
+    function closeUiSwitchConfirmDialog(confirmed) {
+      if (uiSwitchConfirmDialog && uiSwitchConfirmDialog.open) {
+        uiSwitchConfirmDialog.close();
+      }
+      if (!uiSwitchConfirmResolve) return;
+      const resolve = uiSwitchConfirmResolve;
+      uiSwitchConfirmResolve = null;
+      uiSwitchConfirmPromise = null;
+      resolve(confirmed);
+    }
+
+    function confirmSwitchToVisualTab() {
+      if (visualTabSwitchConfirmed) return Promise.resolve(true);
+      if (!uiSwitchConfirmDialog) return Promise.resolve(true);
+      if (uiSwitchConfirmDialog.open && uiSwitchConfirmPromise) {
+        return uiSwitchConfirmPromise;
+      }
+      uiSwitchConfirmPromise = new Promise(function (resolve) {
+        uiSwitchConfirmResolve = resolve;
+        uiSwitchConfirmDialog.showModal();
+      });
+      return uiSwitchConfirmPromise;
+    }
+
     function switchToUiTab() {
       if (activeTab === 'ui') return;
-      setUiDirty(false);
-      refreshVisualTabState();
+      confirmSwitchToVisualTab().then(function (confirmed) {
+        if (!confirmed) {
+          setActiveTab('sql');
+          return;
+        }
+        visualTabSwitchConfirmed = true;
+        setUiDirty(false);
+        refreshVisualTabState();
+      });
     }
 
     function switchToSqlTab() {
+      if (uiSwitchConfirmDialog && uiSwitchConfirmDialog.open) {
+        closeUiSwitchConfirmDialog(false);
+      }
+      uiSpecParseSeq += 1;
+      if (columnsLoading) {
+        setColumnsLoadingState(false);
+      }
       if (isVisualBuilderActive()) {
         syncUiToSql();
       }
@@ -4369,6 +4436,26 @@
         }
       });
     });
+
+    if (uiSwitchConfirmOk) {
+      uiSwitchConfirmOk.addEventListener('click', function () {
+        closeUiSwitchConfirmDialog(true);
+      });
+    }
+    if (uiSwitchConfirmCancel) {
+      uiSwitchConfirmCancel.addEventListener('click', function () {
+        closeUiSwitchConfirmDialog(false);
+      });
+    }
+    if (uiSwitchConfirmDialog) {
+      uiSwitchConfirmDialog.addEventListener('click', function (e) {
+        if (e.target === uiSwitchConfirmDialog) closeUiSwitchConfirmDialog(false);
+      });
+      uiSwitchConfirmDialog.addEventListener('cancel', function (e) {
+        e.preventDefault();
+        closeUiSwitchConfirmDialog(false);
+      });
+    }
 
     if (baseTableSelect) {
       baseTableSelect.addEventListener('change', function () {
@@ -4489,23 +4576,8 @@
       }
     });
 
-    if (initialEl && initialEl.textContent.trim()) {
-      try {
-        const initial = JSON.parse(initialEl.textContent);
-        setActiveTab('ui');
-        if (initial && initial.spec && initial.spec.base_table) {
-          applyUiBuilderState(initial.spec, initial.table_columns);
-          return;
-        }
-        if (initial === null && definitionInput.value.trim()) {
-          setVisualBuilderVisible(false);
-          return;
-        }
-      } catch (_err) {
-        /* ignore invalid initial state */
-      }
-    }
-    refreshVisualTabState();
+    parseCachedPageLoadUiResult();
+    setActiveTab('sql');
   }
 
   function initDatabaseIndex() {

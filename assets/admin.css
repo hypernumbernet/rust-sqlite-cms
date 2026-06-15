@@ -578,13 +578,13 @@ textarea::placeholder {
   box-sizing: border-box;
   cursor: grab;
   display: flex;
-  flex: 0 0 48px;
+  flex: 0 0 24px;
   justify-content: center;
   margin: -10px 0 -10px -12px;
-  min-width: 48px;
-  padding: 0 10px;
+  min-width: 24px;
+  padding: 0 5px;
   user-select: none;
-  width: 48px;
+  width: 24px;
 }
 .view-ui-column-drag-zone:hover {
   background: var(--bg);
@@ -603,6 +603,12 @@ textarea::placeholder {
   justify-content: center;
   line-height: 1;
   min-height: 32px;
+}
+.view-ui-column-output {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: center;
 }
 .view-ui-column-name-wrap {
   flex: 0 0 200px;

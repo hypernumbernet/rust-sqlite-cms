@@ -599,6 +599,47 @@ async fn database_view_ui_spec_api_parses_distinct_and_extra_where() {
 }
 
 #[tokio::test]
+async fn database_view_ui_spec_api_splits_duplicate_column_where_to_extra_where() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=dup_where_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let body = r#"{"definition":"SELECT \"id\" FROM \"dup_where_notes\" WHERE \"id\" > 0 AND \"id\" IS NOT NULL"}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/ui-spec",
+            Some(body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    assert_eq!(json["supported"], true);
+    assert_eq!(
+        json["spec"]["columns"][0]["where_condition"].as_str(),
+        Some("> 0")
+    );
+    assert_eq!(
+        json["spec"]["extra_where"][0]["column"].as_str(),
+        Some("id")
+    );
+    assert_eq!(
+        json["spec"]["extra_where"][0]["suffix"].as_str(),
+        Some("IS NOT NULL")
+    );
+}
+
+#[tokio::test]
 async fn database_view_form_distinct_checkbox_and_initial_state() {
     let app = common::TestApp::new().await;
 

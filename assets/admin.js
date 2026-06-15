@@ -3413,8 +3413,6 @@
     let uiSpecParseSeq = 0;
     let uiDirty = false;
     let currentUiSpecMeta = { distinct: false, extra_where: [] };
-    let lastResolvedDefinition = null;
-    let lastResolvedResult = null;
     let dragSourceItem = null;
     let dragGhostEl = null;
     let dragPointerOffset = { x: 0, y: 0 };
@@ -3522,10 +3520,22 @@
       return null;
     }
 
+    function isColumnIncluded(column) {
+      return column.included !== false;
+    }
+
+    function trimmedWhereSuffix(column) {
+      if (column.expression) return '';
+      return column.where_condition != null
+        ? String(column.where_condition).trim()
+        : '';
+    }
+
     function validateViewOutputColumnNames(columns) {
       const seen = new Set();
       for (let i = 0; i < columns.length; i += 1) {
         const column = columns[i];
+        if (!isColumnIncluded(column)) continue;
         const alias =
           column.alias != null ? String(column.alias).trim() : '';
         if (alias) {
@@ -3605,6 +3615,8 @@
         const selectInput = item.querySelector('.view-ui-column-select-input');
         const aliasInput = item.querySelector('.view-ui-column-alias-input');
         const whereInput = item.querySelector('.view-ui-column-where-input');
+        const outputInput = item.querySelector('.view-ui-column-output-input');
+        const included = outputInput ? outputInput.checked : true;
         const aliasValue = aliasInput ? aliasInput.value.trim() : '';
         const whereValue = whereInput ? whereInput.value.trim() : '';
         const selectValue = selectInput
@@ -3618,6 +3630,7 @@
             type_key: item.dataset.columnType || 'text',
             alias: aliasValue || null,
             where_condition: null,
+            included: included,
           };
         }
         const typeKey =
@@ -3634,6 +3647,7 @@
           type_key: typeKey,
           alias: aliasValue || null,
           where_condition: parsed.expression ? null : whereValue || null,
+          included: included,
         };
       });
     }
@@ -3678,9 +3692,6 @@
         })
       );
       return state
-        .filter(function (column) {
-          return column.included !== false;
-        })
         .filter(function (column) {
           if (column.expression) return true;
           return apiNames.has(column.name);
@@ -4101,6 +4112,18 @@
 
       dragZone.appendChild(handle);
 
+      const outputWrap = document.createElement('div');
+      outputWrap.className = 'view-ui-column-output';
+      const outputInput = document.createElement('input');
+      outputInput.type = 'checkbox';
+      outputInput.className = 'view-ui-column-output-input';
+      outputInput.checked = column.included !== false;
+      outputInput.setAttribute('aria-label', '出力に含める');
+      outputInput.addEventListener('change', function () {
+        setUiDirty(true);
+      });
+      outputWrap.appendChild(outputInput);
+
       const aliasWrap = document.createElement('div');
       aliasWrap.className = 'view-ui-column-alias';
       const aliasInput = document.createElement('input');
@@ -4128,6 +4151,7 @@
       removeBtn.textContent = '−';
 
       item.appendChild(dragZone);
+      item.appendChild(outputWrap);
       item.appendChild(nameWrap);
       item.appendChild(aliasWrap);
       item.appendChild(whereWrap);
@@ -4147,40 +4171,63 @@
       updateColumnsWrapVisibility();
     }
 
+    function isVisualBuilderActive() {
+      return !!(builderEl && !builderEl.hidden);
+    }
+
+    function resetVisualBuilder() {
+      setUiSpecMeta(null);
+      if (baseTableSelect) baseTableSelect.value = '';
+      tableApiColumns = [];
+      renderColumns([]);
+    }
+
     function syncUiToSql(columns) {
+      if (!isVisualBuilderActive()) return false;
       const table = selectedBaseTable();
-      if (!table) return;
+      if (!table) return false;
       const columnState = columns || readColumnState();
-      if (columnState.length === 0) return;
-      const columnSql = columnState
+      const outputColumns = columnState.filter(isColumnIncluded);
+      if (outputColumns.length === 0) return false;
+      const columnSql = outputColumns
         .map(formatSimpleViewSelectColumn)
         .join(', ');
-      const whereParts = columnState
-        .filter(function (column) {
-          return column.where_condition && !column.expression;
-        })
-        .map(function (column) {
-          return quoteSqlIdentifier(column.name) + ' ' + column.where_condition;
-        });
-      const extraParts = (currentUiSpecMeta.extra_where || []).map(function (condition) {
-        return quoteSqlIdentifier(condition.column) + ' ' + condition.suffix;
+      const whereParts = [];
+      columnState.forEach(function (column) {
+        const suffix = trimmedWhereSuffix(column);
+        if (!suffix) return;
+        whereParts.push(quoteSqlIdentifier(column.name) + ' ' + suffix);
       });
-      const allWhereParts = whereParts.concat(extraParts);
       let sql = 'SELECT ';
       if (isDistinctEnabled()) {
         sql += 'DISTINCT ';
       }
       sql += columnSql + ' FROM ' + quoteSqlIdentifier(table);
-      if (allWhereParts.length > 0) {
-        sql += ' WHERE ' + allWhereParts.join(' AND ');
+      if (whereParts.length > 0) {
+        sql += ' WHERE ' + whereParts.join(' AND ');
       }
       definitionInput.value = sql;
       setUiDirty(false);
+      return true;
     }
 
-    function resolveColumnsFromApi(apiColumns, columnState) {
+    function resolveColumnsFromApi(apiColumns, columnState, extraWhere) {
       if (columnState && columnState.length > 0) {
-        return normalizeColumnState(apiColumns, columnState);
+        const typeByName = columnTypeByName(apiColumns);
+        const rows = normalizeColumnState(apiColumns, columnState).map(function (column) {
+          return Object.assign({}, column, { included: true });
+        });
+        (extraWhere || []).forEach(function (condition) {
+          rows.push({
+            name: condition.column,
+            expression: null,
+            type_key: typeByName[condition.column] || 'text',
+            alias: null,
+            where_condition: condition.suffix || null,
+            included: false,
+          });
+        });
+        return rows;
       }
       return apiColumns.map(function (column) {
         return {
@@ -4188,6 +4235,7 @@
           type_key: column.type_key,
           alias: null,
           where_condition: null,
+          included: true,
         };
       });
     }
@@ -4199,7 +4247,7 @@
       return fetchTableColumns(tableName);
     }
 
-    function loadColumnsForTable(tableName, columnState, prefetchedColumns) {
+    function loadColumnsForTable(tableName, columnState, prefetchedColumns, extraWhere) {
       if (!tableName) {
         tableApiColumns = [];
         renderColumns([]);
@@ -4216,7 +4264,7 @@
             updateAddColumnSelect();
             return;
           }
-          renderColumns(resolveColumnsFromApi(apiColumns, columnState));
+          renderColumns(resolveColumnsFromApi(apiColumns, columnState, extraWhere));
           setUiDirty(false);
         })
         .catch(function (err) {
@@ -4237,14 +4285,12 @@
     function applyVisualResolveResult(result) {
       if (!result || !result.supported) {
         setVisualBuilderVisible(false);
+        resetVisualBuilder();
         return Promise.resolve();
       }
       setVisualBuilderVisible(true);
       if (!result.spec) {
-        setUiSpecMeta(null);
-        if (baseTableSelect) baseTableSelect.value = '';
-        tableApiColumns = [];
-        renderColumns([]);
+        resetVisualBuilder();
         return Promise.resolve();
       }
       setUiSpecMeta(result.spec);
@@ -4254,7 +4300,8 @@
       return loadColumnsForTable(
         result.spec.base_table,
         result.spec.columns || [],
-        result.table_columns
+        result.table_columns,
+        result.spec.extra_where
       );
     }
 
@@ -4272,9 +4319,9 @@
       if (uiDirty) return;
 
       const definition = definitionInput.value;
-      if (definition === lastResolvedDefinition && lastResolvedResult) {
+      if (!definition.trim()) {
         hideUiError();
-        return applyVisualResolveResult(lastResolvedResult);
+        return applyVisualResolveResult({ supported: true, spec: null });
       }
 
       const seq = ++uiSpecParseSeq;
@@ -4283,13 +4330,6 @@
       return fetchViewUiSpec(definition)
         .then(function (result) {
           if (seq !== uiSpecParseSeq) return;
-          lastResolvedDefinition = definition;
-          lastResolvedResult = result;
-          if (!result.supported) {
-            setVisualBuilderVisible(false);
-            setColumnsLoadingState(false);
-            return;
-          }
           return applyVisualResolveResult(result);
         })
         .catch(function (err) {
@@ -4306,12 +4346,15 @@
 
     function switchToUiTab() {
       if (activeTab === 'ui') return;
+      setUiDirty(false);
       refreshVisualTabState();
     }
 
     function switchToSqlTab() {
-      syncUiToSql();
-      lastResolvedDefinition = definitionInput.value;
+      if (isVisualBuilderActive()) {
+        syncUiToSql();
+      }
+      setUiDirty(false);
       if (unsupportedNotice) unsupportedNotice.hidden = true;
       setActiveTab('sql');
     }
@@ -4333,9 +4376,7 @@
         hideUiError();
         setUiDirty(false);
         setUiSpecMeta(null);
-        lastResolvedDefinition = null;
-        lastResolvedResult = null;
-        loadColumnsForTable(baseTableSelect.value, null);
+        loadColumnsForTable(baseTableSelect.value, null, null, []);
       });
     }
 
@@ -4381,6 +4422,7 @@
             type_key: 'text',
             alias: null,
             where_condition: null,
+            included: true,
           };
         } else {
           const column = tableApiColumns.find(function (entry) {
@@ -4393,6 +4435,7 @@
             type_key: column.type_key,
             alias: null,
             where_condition: null,
+            included: true,
           };
         }
         columnsList.appendChild(createColumnRow(newColumn));
@@ -4412,7 +4455,13 @@
         }
         return;
       }
-      if (!builderEl || builderEl.hidden) return;
+      if (!isVisualBuilderActive()) {
+        blockUiSubmit(
+          event,
+          'この定義はビジュアル編集に対応していません。SQL編集タブで編集するか、対応する定義に変更してください。'
+        );
+        return;
+      }
       if (columnsLoading) {
         blockUiSubmit(event, 'カラム一覧の読み込み中です。完了してから保存してください。');
         return;
@@ -4424,7 +4473,8 @@
         return;
       }
       const columns = readColumnState();
-      if (columns.length === 0) {
+      const outputColumns = columns.filter(isColumnIncluded);
+      if (outputColumns.length === 0) {
         blockUiSubmit(event, 'ビューに含めるカラムを1つ以上選択してください。');
         return;
       }
@@ -4433,7 +4483,10 @@
         blockUiSubmit(event, outputNameError);
         return;
       }
-      syncUiToSql(columns);
+      if (!syncUiToSql(columns)) {
+        blockUiSubmit(event, 'ビュー定義をビジュアル編集から生成できませんでした。');
+        return;
+      }
     });
 
     if (initialEl && initialEl.textContent.trim()) {
@@ -4441,8 +4494,6 @@
         const initial = JSON.parse(initialEl.textContent);
         setActiveTab('ui');
         if (initial && initial.spec && initial.spec.base_table) {
-          lastResolvedDefinition = definitionInput.value;
-          lastResolvedResult = initial;
           applyUiBuilderState(initial.spec, initial.table_columns);
           return;
         }

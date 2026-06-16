@@ -1,7 +1,6 @@
 //! syntaqlite ベースのビュー SELECT パーサーアダプター。
 //!
-//! 手書きパーサー（`database::parse_simple_view_select_legacy`）の置き換え先。
-//! Phase 0 POC: 既存 `ParsedSimpleViewSelect` 型への変換と回帰テスト通過。
+//! `parse_simple_view_select()` の実装。既存 `ParsedSimpleViewSelect` 型へ変換する。
 
 use syntaqlite::any::AnyNodeId;
 use syntaqlite::nodes::{
@@ -222,7 +221,11 @@ fn parse_where_condition(
     base_table: &str,
     table_alias: Option<&str>,
 ) -> Option<ParsedWhereCondition> {
-    let column_ref = root_column_ref(expr)?;
+    let Some(column_ref) = root_column_ref(expr) else {
+        let full_text = node_sql_text(stmt, expr_node_id(expr))?;
+        return Some(ParsedWhereCondition::expression_only(full_text));
+    };
+    let full_text = node_sql_text(stmt, expr_node_id(expr))?;
     let column = normalize_identifier(column_ref.column());
 
     if !column_ref.table().is_empty() {
@@ -232,7 +235,6 @@ fn parse_where_condition(
         }
     }
 
-    let full_text = node_sql_text(stmt, expr_node_id(expr))?;
     let left_text = node_sql_text(stmt, column_ref.node_id().into())?;
     let left_trimmed = left_text.trim();
     let start = full_text.find(left_trimmed)?;
@@ -241,10 +243,7 @@ fn parse_where_condition(
         return None;
     }
 
-    Some(ParsedWhereCondition {
-        column,
-        suffix: suffix.to_string(),
-    })
+    Some(ParsedWhereCondition::column_suffix(column, suffix))
 }
 
 fn root_column_ref(expr: Expr<'_>) -> Option<ColumnRef<'_>> {
@@ -327,7 +326,7 @@ mod tests {
     use super::*;
     use crate::services::database::{
         build_simple_view_select, build_simple_view_ui_spec, parse_simple_view_select,
-        parse_simple_view_select_legacy, ExtraWhereCondition, SimpleViewUiSpec, TableColumnUiInfo,
+        ExtraWhereCondition, SimpleViewUiSpec, TableColumnUiInfo,
     };
 
     fn sorted_where(conditions: &[ParsedWhereCondition]) -> Vec<ParsedWhereCondition> {
@@ -359,7 +358,27 @@ mod tests {
             panic!("expected columns");
         };
         assert_eq!(columns[0].expression.as_deref(), Some("'copied FROM archive'"));
-        assert!(parse_simple_view_select_legacy(sql).is_none());
+    }
+
+    #[test]
+    fn parse_where_is_not_distinct_from_sqlite_specific() {
+        let sql = r#"SELECT "id" FROM "custom_notes" WHERE "body" IS NOT DISTINCT FROM "title""#;
+        let parsed = super::parse_simple_view_select(sql).expect("syntaqlite should parse");
+        assert_eq!(parsed.where_conditions.len(), 1);
+        assert_eq!(parsed.where_conditions[0].column, "body");
+        assert_eq!(
+            parsed.where_conditions[0].suffix,
+            "IS NOT DISTINCT FROM \"title\""
+        );
+    }
+
+    #[test]
+    fn parse_where_numeric_literal_with_underscore_separator() {
+        let sql = r#"SELECT "id" FROM "custom_notes" WHERE "id" > 1_000"#;
+        let parsed = super::parse_simple_view_select(sql).expect("syntaqlite should parse");
+        assert_eq!(parsed.where_conditions.len(), 1);
+        assert_eq!(parsed.where_conditions[0].column, "id");
+        assert_eq!(parsed.where_conditions[0].suffix, "> 1_000");
     }
 
     #[test]
@@ -371,6 +390,7 @@ mod tests {
             vec![ParsedWhereCondition {
                 column: "body".to_string(),
                 suffix: "NOTNULL".to_string(),
+                expression: None,
             }]
         );
     }
@@ -482,6 +502,7 @@ mod tests {
             vec![ExtraWhereCondition {
                 column: "body".to_string(),
                 suffix: "IS NOT NULL".to_string(),
+                expression: None,
             }]
         );
 
@@ -489,5 +510,77 @@ mod tests {
         let reparsed = parse_simple_view_select(&rebuilt).expect("re-parse");
         assert!(reparsed.distinct);
         assert_eq!(reparsed.where_conditions, parsed.where_conditions);
+    }
+
+    #[test]
+    fn parse_corporate_services_mixed_where_conditions() {
+        let sql = r#"SELECT "id", "is_featured", "name" FROM "corporate_services" WHERE "id" >=2 AND LENGTH("name")>0"#;
+        let parsed = super::parse_simple_view_select(sql).expect("parsed");
+        assert_eq!(parsed.base_table, "corporate_services");
+        assert_eq!(parsed.where_conditions.len(), 2);
+        assert_eq!(
+            parsed.where_conditions[0],
+            ParsedWhereCondition::column_suffix("id", ">=2")
+        );
+        assert_eq!(
+            parsed.where_conditions[1].expression.as_deref(),
+            Some(r#"LENGTH("name")>0"#)
+        );
+
+        let table_columns = vec![
+            TableColumnUiInfo {
+                name: "id".to_string(),
+                type_key: "integer".to_string(),
+                pk: true,
+                nullable: false,
+            },
+            TableColumnUiInfo {
+                name: "is_featured".to_string(),
+                type_key: "integer".to_string(),
+                pk: false,
+                nullable: true,
+            },
+            TableColumnUiInfo {
+                name: "name".to_string(),
+                type_key: "text".to_string(),
+                pk: false,
+                nullable: false,
+            },
+        ];
+        let spec = build_simple_view_ui_spec(&parsed, &table_columns);
+        assert_eq!(spec.columns[0].where_condition.as_deref(), Some(">=2"));
+        assert_eq!(
+            spec.extra_where,
+            vec![ExtraWhereCondition {
+                column: String::new(),
+                suffix: String::new(),
+                expression: Some(r#"LENGTH("name")>0"#.to_string()),
+            }]
+        );
+
+        let rebuilt = build_simple_view_select(&spec).expect("rebuild");
+        assert!(
+            rebuilt.contains(r#"WHERE "id" >=2 AND LENGTH("name")>0"#),
+            "rebuilt SQL: {rebuilt}"
+        );
+        let reparsed = parse_simple_view_select(&rebuilt).expect("re-parse");
+        assert_eq!(reparsed.where_conditions.len(), 2);
+        assert_eq!(reparsed.where_conditions[0].column, "id");
+        assert_eq!(reparsed.where_conditions[0].suffix, ">=2");
+        assert_eq!(
+            reparsed.where_conditions[1].expression.as_deref(),
+            Some(r#"LENGTH("name")>0"#)
+        );
+    }
+
+    #[test]
+    fn parse_quoted_drop_function_expression_for_validation_recovery() {
+        let sql = r#"SELECT "DROP"("body") AS "body_len" FROM "expr_recover_notes""#;
+        let parsed = super::parse_simple_view_select(sql).expect("parsed");
+        let ParsedViewColumnList::Columns(columns) = parsed.columns else {
+            panic!("expected columns");
+        };
+        assert_eq!(columns[0].expression.as_deref(), Some(r#""DROP"("body")"#));
+        assert_eq!(columns[0].alias.as_deref(), Some("body_len"));
     }
 }

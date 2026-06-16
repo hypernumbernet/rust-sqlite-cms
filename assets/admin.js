@@ -3542,6 +3542,19 @@
         : '';
     }
 
+    function isExpressionOnlyWhereRow(column) {
+      return !String(column.name || '').trim();
+    }
+
+    function formatWhereSqlPart(column) {
+      const suffix = trimmedWhereSuffix(column);
+      if (!suffix) return null;
+      if (isExpressionOnlyWhereRow(column)) {
+        return suffix;
+      }
+      return quoteSqlIdentifier(column.name) + ' ' + suffix;
+    }
+
     function validateViewOutputColumnNames(columns) {
       const seen = new Set();
       for (let i = 0; i < columns.length; i += 1) {
@@ -3641,7 +3654,7 @@
             expression: null,
             type_key: item.dataset.columnType || 'text',
             alias: aliasValue || null,
-            where_condition: null,
+            where_condition: whereValue || null,
             included: included,
           };
         }
@@ -4096,7 +4109,6 @@
       item.dataset.columnName = column.name || '';
       item.dataset.columnExpression = hasExpression ? String(column.expression).trim() : '';
       item.dataset.columnType = column.type_key || 'text';
-
       const dragZone = document.createElement('div');
       dragZone.className = 'view-ui-column-drag-zone';
       dragZone.draggable = true;
@@ -4206,9 +4218,8 @@
         .join(', ');
       const whereParts = [];
       columnState.forEach(function (column) {
-        const suffix = trimmedWhereSuffix(column);
-        if (!suffix) return;
-        whereParts.push(quoteSqlIdentifier(column.name) + ' ' + suffix);
+        const part = formatWhereSqlPart(column);
+        if (part) whereParts.push(part);
       });
       let sql = 'SELECT ';
       if (isDistinctEnabled()) {
@@ -4230,6 +4241,17 @@
           return Object.assign({}, column, { included: true });
         });
         (extraWhere || []).forEach(function (condition) {
+          if (condition.expression) {
+            rows.push({
+              name: '',
+              expression: null,
+              type_key: 'text',
+              alias: null,
+              where_condition: condition.expression,
+              included: false,
+            });
+            return;
+          }
           rows.push({
             name: condition.column,
             expression: null,

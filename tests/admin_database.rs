@@ -1117,8 +1117,9 @@ async fn database_view_edit_recovers_after_invalid_expression_error() {
         &app,
         "expr_recover_notes",
         "expr_recover_view",
-        r#"SELECT DROP("body") AS "body_len" FROM "expr_recover_notes""#,
-        r#""expression":"DROP(\"body\")""#,
+        // Quoted function name: syntaqlite parses valid SQLite syntax; validation still rejects DROP.
+        r#"SELECT "DROP"("body") AS "body_len" FROM "expr_recover_notes""#,
+        r#""expression":"\"DROP\"(\"body\")""#,
         |html| {
             assert!(html.contains("使用できない SQL キーワード"));
             assert!(html.contains("DROP"));

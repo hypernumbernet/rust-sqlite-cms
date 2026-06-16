@@ -1284,6 +1284,13 @@ pub async fn resolve_view_ui_spec(
 
 /// 単純な `SELECT ... FROM table` 形式のビュー定義を UI 状態へ復元する。
 pub(crate) fn parse_simple_view_select(definition: &str) -> Option<ParsedSimpleViewSelect> {
+    crate::services::view_select_parse::parse_simple_view_select(definition)
+        .or_else(|| parse_simple_view_select_legacy(definition))
+}
+
+/// 手書きパーサー（syntaqlite 失敗時のフォールバック + Phase 0 比較用。Phase 1b で削除予定）。
+#[cfg_attr(not(test), allow(dead_code))]
+pub(crate) fn parse_simple_view_select_legacy(definition: &str) -> Option<ParsedSimpleViewSelect> {
     let stripped = strip_sql_comments(definition.trim());
     let trimmed = stripped.trim();
     let upper = trimmed.to_ascii_uppercase();

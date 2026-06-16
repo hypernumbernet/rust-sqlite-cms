@@ -1658,6 +1658,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sqlx",
+ "syntaqlite",
  "tempfile",
  "thiserror",
  "time",
@@ -2135,6 +2136,31 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "syntaqlite"
+version = "0.5.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09bb5edc6deaa5ca5edba7f41ca70ee83e25fded3c7c19683435a6ebb926726a"
+dependencies = [
+ "syntaqlite-common",
+ "syntaqlite-syntax",
+]
+
+[[package]]
+name = "syntaqlite-common"
+version = "0.5.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26a6c3659b9f55d4a0d13a59d071bdfb5325599f3f69571a65e79928653991a2"
+
+[[package]]
+name = "syntaqlite-syntax"
+version = "0.5.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "014c03ce8ae79c1a139bc1ac1249a05a91081e76f1ffdac1780d6bb8e7301ce8"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

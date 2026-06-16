@@ -48,7 +48,6 @@ struct TableListItem {
 #[derive(Debug, Clone)]
 struct ViewListItem {
     name: String,
-    sql_preview: String,
     is_system: bool,
     can_edit: bool,
     can_view_data: bool,
@@ -184,7 +183,6 @@ struct ViewFormTemplate {
     layout: layout::AdminLayoutCtx,
     heading: String,
     action: String,
-    cancel_url: &'static str,
     submit_label: String,
     name: String,
     name_readonly: bool,
@@ -1213,7 +1211,6 @@ fn view_list_item(item: DbObjectItem) -> ViewListItem {
     let actions = list_action_urls(DbAdminObjectKind::View, &item.name);
     ViewListItem {
         name: item.name,
-        sql_preview: item.sql_preview,
         is_system: item.is_system,
         can_edit: actions.can_edit,
         can_view_data: actions.can_view_data,
@@ -1456,7 +1453,6 @@ async fn render_view_form(
         layout: breadcrumb::with(layout::AdminLayoutCtx::new(auth), breadcrumbs),
         heading: params.heading.to_string(),
         action: params.action,
-        cancel_url: "/admin/database?tab=views",
         submit_label: params.submit_label.to_string(),
         name: params.name.to_string(),
         name_readonly: params.name_readonly,

@@ -189,7 +189,6 @@ async fn database_create_user_table_and_view() {
     assert!(html.contains(
         r#"<a class="text-mono" href="/admin/database/views/custom_notes_view/data">custom_notes_view</a>"#
     ));
-    assert!(html.contains("SELECT id, body FROM custom_notes"));
     let view_row = html.split("custom_notes_view</a>").nth(1).unwrap_or("");
     assert!(view_row.contains("データ"));
     assert!(view_row.contains("定義編集"));
@@ -278,7 +277,7 @@ async fn database_create_user_table_and_view() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
-    assert!(html.contains("SELECT body FROM custom_notes"));
+    assert!(html.contains("custom_notes_view"));
 
     let response = app
         .admin_request(

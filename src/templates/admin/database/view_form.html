@@ -76,14 +76,11 @@
         <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
       </div>
     </div>
-  </section>
 
-  <aside class="panel">
-    <div class="actions">
+    <div class="actions view-form-actions">
       <button class="button" type="submit">{{ submit_label }}</button>
-      <a class="button secondary" href="{{ cancel_url }}">一覧に戻る</a>
     </div>
-  </aside>
+  </section>
 </form>
 
 <script type="application/json" id="view-ui-initial">{{ ui_builder_json | safe }}</script>

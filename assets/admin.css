@@ -377,8 +377,24 @@ textarea::placeholder {
 .tab-nav button:hover {
   color: var(--text);
 }
+#view-form.form-layout {
+  grid-template-columns: 1fr;
+}
+@media (min-width: 860px) {
+  body.embed-mode #view-form.form-layout {
+    grid-template-columns: 1fr;
+  }
+}
+@media (min-width: 1080px) {
+  #view-form.form-layout {
+    grid-template-columns: 1fr;
+  }
+}
 .view-form-tabs {
   margin-top: 8px;
+}
+.view-form-actions {
+  justify-content: flex-end;
 }
 .field-row.view-ui-base-row {
   display: grid;

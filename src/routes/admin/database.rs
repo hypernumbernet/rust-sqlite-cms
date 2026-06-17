@@ -13,6 +13,7 @@ use axum::{
     Form, Json, Router,
     body::Bytes,
     extract::{Path, Query, State},
+    http::{header, HeaderValue},
     response::{
         Html, IntoResponse, Redirect, Response,
         sse::{Event, KeepAlive, Sse},
@@ -623,7 +624,7 @@ async fn table_data_rows(
     State(state): State<AppState>,
     Path(name): Path<String>,
     Query(query): Query<TableDataRowsQuery>,
-) -> ApiResult<Json<TableDataRowsResponse>> {
+) -> ApiResult<Response> {
     let sort_override = if let Some(raw) = &query.sort {
         Some(database::parse_sort_query_param(raw)?)
     } else {
@@ -645,7 +646,7 @@ async fn table_data_rows(
     )
     .await?;
     let shown_count = data.rows.len() as i64;
-    Ok(Json(TableDataRowsResponse {
+    Ok(json_no_store(TableDataRowsResponse {
         columns: data.columns,
         rows: data.rows,
         total_count: data.total_count,
@@ -1059,7 +1060,7 @@ async fn create_view(
     )
     .await
     {
-        Ok(()) => Ok(Redirect::to(&view_url(&form.name, "/data")).into_response()),
+        Ok(()) => Ok(Redirect::to(&view_data_url(&form.name)).into_response()),
         Err(err) => {
             let html = render_view_form(
                 &auth,
@@ -1109,7 +1110,7 @@ async fn update_view(
     )
     .await
     {
-        Ok(()) => Ok(Redirect::to(&view_url(submitted_name, "/data")).into_response()),
+        Ok(()) => Ok(Redirect::to(&view_data_url(submitted_name)).into_response()),
         Err(DomainError::SystemTable(message)) => {
             Ok(system_table_notice_response(&auth, &name, &message).await?)
         }
@@ -1136,9 +1137,9 @@ async fn table_columns_json(
     _auth: AuthUser,
     State(state): State<AppState>,
     Path(name): Path<String>,
-) -> ApiResult<Json<serde_json::Value>> {
+) -> ApiResult<Response> {
     let columns = database::table_columns_for_ui(&state.pool(), &name).await?;
-    Ok(Json(json!({ "columns": columns })))
+    Ok(json_no_store(json!({ "columns": columns })))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1173,6 +1174,18 @@ fn table_url(name: &str, suffix: &str) -> String {
 
 fn view_url(name: &str, suffix: &str) -> String {
     object_admin_url(DbAdminObjectKind::View, name, suffix)
+}
+
+fn view_data_url(name: &str) -> String {
+    format!("{}?refreshed=1", view_url(name, "/data"))
+}
+
+fn json_no_store<T: serde::Serialize>(body: T) -> Response {
+    (
+        [(header::CACHE_CONTROL, HeaderValue::from_static("no-store"))],
+        Json(body),
+    )
+        .into_response()
 }
 
 fn list_action_urls(kind: DbAdminObjectKind, name: &str) -> ListActionUrls {

@@ -215,6 +215,17 @@ fn expr_contains_or(expr: Expr<'_>) -> bool {
     }
 }
 
+fn strip_where_keyword_prefix(text: &str) -> String {
+    let trimmed = text.trim();
+    if trimmed.len() >= 6
+        && trimmed.as_bytes()[..5].eq_ignore_ascii_case(b"where")
+        && trimmed.as_bytes()[5].is_ascii_whitespace()
+    {
+        return trimmed[5..].trim_start().to_string();
+    }
+    trimmed.to_string()
+}
+
 fn parse_where_condition(
     stmt: &ParsedStatement<'_>,
     expr: Expr<'_>,
@@ -223,9 +234,11 @@ fn parse_where_condition(
 ) -> Option<ParsedWhereCondition> {
     let Some(column_ref) = root_column_ref(expr) else {
         let full_text = node_sql_text(stmt, expr_node_id(expr))?;
-        return Some(ParsedWhereCondition::expression_only(full_text));
+        return Some(ParsedWhereCondition::expression_only(strip_where_keyword_prefix(
+            &full_text,
+        )));
     };
-    let full_text = node_sql_text(stmt, expr_node_id(expr))?;
+    let full_text = strip_where_keyword_prefix(&node_sql_text(stmt, expr_node_id(expr))?);
     let column = normalize_identifier(column_ref.column());
 
     if !column_ref.table().is_empty() {
@@ -510,6 +523,29 @@ mod tests {
         let reparsed = parse_simple_view_select(&rebuilt).expect("re-parse");
         assert!(reparsed.distinct);
         assert_eq!(reparsed.where_conditions, parsed.where_conditions);
+    }
+
+    #[test]
+    fn parse_single_expression_where_strips_where_keyword() {
+        let sql = r#"SELECT LENGTH("name") FROM "custom_notes" WHERE LENGTH("name") > 5"#;
+        let parsed = super::parse_simple_view_select(sql).expect("parsed");
+        assert_eq!(parsed.where_conditions.len(), 1);
+        assert_eq!(
+            parsed.where_conditions[0].expression.as_deref(),
+            Some(r#"LENGTH("name") > 5"#)
+        );
+    }
+
+    #[test]
+    fn strip_where_keyword_prefix_requires_whitespace_boundary() {
+        assert_eq!(
+            super::strip_where_keyword_prefix(r#"WHERE LENGTH("name") > 5"#),
+            r#"LENGTH("name") > 5"#
+        );
+        assert_eq!(
+            super::strip_where_keyword_prefix(r#"whereabouts > 0"#),
+            r#"whereabouts > 0"#
+        );
     }
 
     #[test]

@@ -649,9 +649,7 @@ textarea::placeholder {
   font-size: 13px;
   width: 100%;
 }
-.view-ui-column-item.is-expression .view-ui-column-where {
-  display: none;
-}
+
 .view-ui-column-name-tooltip {
   background: var(--text);
   border-radius: 4px;

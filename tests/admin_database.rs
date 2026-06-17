@@ -1344,8 +1344,80 @@ async fn database_view_rename_redirects_to_new_data_url() {
             .headers()
             .get("location")
             .and_then(|value| value.to_str().ok()),
-        Some("/admin/database/views/renamed_redirect_view/data")
+        Some("/admin/database/views/renamed_redirect_view/data?refreshed=1")
     );
+}
+
+#[tokio::test]
+async fn database_view_update_redirects_to_refreshed_data_url() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=refresh_col_src&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "refresh_col_src" ("body") VALUES ('alpha'), ('beta')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=refresh_col_view&definition=SELECT+%22id%22+FROM+%22refresh_col_src%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let definition = "SELECT \"id\", \"body\" FROM \"refresh_col_src\"";
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/refresh_col_view/edit",
+            Some(&format!(
+                "name=refresh_col_view&definition={}&edit_mode=ui",
+                urlencoding::encode(definition)
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok()),
+        Some("/admin/database/views/refresh_col_view/data?refreshed=1")
+    );
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/refresh_col_view/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok()),
+        Some("no-store")
+    );
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["id", "body"]));
+    assert_eq!(json["rows"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]

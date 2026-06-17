@@ -779,12 +779,32 @@
       }
     }
 
-    function hasMissingVisibleChunks() {
-      const offsets = chunkOffsetsForRange(startIndex, visibleCount);
+    function visibleChunkOffsets() {
+      if (totalCount <= 0 || visibleCount <= 0) return [];
+      return chunkOffsetsForRange(startIndex, visibleCount);
+    }
+
+    function inspectVisibleChunks() {
+      const offsets = visibleChunkOffsets();
+      let missing = false;
+      let emptyCached = false;
       for (let i = 0; i < offsets.length; i++) {
-        if (!cache.has(offsets[i])) return true;
+        const offset = offsets[i];
+        if (!cache.has(offset)) {
+          missing = true;
+          continue;
+        }
+        const rows = cache.get(offset);
+        if (!rows || rows.length === 0) {
+          emptyCached = true;
+        }
       }
-      return false;
+      return { missing: missing, emptyCached: emptyCached };
+    }
+
+    function hasIncompleteVisibleChunks() {
+      const state = inspectVisibleChunks();
+      return state.missing || state.emptyCached;
     }
 
     function updateViewStatus() {
@@ -792,7 +812,7 @@
         setStatus('empty', emptyDataStatusText(), false);
         return;
       }
-      if (hasMissingVisibleChunks()) {
+      if (hasIncompleteVisibleChunks()) {
         setStatus('loading', '読み込み中…', false);
         return;
       }
@@ -2515,6 +2535,7 @@
         const response = await fetch(url, {
           signal: signal,
           credentials: 'same-origin',
+          cache: 'no-store',
         });
 
         if (gen !== generation) return null;
@@ -2553,7 +2574,11 @@
           updateFitAllColumnsButton();
         }
 
-        setCacheOffset(offset, data.rows || []);
+        const rows = data.rows || [];
+        const reportedTotal = offset === 0 ? data.total_count || 0 : totalCount;
+        if (!(offset === 0 && reportedTotal > 0 && rows.length === 0)) {
+          setCacheOffset(offset, rows);
+        }
         return data;
       })();
 
@@ -2565,6 +2590,16 @@
         throw err;
       } finally {
         inFlight.delete(offset);
+      }
+    }
+
+    function discardEmptyVisibleChunks() {
+      const offsets = visibleChunkOffsets();
+      for (let i = 0; i < offsets.length; i++) {
+        const rows = cache.get(offsets[i]);
+        if (rows && rows.length === 0) {
+          cache.delete(offsets[i]);
+        }
       }
     }
 
@@ -2581,7 +2616,7 @@
 
           renderVisibleRows();
           updateViewStatus();
-
+          discardEmptyVisibleChunks();
           enqueueVisibleChunks(startIndex, visibleCount, gen);
           updatePrefetch(gen);
         } while (needsRefresh && gen === generation);
@@ -3028,14 +3063,25 @@
       });
     }
 
+    function stripRefreshedQueryParam() {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has('refreshed')) return;
+      url.searchParams.delete('refreshed');
+      history.replaceState(null, '', url);
+    }
+
     window.addEventListener('pagehide', resetTableDataSession);
     window.addEventListener('pageshow', function (event) {
-      if (event.persisted) {
+      if (event.persisted || (totalCount > 0 && cache.size === 0)) {
         reloadData({ fullReset: true });
       }
     });
 
-    load();
+    stripRefreshedQueryParam();
+
+    requestAnimationFrame(function () {
+      requestAnimationFrame(load);
+    });
   }
 
   function initWidgetConfig() {
@@ -3489,12 +3535,15 @@
       return column.name || '';
     }
 
+    function trimmedColumnExpression(column) {
+      return column.expression != null ? String(column.expression).trim() : '';
+    }
+
     function effectiveViewColumnName(column) {
       const alias =
         column.alias != null ? String(column.alias).trim() : '';
       if (alias) return alias;
-      const expression =
-        column.expression != null ? String(column.expression).trim() : '';
+      const expression = trimmedColumnExpression(column);
       if (expression) return expression;
       return column.name;
     }
@@ -3536,13 +3585,13 @@
     }
 
     function trimmedWhereSuffix(column) {
-      if (column.expression) return '';
       return column.where_condition != null
         ? String(column.where_condition).trim()
         : '';
     }
 
     function isExpressionOnlyWhereRow(column) {
+      if (trimmedColumnExpression(column)) return false;
       return !String(column.name || '').trim();
     }
 
@@ -3551,6 +3600,13 @@
       if (!suffix) return null;
       if (isExpressionOnlyWhereRow(column)) {
         return suffix;
+      }
+      const expression = trimmedColumnExpression(column);
+      if (expression) {
+        if (suffix.startsWith(expression)) {
+          return suffix;
+        }
+        return expression + ' ' + suffix;
       }
       return quoteSqlIdentifier(column.name) + ' ' + suffix;
     }
@@ -3566,8 +3622,7 @@
           const aliasError = validateViewColumnAlias(alias);
           if (aliasError) return aliasError;
         }
-        const expression =
-          column.expression != null ? String(column.expression).trim() : '';
+        const expression = trimmedColumnExpression(column);
         if (expression) {
           const exprError = validateViewExpression(expression);
           if (exprError) return exprError;
@@ -3584,8 +3639,7 @@
     }
 
     function formatSimpleViewSelectColumn(column) {
-      const expression =
-        column.expression != null ? String(column.expression).trim() : '';
+      const expression = trimmedColumnExpression(column);
       const selectPart = expression || quoteSqlIdentifier(column.name);
       const alias =
         column.alias != null ? String(column.alias).trim() : '';
@@ -3671,7 +3725,7 @@
           expression: parsed.expression,
           type_key: typeKey,
           alias: aliasValue || null,
-          where_condition: parsed.expression ? null : whereValue || null,
+          where_condition: whereValue || null,
           included: included,
         };
       });
@@ -3689,15 +3743,14 @@
       const aliasValue = column.alias != null ? String(column.alias).trim() : '';
       const whereValue =
         column.where_condition != null ? String(column.where_condition).trim() : '';
-      const expressionValue =
-        column.expression != null ? String(column.expression).trim() : '';
+      const expressionValue = trimmedColumnExpression(column);
       if (expressionValue) {
         return {
           name: '',
           expression: expressionValue,
           type_key: column.type_key || 'text',
           alias: aliasValue || null,
-          where_condition: null,
+          where_condition: whereValue || null,
         };
       }
       return {
@@ -3908,10 +3961,6 @@
           item.dataset.columnType = apiColumn ? apiColumn.type_key : 'text';
         } else {
           item.dataset.columnType = 'text';
-          if (whereWrap) {
-            const whereInput = whereWrap.querySelector('.view-ui-column-where-input');
-            if (whereInput) whereInput.value = '';
-          }
         }
       }
     }

@@ -1501,6 +1501,39 @@ fn validate_view_output_column_names(columns: &[SimpleViewUiColumn]) -> DomainRe
     Ok(())
 }
 
+fn split_expression_where_suffix(column_expr: &str, where_full: &str) -> Option<String> {
+    let column_expr = column_expr.trim();
+    let where_trimmed = where_full.trim();
+    if column_expr.is_empty() || !where_trimmed.starts_with(column_expr) {
+        return None;
+    }
+    let suffix = where_trimmed[column_expr.len()..].trim();
+    (!suffix.is_empty()).then(|| suffix.to_string())
+}
+
+fn format_simple_view_where_part(column: &SimpleViewUiColumn) -> Option<String> {
+    let suffix = column
+        .where_condition
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())?;
+    if let Some(expression) = column
+        .expression
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+    {
+        if suffix.starts_with(expression) {
+            return Some(suffix.to_string());
+        }
+        return Some(format!("{expression} {suffix}"));
+    }
+    if !column.name.is_empty() {
+        return Some(format!("{} {suffix}", quote_sql_identifier(&column.name)));
+    }
+    Some(suffix.to_string())
+}
+
 fn partition_where_conditions(
     columns: &[ParsedViewColumn],
     where_conditions: &[ParsedWhereCondition],
@@ -1519,7 +1552,7 @@ fn partition_where_conditions(
     }
 
     let mut used = vec![false; where_conditions.len()];
-    let column_where = columns
+    let mut column_where: Vec<Option<String>> = columns
         .iter()
         .map(|column| {
             let queue = by_column.get_mut(column.name.as_str())?;
@@ -1532,6 +1565,39 @@ fn partition_where_conditions(
             None
         })
         .collect();
+
+    let expression_only_indices: Vec<usize> = where_conditions
+        .iter()
+        .enumerate()
+        .filter_map(|(index, condition)| condition.is_expression_only().then_some(index))
+        .collect();
+
+    for (col_idx, column) in columns.iter().enumerate() {
+        if column_where[col_idx].is_some() {
+            continue;
+        }
+        let Some(expr) = column
+            .expression
+            .as_ref()
+            .map(|value| value.trim())
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+        for &index in &expression_only_indices {
+            if used[index] {
+                continue;
+            }
+            let Some(where_full) = where_conditions[index].expression.as_deref() else {
+                continue;
+            };
+            if let Some(suffix) = split_expression_where_suffix(expr, where_full) {
+                used[index] = true;
+                column_where[col_idx] = Some(suffix);
+                break;
+            }
+        }
+    }
 
     let extra_where = where_conditions
         .iter()
@@ -1548,17 +1614,7 @@ fn build_simple_view_where_clause(
 ) -> String {
     let mut conditions: Vec<String> = columns
         .iter()
-        .filter_map(|column| {
-            if column.expression.is_some() {
-                return None;
-            }
-            column
-                .where_condition
-                .as_ref()
-                .map(|value| value.trim())
-                .filter(|value| !value.is_empty())
-                .map(|suffix| format!("{} {suffix}", quote_sql_identifier(&column.name)))
-        })
+        .filter_map(format_simple_view_where_part)
         .collect();
 
     for condition in extra_where {
@@ -5117,6 +5173,112 @@ mod tests {
             sql,
             r#"SELECT "id", "body" FROM "custom_notes" WHERE "id" > 0 AND "body" IS NOT NULL"#
         );
+    }
+
+    #[test]
+    fn build_simple_view_select_generates_expression_where_clause() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
+            columns: vec![SimpleViewUiColumn {
+                name: String::new(),
+                type_key: "text".to_string(),
+                alias: None,
+                expression: Some(r#"LENGTH("body")"#.to_string()),
+                where_condition: Some("> 5".to_string()),
+            }],
+        };
+
+        let sql = build_simple_view_select(&spec).expect("sql");
+        assert_eq!(
+            sql,
+            r#"SELECT LENGTH("body") FROM "custom_notes" WHERE LENGTH("body") > 5"#
+        );
+    }
+
+    #[test]
+    fn build_simple_view_ui_spec_splits_expression_where_suffix() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT LENGTH("name") FROM "custom_notes" WHERE LENGTH("name") > 5"#,
+        )
+        .expect("parsed");
+        let table_columns = vec![
+            TableColumnUiInfo {
+                name: "name".to_string(),
+                type_key: "text".to_string(),
+                pk: false,
+                nullable: false,
+            },
+            TableColumnUiInfo {
+                name: "id".to_string(),
+                type_key: "integer".to_string(),
+                pk: true,
+                nullable: false,
+            },
+        ];
+
+        let spec = build_simple_view_ui_spec(&parsed, &table_columns);
+        assert_eq!(spec.columns.len(), 1);
+        assert_eq!(
+            spec.columns[0].expression.as_deref(),
+            Some(r#"LENGTH("name")"#)
+        );
+        assert_eq!(spec.columns[0].where_condition.as_deref(), Some("> 5"));
+        assert!(spec.extra_where.is_empty());
+
+        let rebuilt = build_simple_view_select(&spec).expect("rebuild");
+        assert_eq!(
+            rebuilt,
+            r#"SELECT LENGTH("name") FROM "custom_notes" WHERE LENGTH("name") > 5"#
+        );
+    }
+
+    #[test]
+    fn format_simple_view_where_part_avoids_double_expression_prefix() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            distinct: false,
+            extra_where: vec![],
+            columns: vec![SimpleViewUiColumn {
+                name: String::new(),
+                type_key: "text".to_string(),
+                alias: None,
+                expression: Some(r#"LENGTH("body")"#.to_string()),
+                where_condition: Some(r#"LENGTH("body") > 5"#.to_string()),
+            }],
+        };
+
+        let sql = build_simple_view_select(&spec).expect("sql");
+        assert_eq!(
+            sql,
+            r#"SELECT LENGTH("body") FROM "custom_notes" WHERE LENGTH("body") > 5"#
+        );
+    }
+
+    #[test]
+    fn build_simple_view_ui_spec_splits_expression_is_not_null_where() {
+        let parsed = parse_simple_view_select(
+            r#"SELECT LENGTH("name") FROM "custom_notes" WHERE LENGTH("name") IS NOT NULL"#,
+        )
+        .expect("parsed");
+        let table_columns = vec![TableColumnUiInfo {
+            name: "name".to_string(),
+            type_key: "text".to_string(),
+            pk: false,
+            nullable: false,
+        }];
+
+        let spec = build_simple_view_ui_spec(&parsed, &table_columns);
+        assert_eq!(
+            spec.columns[0].expression.as_deref(),
+            Some(r#"LENGTH("name")"#)
+        );
+        assert_eq!(
+            spec.columns[0].where_condition.as_deref(),
+            Some("IS NOT NULL")
+        );
+        assert!(spec.extra_where.is_empty());
     }
 
     #[test]

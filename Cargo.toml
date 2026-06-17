@@ -34,6 +34,8 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 tower-sessions = { version = "0.14", features = ["signed"] }
 time = "0.3"
 arc-swap = "1"
+# fmt is required for build: syntaqlite 0.5.x gates `crate::dialect` behind fmt while sqlite/dialect.rs imports it.
+syntaqlite = { version = "0.5", default-features = false, features = ["sqlite", "fmt"] }
 
 [dev-dependencies]
 tempfile = "3"

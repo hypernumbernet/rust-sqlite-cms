@@ -725,7 +725,7 @@ async fn database_view_ui_spec_api_parses_distinct_and_extra_where() {
     let payload = response.into_body().collect().await.unwrap().to_bytes();
     let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
     assert_eq!(json["supported"], true);
-    assert_eq!(json["spec"]["distinct"], true);
+    assert_eq!(json["spec"]["select_mode"], "distinct");
     assert_eq!(json["spec"]["columns"].as_array().map(|v| v.len()), Some(1));
     assert_eq!(
         json["spec"]["extra_where"][0]["column"].as_str(),
@@ -779,7 +779,7 @@ async fn database_view_ui_spec_api_splits_duplicate_column_where_to_extra_where(
 }
 
 #[tokio::test]
-async fn database_view_form_distinct_checkbox_and_initial_state() {
+async fn database_view_form_select_mode_and_initial_state() {
     let app = common::TestApp::new().await;
 
     let response = app
@@ -788,9 +788,10 @@ async fn database_view_form_distinct_checkbox_and_initial_state() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
-    assert!(html.contains(r#"id="view-ui-distinct""#));
-    assert!(html.contains("重複除去"));
-    assert!(html.contains(r#"data-tooltip="ON にすると SELECT DISTINCT を付与し、同一行を除きます。""#));
+    assert!(html.contains(r#"id="view-ui-select-mode""#));
+    assert!(html.contains("重複排除"));
+    assert!(html.contains("集計"));
+    assert!(html.contains(r#"data-tooltip="空欄は通常の SELECT です。重複排除は SELECT DISTINCT を付与します。集計は出力カラムすべてで GROUP BY を付与します。""#));
     assert!(html.contains(r#"aria-label="ビュー名の説明""#));
     assert!(html.contains(
         r#"data-tooltip="120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。CMS コアテーブル名は使用できません。""#
@@ -831,7 +832,77 @@ async fn database_view_form_distinct_checkbox_and_initial_state() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = String::from_utf8(body.to_vec()).unwrap();
     assert!(html.contains(r#""base_table":"distinct_ui_notes""#));
-    assert!(html.contains(r#""distinct":true"#));
+    assert!(html.contains(r#""select_mode":"distinct"#));
+}
+
+#[tokio::test]
+async fn database_view_ui_spec_api_parses_group_by() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=group_by_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let body = r#"{"definition":"SELECT \"id\", \"body\" FROM \"group_by_notes\" GROUP BY \"id\", \"body\""}"#;
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/ui-spec",
+            Some(body),
+            Some("application/json"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&payload).unwrap();
+    assert_eq!(json["supported"], true);
+    assert_eq!(json["spec"]["select_mode"], "group_by");
+    assert_eq!(json["spec"]["columns"].as_array().map(|v| v.len()), Some(2));
+}
+
+#[tokio::test]
+async fn database_view_form_group_by_initial_state() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=group_by_ui_notes&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=group_by_ui_view&definition=SELECT+%22id%22%2C+%22body%22+FROM+%22group_by_ui_notes%22+GROUP+BY+%22id%22%2C+%22body%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/group_by_ui_view/edit",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = String::from_utf8(body.to_vec()).unwrap();
+    assert!(html.contains(r#""base_table":"group_by_ui_notes""#));
+    assert!(html.contains(r#""select_mode":"group_by"#));
 }
 
 #[tokio::test]
@@ -1117,8 +1188,9 @@ async fn database_view_edit_recovers_after_invalid_expression_error() {
         &app,
         "expr_recover_notes",
         "expr_recover_view",
-        r#"SELECT DROP("body") AS "body_len" FROM "expr_recover_notes""#,
-        r#""expression":"DROP(\"body\")""#,
+        // Quoted function name: syntaqlite parses valid SQLite syntax; validation still rejects DROP.
+        r#"SELECT "DROP"("body") AS "body_len" FROM "expr_recover_notes""#,
+        r#""expression":"\"DROP\"(\"body\")""#,
         |html| {
             assert!(html.contains("使用できない SQL キーワード"));
             assert!(html.contains("DROP"));
@@ -1343,8 +1415,80 @@ async fn database_view_rename_redirects_to_new_data_url() {
             .headers()
             .get("location")
             .and_then(|value| value.to_str().ok()),
-        Some("/admin/database/views/renamed_redirect_view/data")
+        Some("/admin/database/views/renamed_redirect_view/data?refreshed=1")
     );
+}
+
+#[tokio::test]
+async fn database_view_update_redirects_to_refreshed_data_url() {
+    let app = common::TestApp::new().await;
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/tables/new",
+            Some("name=refresh_col_src&col_name=body&col_type=text&col_nullable=0"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    sqlx::query(r#"INSERT INTO "refresh_col_src" ("body") VALUES ('alpha'), ('beta')"#)
+        .execute(&app.state.pool())
+        .await
+        .unwrap();
+
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/new",
+            Some("name=refresh_col_view&definition=SELECT+%22id%22+FROM+%22refresh_col_src%22"),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+
+    let definition = "SELECT \"id\", \"body\" FROM \"refresh_col_src\"";
+    let response = app
+        .admin_request(
+            "POST",
+            "/admin/database/views/refresh_col_view/edit",
+            Some(&format!(
+                "name=refresh_col_view&definition={}&edit_mode=ui",
+                urlencoding::encode(definition)
+            )),
+            Some("application/x-www-form-urlencoded"),
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        response
+            .headers()
+            .get("location")
+            .and_then(|value| value.to_str().ok()),
+        Some("/admin/database/views/refresh_col_view/data?refreshed=1")
+    );
+
+    let response = app
+        .admin_request(
+            "GET",
+            "/admin/database/views/refresh_col_view/data/rows?offset=0",
+            None,
+            None,
+        )
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("cache-control")
+            .and_then(|value| value.to_str().ok()),
+        Some("no-store")
+    );
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(json["columns"], serde_json::json!(["id", "body"]));
+    assert_eq!(json["rows"].as_array().unwrap().len(), 2);
 }
 
 #[tokio::test]

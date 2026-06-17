@@ -7,6 +7,7 @@
 pub mod backup;
 pub mod contact_form;
 pub mod database;
+pub mod view_select_parse;
 pub mod layout_publish;
 pub mod layouts;
 pub mod media;

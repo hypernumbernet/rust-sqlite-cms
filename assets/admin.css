@@ -415,7 +415,7 @@ textarea::placeholder {
   grid-column: 1;
   grid-row: 2;
 }
-.view-ui-distinct-control {
+.view-ui-select-mode-control {
   align-items: center;
   align-self: center;
   display: flex;
@@ -423,10 +423,14 @@ textarea::placeholder {
   grid-column: 2;
   grid-row: 2;
 }
-.view-ui-distinct-control .checkbox {
+.view-ui-select-mode-control label {
   margin: 0;
+  white-space: nowrap;
 }
-.view-ui-distinct-help {
+.view-ui-select-mode-control select {
+  min-width: 7.5rem;
+}
+.view-ui-select-mode-help {
   align-items: center;
   background: #fff;
   border: 1px solid var(--border);
@@ -445,7 +449,7 @@ textarea::placeholder {
   position: relative;
   width: 16px;
 }
-.view-ui-distinct-help::after {
+.view-ui-select-mode-help::after {
   background: var(--text);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(29, 35, 39, 0.18);
@@ -468,20 +472,20 @@ textarea::placeholder {
   width: max-content;
   z-index: 10050;
 }
-.view-ui-distinct-help:hover::after,
-.view-ui-distinct-help:focus-visible::after {
+.view-ui-select-mode-help:hover::after,
+.view-ui-select-mode-help:focus-visible::after {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   visibility: visible;
 }
-.view-ui-distinct-help:focus-visible {
+.view-ui-select-mode-help:focus-visible {
   box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent);
   outline: none;
 }
-.view-ui-distinct-help.help-tooltip-ready::after {
+.view-ui-select-mode-help.help-tooltip-ready::after {
   content: none;
 }
-.view-ui-distinct-help-popup {
+.view-ui-select-mode-help-popup {
   background: var(--text);
   border-radius: 4px;
   box-shadow: 0 4px 12px rgba(29, 35, 39, 0.18);
@@ -503,7 +507,7 @@ textarea::placeholder {
   width: max-content;
   z-index: 10050;
 }
-.view-ui-distinct-help-popup.is-visible {
+.view-ui-select-mode-help-popup.is-visible {
   opacity: 1;
   transform: translateY(0);
   visibility: visible;

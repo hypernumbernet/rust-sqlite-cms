@@ -29,7 +29,7 @@
 
       <div class="tab-panel" id="view-tab-ui"{% if edit_mode != "ui" %} hidden{% endif %}>
         <div id="view-ui-unsupported" class="notice info" hidden>
-          この定義はビジュアル編集に対応していません。JOIN・集計・複雑な WHERE などを含む SQL は SQL編集タブで編集してください。
+          この定義はビジュアル編集に対応していません。JOIN・複雑な WHERE などを含む SQL は SQL編集タブで編集してください。
         </div>
 
         <div id="view-ui-builder">
@@ -43,12 +43,14 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="view-ui-distinct-control">
-              <label class="checkbox" for="view-ui-distinct">
-                <input type="checkbox" id="view-ui-distinct">
-                重複除去
-              </label>
-              <button type="button" class="view-ui-distinct-help" data-tooltip="ON にすると SELECT DISTINCT を付与し、同一行を除きます。" aria-label="重複除去の説明">?</button>
+            <div class="view-ui-select-mode-control">
+              <label for="view-ui-select-mode">SELECT 修飾</label>
+              <select id="view-ui-select-mode" aria-label="SELECT 修飾">
+                <option value=""></option>
+                <option value="distinct">重複排除</option>
+                <option value="group_by">集計</option>
+              </select>
+              <button type="button" class="view-ui-select-mode-help" data-tooltip="空欄は通常の SELECT です。重複排除は SELECT DISTINCT を付与します。集計は出力カラムすべてで GROUP BY を付与します。" aria-label="SELECT 修飾の説明">?</button>
             </div>
           </div>
 

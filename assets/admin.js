@@ -3417,7 +3417,7 @@
     const sqlPanel = document.getElementById('view-tab-sql');
     const uiPanel = document.getElementById('view-tab-ui');
     const baseTableSelect = document.getElementById('view-ui-base-table');
-    const distinctCheckbox = document.getElementById('view-ui-distinct');
+    const selectModeEl = document.getElementById('view-ui-select-mode');
     const columnsWrap = document.getElementById('view-ui-columns-wrap');
     const columnsList = document.getElementById('view-ui-columns');
     const addColumnSelect = document.getElementById('view-ui-add-column-select');
@@ -3469,7 +3469,7 @@
     let columnsLoadSeq = 0;
     let uiSpecParseSeq = 0;
     let uiDirty = false;
-    let currentUiSpecMeta = { distinct: false, extra_where: [] };
+    let currentUiSpecMeta = { select_mode: '', extra_where: [] };
     let dragSourceItem = null;
     let dragGhostEl = null;
     let dragPointerOffset = { x: 0, y: 0 };
@@ -3486,19 +3486,33 @@
       return '"' + String(name).replace(/"/g, '""') + '"';
     }
 
-    function isDistinctEnabled() {
-      if (distinctCheckbox) return distinctCheckbox.checked;
-      return !!currentUiSpecMeta.distinct;
+    function normalizeSelectMode(value) {
+      if (value === 'distinct' || value === 'group_by') return value;
+      return '';
+    }
+
+    function resolveSelectModeFromSpec(spec) {
+      if (!spec) return '';
+      if (spec.select_mode === 'distinct' || spec.select_mode === 'group_by') {
+        return spec.select_mode;
+      }
+      if (spec.distinct) return 'distinct';
+      return '';
+    }
+
+    function getSelectMode() {
+      if (selectModeEl) return normalizeSelectMode(selectModeEl.value);
+      return normalizeSelectMode(currentUiSpecMeta.select_mode);
     }
 
     function setUiSpecMeta(spec) {
       currentUiSpecMeta = {
-        distinct: !!(spec && spec.distinct),
+        select_mode: resolveSelectModeFromSpec(spec),
         extra_where:
           spec && Array.isArray(spec.extra_where) ? spec.extra_where.slice() : [],
       };
-      if (distinctCheckbox) {
-        distinctCheckbox.checked = currentUiSpecMeta.distinct;
+      if (selectModeEl) {
+        selectModeEl.value = currentUiSpecMeta.select_mode;
       }
     }
 
@@ -3638,13 +3652,22 @@
       return null;
     }
 
-    function formatSimpleViewSelectColumn(column) {
+    function groupBySelectPart(column) {
       const expression = trimmedColumnExpression(column);
-      const selectPart = expression || quoteSqlIdentifier(column.name);
-      const alias =
-        column.alias != null ? String(column.alias).trim() : '';
-      if (!alias) return selectPart;
-      return selectPart + ' AS ' + quoteSqlIdentifier(alias);
+      return expression || quoteSqlIdentifier(column.name);
+    }
+
+    function formatSimpleViewSelectColumnWithPart(selectPart, alias) {
+      const trimmedAlias = alias != null ? String(alias).trim() : '';
+      if (!trimmedAlias) return selectPart;
+      return selectPart + ' AS ' + quoteSqlIdentifier(trimmedAlias);
+    }
+
+    function formatSimpleViewSelectColumn(column) {
+      return formatSimpleViewSelectColumnWithPart(
+        groupBySelectPart(column),
+        column.alias
+      );
     }
 
     function setUiDirty(dirty) {
@@ -4262,21 +4285,31 @@
       const columnState = columns || readColumnState();
       const outputColumns = columnState.filter(isColumnIncluded);
       if (outputColumns.length === 0) return false;
+      const selectParts = outputColumns.map(groupBySelectPart);
       const columnSql = outputColumns
-        .map(formatSimpleViewSelectColumn)
+        .map(function (column, index) {
+          return formatSimpleViewSelectColumnWithPart(
+            selectParts[index],
+            column.alias
+          );
+        })
         .join(', ');
       const whereParts = [];
       columnState.forEach(function (column) {
         const part = formatWhereSqlPart(column);
         if (part) whereParts.push(part);
       });
+      const selectMode = getSelectMode();
       let sql = 'SELECT ';
-      if (isDistinctEnabled()) {
+      if (selectMode === 'distinct') {
         sql += 'DISTINCT ';
       }
       sql += columnSql + ' FROM ' + quoteSqlIdentifier(table);
       if (whereParts.length > 0) {
         sql += ' WHERE ' + whereParts.join(' AND ');
+      }
+      if (selectMode === 'group_by') {
+        sql += ' GROUP BY ' + selectParts.join(', ');
       }
       definitionInput.value = sql;
       setUiDirty(false);
@@ -4543,8 +4576,8 @@
       });
     }
 
-    if (distinctCheckbox) {
-      distinctCheckbox.addEventListener('change', function () {
+    if (selectModeEl) {
+      selectModeEl.addEventListener('change', function () {
         setUiDirty(true);
       });
     }
@@ -4699,7 +4732,7 @@
   }
 
   function initHelpTooltipButtons() {
-    const buttons = document.querySelectorAll('.view-ui-distinct-help[data-tooltip]');
+    const buttons = document.querySelectorAll('.view-ui-select-mode-help[data-tooltip], .view-ui-distinct-help[data-tooltip]');
     if (!buttons.length) return;
 
     let tooltipEl = null;
@@ -4716,7 +4749,7 @@
     function ensureTooltip() {
       if (!tooltipEl) {
         tooltipEl = document.createElement('span');
-        tooltipEl.className = 'view-ui-distinct-help-popup';
+        tooltipEl.className = 'view-ui-select-mode-help-popup';
         tooltipEl.setAttribute('role', 'tooltip');
         tooltipEl.hidden = true;
         document.body.appendChild(tooltipEl);

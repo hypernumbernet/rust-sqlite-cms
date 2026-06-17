@@ -232,12 +232,37 @@ impl ExtraWhereCondition {
     }
 }
 
+/// ビュー UI ビルダーの SELECT 修飾モード。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum ViewSelectMode {
+    /// 通常の SELECT（修飾なし）。
+    #[default]
+    #[serde(rename = "")]
+    Normal,
+    /// 重複排除（`SELECT DISTINCT`）。
+    #[serde(rename = "distinct")]
+    Distinct,
+    /// 集計（`GROUP BY`）。
+    #[serde(rename = "group_by")]
+    GroupBy,
+}
+
+impl ViewSelectMode {
+    pub(crate) fn is_normal(self) -> bool {
+        self == Self::Normal
+    }
+}
+
+fn view_select_mode_is_normal(mode: &ViewSelectMode) -> bool {
+    mode.is_normal()
+}
+
 /// ビュー UI ビルダーの完全な状態。
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SimpleViewUiSpec {
     pub base_table: String,
-    #[serde(default)]
-    pub distinct: bool,
+    #[serde(default, skip_serializing_if = "view_select_mode_is_normal")]
+    pub select_mode: ViewSelectMode,
     pub columns: Vec<SimpleViewUiColumn>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub extra_where: Vec<ExtraWhereCondition>,
@@ -308,7 +333,7 @@ impl ParsedWhereCondition {
 #[derive(Debug, Clone)]
 pub(crate) struct ParsedSimpleViewSelect {
     pub(crate) base_table: String,
-    pub(crate) distinct: bool,
+    pub(crate) select_mode: ViewSelectMode,
     pub(crate) columns: ParsedViewColumnList,
     pub(crate) where_conditions: Vec<ParsedWhereCondition>,
 }
@@ -1386,7 +1411,7 @@ pub(crate) fn build_simple_view_ui_spec(
 
     SimpleViewUiSpec {
         base_table: parsed.base_table.clone(),
-        distinct: parsed.distinct,
+        select_mode: parsed.select_mode,
         columns,
         extra_where: extra_where
             .into_iter()
@@ -1416,17 +1441,34 @@ pub fn build_simple_view_select(spec: &SimpleViewUiSpec) -> DomainResult<String>
 
     validate_view_output_column_names(&spec.columns)?;
 
+    let select_parts: Vec<String> = spec
+        .columns
+        .iter()
+        .map(group_by_select_part_from_ui_column)
+        .collect();
     let column_sql = spec
         .columns
         .iter()
-        .map(format_simple_view_select_column)
+        .zip(&select_parts)
+        .map(|(column, select_part)| {
+            format_simple_view_select_column_with_part(select_part, column.alias.as_deref())
+        })
         .collect::<Vec<_>>()
         .join(", ");
 
-    let distinct_kw = if spec.distinct { "DISTINCT " } else { "" };
+    let distinct_kw = if spec.select_mode == ViewSelectMode::Distinct {
+        "DISTINCT "
+    } else {
+        ""
+    };
     let where_sql = build_simple_view_where_clause(&spec.columns, &spec.extra_where);
+    let group_by_sql = if spec.select_mode == ViewSelectMode::GroupBy {
+        format!(" GROUP BY {}", select_parts.join(", "))
+    } else {
+        String::new()
+    };
     Ok(format!(
-        "SELECT {distinct_kw}{column_sql} FROM {}{where_sql}",
+        "SELECT {distinct_kw}{column_sql} FROM {}{where_sql}{group_by_sql}",
         quote_sql_identifier(&spec.base_table)
     ))
 }
@@ -1449,22 +1491,29 @@ fn effective_view_column_name(column: &SimpleViewUiColumn) -> String {
         .unwrap_or_else(|| column.name.clone())
 }
 
-fn format_simple_view_select_column(column: &SimpleViewUiColumn) -> String {
-    let select_part = column
-        .expression
-        .as_ref()
-        .map(|value| value.trim())
+pub(crate) fn group_by_select_part_from_parsed_column(column: &ParsedViewColumn) -> String {
+    group_by_select_part(column.expression.as_deref(), &column.name)
+}
+
+fn group_by_select_part_from_ui_column(column: &SimpleViewUiColumn) -> String {
+    group_by_select_part(column.expression.as_deref(), &column.name)
+}
+
+fn group_by_select_part(expression: Option<&str>, name: &str) -> String {
+    expression
+        .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(|value| value.to_string())
-        .unwrap_or_else(|| quote_sql_identifier(&column.name));
-    let alias = column
-        .alias
-        .as_ref()
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty());
-    match alias {
+        .unwrap_or_else(|| quote_sql_identifier(name))
+}
+
+fn format_simple_view_select_column_with_part(
+    select_part: &str,
+    alias: Option<&str>,
+) -> String {
+    match alias.map(str::trim).filter(|value| !value.is_empty()) {
         Some(alias) => format!("{select_part} AS {}", quote_sql_identifier(alias)),
-        None => select_part,
+        None => select_part.to_string(),
     }
 }
 
@@ -4944,7 +4993,7 @@ mod tests {
             "SELECT /* cols */ DISTINCT \"id\" FROM \"custom_notes\" WHERE \"body\" IS NOT NULL",
         )
         .expect("parsed");
-        assert!(parsed.distinct);
+        assert_eq!(parsed.select_mode, ViewSelectMode::Distinct);
         assert_eq!(
             parsed.where_conditions,
             vec![ParsedWhereCondition {
@@ -5082,7 +5131,7 @@ mod tests {
     fn build_simple_view_select_generates_quoted_sql() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![SimpleViewUiColumn {
                 name: "body".to_string(),
@@ -5101,7 +5150,7 @@ mod tests {
     fn build_simple_view_select_generates_column_alias() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![SimpleViewUiColumn {
                 name: "id".to_string(),
@@ -5120,7 +5169,7 @@ mod tests {
     fn build_simple_view_select_rejects_duplicate_output_names() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![
                 SimpleViewUiColumn {
@@ -5148,7 +5197,7 @@ mod tests {
     fn build_simple_view_select_generates_where_clause() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![
                 SimpleViewUiColumn {
@@ -5179,7 +5228,7 @@ mod tests {
     fn build_simple_view_select_generates_expression_where_clause() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![SimpleViewUiColumn {
                 name: String::new(),
@@ -5238,7 +5287,7 @@ mod tests {
     fn format_simple_view_where_part_avoids_double_expression_prefix() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![SimpleViewUiColumn {
                 name: String::new(),
@@ -5285,7 +5334,7 @@ mod tests {
     fn build_simple_view_select_requires_column() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![],
         };
@@ -5314,7 +5363,7 @@ mod tests {
     fn build_simple_view_select_generates_expression_column() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![
                 SimpleViewUiColumn {
@@ -5368,7 +5417,7 @@ mod tests {
     fn build_simple_view_select_rejects_duplicate_expression_output_names() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![
                 SimpleViewUiColumn {
@@ -5396,7 +5445,7 @@ mod tests {
     fn build_simple_view_select_rejects_forbidden_keyword_in_expression() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: false,
+            select_mode: ViewSelectMode::Normal,
             extra_where: vec![],
             columns: vec![SimpleViewUiColumn {
                 name: String::new(),
@@ -5415,7 +5464,7 @@ mod tests {
     fn parse_simple_view_select_parses_distinct() {
         let parsed =
             parse_simple_view_select(r#"SELECT DISTINCT "id" FROM "custom_notes""#).expect("parsed");
-        assert!(parsed.distinct);
+        assert_eq!(parsed.select_mode, ViewSelectMode::Distinct);
         assert!(matches!(
             parsed.columns,
             ParsedViewColumnList::Columns(ref columns) if columns.len() == 1 && columns[0].name == "id"
@@ -5517,7 +5566,7 @@ mod tests {
     fn build_simple_view_select_generates_distinct_and_extra_where() {
         let spec = SimpleViewUiSpec {
             base_table: "custom_notes".to_string(),
-            distinct: true,
+            select_mode: ViewSelectMode::Distinct,
             extra_where: vec![ExtraWhereCondition {
                 column: "body".to_string(),
                 suffix: "IS NOT NULL".to_string(),
@@ -5536,6 +5585,37 @@ mod tests {
         assert_eq!(
             sql,
             r#"SELECT DISTINCT "id" FROM "custom_notes" WHERE "body" IS NOT NULL"#
+        );
+    }
+
+    #[test]
+    fn build_simple_view_select_generates_group_by() {
+        let spec = SimpleViewUiSpec {
+            base_table: "custom_notes".to_string(),
+            select_mode: ViewSelectMode::GroupBy,
+            extra_where: vec![],
+            columns: vec![
+                SimpleViewUiColumn {
+                    name: "id".to_string(),
+                    type_key: "integer".to_string(),
+                    alias: None,
+                    expression: None,
+                    where_condition: None,
+                },
+                SimpleViewUiColumn {
+                    name: "body".to_string(),
+                    type_key: "text".to_string(),
+                    alias: None,
+                    expression: None,
+                    where_condition: None,
+                },
+            ],
+        };
+
+        let sql = build_simple_view_select(&spec).expect("sql");
+        assert_eq!(
+            sql,
+            r#"SELECT "id", "body" FROM "custom_notes" GROUP BY "id", "body""#
         );
     }
 

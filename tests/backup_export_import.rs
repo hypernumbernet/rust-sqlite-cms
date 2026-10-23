@@ -23,7 +23,10 @@ fn read_zip_entry(bytes: &[u8], path: &str) -> Vec<u8> {
 fn zip_entry_names(bytes: &[u8]) -> Vec<String> {
     let cursor = Cursor::new(bytes);
     let archive = ZipArchive::new(cursor).expect("zip archive");
-    archive.file_names().map(str::to_string).collect()
+    archive
+        .file_names()
+        .map(|name| name.expect("zip entry name").into_owned())
+        .collect()
 }
 
 #[tokio::test]

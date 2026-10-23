@@ -997,7 +997,10 @@ fn parse_layout_zip(bytes: &[u8]) -> DomainResult<(LayoutExportManifest, HashMap
         let mut file = archive
             .by_index(i)
             .map_err(|e| DomainError::Validation(format!("ZIP エントリの読み取りに失敗: {e}")))?;
-        let name = normalize_zip_entry_name(file.name());
+        let raw_name = file.name().map_err(|e| {
+            DomainError::Validation(format!("ZIP エントリ名の読み取りに失敗: {e}"))
+        })?;
+        let name = normalize_zip_entry_name(raw_name.as_ref());
 
         if name == "manifest.json" {
             let mut raw = String::new();

@@ -89,7 +89,7 @@ fn rewrite_manifest_key(bytes: &[u8], new_key: &str) -> Vec<u8> {
 
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).expect("zip entry");
-            let name = file.name().replace('\\', "/");
+            let name = file.name().expect("zip entry name").replace('\\', "/");
             if name == "manifest.json" {
                 writer
                     .start_file("manifest.json", options)

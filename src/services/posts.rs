@@ -2,7 +2,7 @@
 
 use sqlx::SqlitePool;
 
-use crate::error::DomainResult;
+use crate::error::{DomainError, DomainResult};
 use crate::models::post::{Post, PostInput};
 use crate::repos::posts as posts_repo;
 
@@ -27,7 +27,9 @@ pub async fn create(
     let id = posts_repo::insert(pool, &input).await?;
     if let Some(m) = meta {
         for (k, v) in m {
-            let _ = crate::repos::postmeta::set(pool, id, &k, &v).await;
+            crate::repos::postmeta::set(pool, id, &k, &v)
+                .await
+                .map_err(DomainError::from)?;
         }
     }
     posts_repo::find(pool, id).await.map_err(Into::into)
@@ -43,7 +45,9 @@ pub async fn update(
     posts_repo::update(pool, id, &input).await?;
     if let Some(m) = meta {
         for (k, v) in m {
-            let _ = crate::repos::postmeta::set(pool, id, &k, &v).await;
+            crate::repos::postmeta::set(pool, id, &k, &v)
+                .await
+                .map_err(DomainError::from)?;
         }
     }
     Ok(())

@@ -152,7 +152,7 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PostInput) -> AppResult<
                  ELSE published_at
              END,
              updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-         WHERE id = ? AND post_type = 'post' AND placeholder_id = ?",
+         WHERE id = ? AND post_type = 'post'",
     )
     .bind(&input.post_status)
     .bind(&input.post_name)
@@ -162,7 +162,6 @@ pub async fn update(pool: &SqlitePool, id: i64, input: &PostInput) -> AppResult<
     .bind(&input.post_status)
     .bind(&input.post_status)
     .bind(id)
-    .bind(input.placeholder_id)
     .execute(pool)
     .await?;
 

@@ -77,23 +77,11 @@ fn normalize_and_validate_public_url(raw: &str) -> AppResult<String> {
         return Err(AppError::Conflict("公開 URL を入力してください".into()));
     };
 
-    if is_reserved_media_public_url(&path) {
+    if crate::routes::url::is_reserved_media_public_url(&path) {
         return Err(AppError::Conflict(format!(
             "公開 URL「{path}」はシステム予約のため使用できません"
         )));
     }
 
     Ok(path)
-}
-
-fn is_reserved_media_public_url(path: &str) -> bool {
-    path == "/"
-        || path == "/admin"
-        || path.starts_with("/admin/")
-        || path == "/static"
-        || path.starts_with("/static/")
-        || path == "/uploads"
-        || path.starts_with("/uploads/")
-        || path == "/api"
-        || path.starts_with("/api/")
 }

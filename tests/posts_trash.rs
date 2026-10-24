@@ -2,6 +2,8 @@
 
 mod common;
 
+use axum::http::StatusCode;
+use serde_json::json;
 use rust_sqlite_cms::{
     models::placeholder::PlaceholderInput,
     models::post::PostInput,
@@ -267,4 +269,56 @@ async fn restore_and_purge_fail_for_non_trash_post() {
 
     assert!(posts::restore(&pool, post_id).await.is_err());
     assert!(posts::purge(&pool, post_id).await.is_err());
+}
+
+#[tokio::test]
+async fn api_patch_updates_post_after_placeholder_deleted() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+
+    let news_type = widget_types::find_by_key(&pool, "news")
+        .await
+        .expect("news widget type");
+
+    let placeholder_id = placeholders::insert(
+        &pool,
+        &PlaceholderInput {
+            name: "api_patch_orphan".to_string(),
+            widget_type_id: news_type.id,
+            config: "{}".to_string(),
+        },
+    )
+    .await
+    .expect("insert placeholder");
+
+    let post_id = posts::insert(
+        &pool,
+        &PostInput {
+            placeholder_id,
+            title: "更新前".to_string(),
+            content: "body".to_string(),
+            excerpt: "".to_string(),
+            post_status: "draft".to_string(),
+            post_name: "api-patch".to_string(),
+        },
+    )
+    .await
+    .expect("insert post");
+
+    placeholders::delete(&pool, placeholder_id)
+        .await
+        .expect("delete placeholder");
+
+    let res = app
+        .api_request_authed(
+            "PATCH",
+            &format!("/api/v1/posts/{post_id}"),
+            Some(json!({ "title": "更新後" })),
+        )
+        .await;
+
+    assert_eq!(res.status(), StatusCode::OK);
+
+    let updated = posts::find(&pool, post_id).await.expect("post still exists");
+    assert_eq!(updated.title, "更新後");
 }

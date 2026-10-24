@@ -10,8 +10,6 @@ use axum::{
 use serde::Deserialize;
 use tokio::fs;
 
-use std::path::Path as FsPath;
-
 use crate::error::{AppError, AppResult, DomainError};
 use crate::models::page::Page;
 use crate::page_render::{self, RenderPageOptions};
@@ -20,6 +18,7 @@ use crate::repos::{media as media_repo, pages, placeholders, widget_types};
 use crate::services::contact_form::{self, ContactFormSubmission};
 use crate::session;
 use crate::state::AppState;
+use crate::routes::url;
 use crate::theme;
 
 #[derive(Debug, Deserialize)]
@@ -97,7 +96,7 @@ pub async fn serve_fallback(
 ) -> AppResult<Response> {
     let path = normalize_path(uri.path());
 
-    if is_reserved_public_path(&path) {
+    if url::is_reserved_path(&path) {
         return Err(AppError::NotFound);
     }
 
@@ -231,7 +230,7 @@ async fn serve_media_file(state: &AppState, media: &Media) -> Result<Response, A
         .file_path
         .as_deref()
         .ok_or(AppError::NotFound)?;
-    let full = FsPath::new(&state.config.paths.uploads_dir).join(relative);
+    let full = crate::media::resolve_upload_path(&state.config.paths.uploads_dir, relative)?;
     let bytes = fs::read(&full).await.map_err(|_| AppError::NotFound)?;
     let content_type = media
         .mime_type
@@ -245,18 +244,6 @@ async fn serve_media_file(state: &AppState, media: &Media) -> Result<Response, A
         .header(header::CACHE_CONTROL, "public, max-age=3600")
         .body(Body::from(bytes))
         .unwrap())
-}
-
-fn is_reserved_public_path(path: &str) -> bool {
-    path == "/favicon.ico"
-        || path == "/admin"
-        || path.starts_with("/admin/")
-        || path == "/static"
-        || path.starts_with("/static/")
-        || path == "/uploads"
-        || path.starts_with("/uploads/")
-        || path == "/api"
-        || path.starts_with("/api/")
 }
 
 /// URL を正規化する。ルート以外の末尾スラッシュを取り除く。

@@ -44,7 +44,7 @@ async fn update(
     let current = services::posts::find(&state.pool(), id).await?;
 
     let input = crate::models::post::PostInput {
-        placeholder_id: current.placeholder_id.unwrap_or(0), // 更新時は使われない想定
+        placeholder_id: current.placeholder_id.unwrap_or(0),
         title: payload.title.unwrap_or(current.title),
         content: payload.content.unwrap_or(current.content),
         excerpt: payload.excerpt.unwrap_or(current.excerpt),

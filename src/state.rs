@@ -45,6 +45,7 @@ impl AppState {
     pub async fn reload_storage(&self) -> AppResult<()> {
         let config = self.config.as_ref();
         let pool = db::connect(&config.database.path).await?;
+        db::migrate(&pool).await?;
         self.pool.store(Arc::new(pool));
         self.reload_templates();
         Ok(())

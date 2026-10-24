@@ -49,21 +49,32 @@ pub fn save_upload(
     Ok((relative_path, mime_type))
 }
 
-/// 相対パスで指定されたファイルを削除する。`uploads_root` 外へのパスは拒否する。
-pub fn delete_file(uploads_root: &str, relative_path: &str) -> AppResult<()> {
+/// 相対パスを解決し、`uploads_root` 内の既存ファイルパスを返す。
+pub fn resolve_upload_path(uploads_root: &str, relative_path: &str) -> AppResult<PathBuf> {
     let root = uploads_dir(uploads_root);
     let target = root.join(relative_path);
 
-    let canonical_root = root.canonicalize().unwrap_or(root.clone());
+    let canonical_root = root.canonicalize().unwrap_or(root);
     let canonical_target = target
         .canonicalize()
         .map_err(|_| AppError::NotFound)?;
 
     if !canonical_target.starts_with(&canonical_root) {
-        return Err(AppError::Conflict(
-            "不正なファイルパスです".to_string(),
-        ));
+        return Err(AppError::NotFound);
     }
+
+    if !canonical_target.is_file() {
+        return Err(AppError::NotFound);
+    }
+
+    Ok(canonical_target)
+}
+
+/// 相対パスで指定されたファイルを削除する。`uploads_root` 外へのパスは拒否する。
+pub fn delete_file(uploads_root: &str, relative_path: &str) -> AppResult<()> {
+    let canonical_target = resolve_upload_path(uploads_root, relative_path).map_err(|_| {
+        AppError::Conflict("不正なファイルパスです".to_string())
+    })?;
 
     match std::fs::remove_file(&canonical_target) {
         Ok(()) => Ok(()),
@@ -150,4 +161,18 @@ fn unique_name() -> String {
         .map(|d| d.as_nanos())
         .unwrap_or(0);
     format!("{nanos:032x}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn resolve_upload_path_rejects_escape_outside_root() {
+        let tmp = TempDir::new().expect("tempdir");
+        let root = tmp.path().to_str().expect("utf8");
+        ensure_uploads_dir(root).expect("mkdir");
+        assert!(resolve_upload_path(root, "../../../etc/passwd").is_err());
+    }
 }

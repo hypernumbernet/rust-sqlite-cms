@@ -5,6 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="/admin/favicon.ico" type="image/x-icon">
   <link rel="stylesheet" href="/admin/admin.css?v={{ layout.app_version }}">
+  {% if !layout.embed %}
+  <script>
+    (function () {
+      var STORAGE_KEY = 'admin.sidebar.width';
+      try {
+        var styles = getComputedStyle(document.documentElement);
+        function px(name, fallback) {
+          var value = parseFloat(styles.getPropertyValue(name));
+          return isFinite(value) ? value : fallback;
+        }
+        var minWidth = px('--admin-sidebar-width-min', 160);
+        var maxWidth = px('--admin-sidebar-width-max', 480);
+        var mainMin = px('--admin-sidebar-main-min', 360);
+        var width = parseFloat(localStorage.getItem(STORAGE_KEY));
+        if (!isFinite(width)) width = px('--admin-sidebar-width-default', 220);
+        width = Math.round(Math.max(minWidth, Math.min(width, maxWidth)));
+        var viewportMax = Math.max(minWidth, window.innerWidth - mainMin);
+        document.documentElement.style.setProperty(
+          '--admin-sidebar-width',
+          Math.round(Math.min(width, viewportMax)) + 'px'
+        );
+      } catch (e) {}
+    })();
+  </script>
+  {% endif %}
   <title>{% block title %}管理画面{% endblock %} - rust-sqlite-cms</title>
   {% if layout.embed %}
   <style>
@@ -59,6 +84,13 @@
         <a href="/admin/settings" class="{% block nav_settings %}{% endblock %}">設定</a>
       </nav>
     </aside>
+    <div
+      class="sidebar-resize-handle"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="サイドバーの幅"
+      tabindex="0"
+    ></div>
     {% endif %}
     <div class="main">
       <header class="topbar{% if layout.embed %} topbar--embed{% endif %}">

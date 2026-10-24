@@ -8,7 +8,12 @@
   --muted: #646970;
   --border: #dcdcde;
   --placeholder: #9ca3af76;
-  --admin-sidebar-width: 220px;
+  --admin-sidebar-width-default: 220px;
+  --admin-sidebar-width-min: 160px;
+  --admin-sidebar-width-max: 480px;
+  --admin-sidebar-main-min: 360px;
+  --admin-main-max-width: 1200px;
+  --admin-sidebar-width: var(--admin-sidebar-width-default);
   --admin-break-narrow: 860px;
   --admin-break-wide: 1080px;
   --code-editor-min-height: 280px;
@@ -40,6 +45,7 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 .sidebar .brand {
   padding: 18px 20px;
@@ -52,7 +58,14 @@ body {
   justify-content: space-between;
   gap: 8px;
 }
+.sidebar .brand-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sidebar .brand-version {
+  flex-shrink: 0;
   font-size: 11px;
   font-weight: 400;
   color: #8c8f94;
@@ -65,10 +78,59 @@ body {
   color: #c3c4c7;
   text-decoration: none;
   font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .sidebar nav a:hover { background: var(--sidebar-hover); color: #fff; }
 .sidebar nav a.active { background: var(--accent); color: #fff; }
-.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.sidebar-resize-handle {
+  position: relative;
+  z-index: 4;
+  flex: 0 0 0;
+  width: 0;
+  align-self: stretch;
+  cursor: col-resize;
+  touch-action: none;
+}
+.sidebar-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+}
+.sidebar-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -1px;
+  width: 2px;
+  background: transparent;
+  pointer-events: none;
+}
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle.is-active::after,
+.sidebar-resize-handle:focus-visible::after {
+  background: var(--accent);
+}
+.sidebar-resize-handle:focus {
+  outline: none;
+}
+body.is-sidebar-resizing,
+body.is-sidebar-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  max-width: var(--admin-main-max-width);
+}
 .topbar {
   background: var(--panel);
   border-bottom: 1px solid var(--border);
@@ -769,6 +831,11 @@ tr:last-child td { border-bottom: 0; }
 .panel-table td { vertical-align: top; }
 .panel-table th:last-child,
 .panel-table td:last-child { white-space: nowrap; }
+
+/* Only the DB table/view row browser uses the full width beside the sidebar. */
+.layout:has(#db-table-data-panel) .main {
+  max-width: none;
+}
 
 /* List table pages: content-sized height, scroll rows inside panel when tall */
 .layout:has(.panel.panel-table:not(.column-builder):not(.seed-builder)) {

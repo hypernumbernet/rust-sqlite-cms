@@ -4731,6 +4731,152 @@
     });
   }
 
+  function initSidebarResize() {
+    const sidebar = document.querySelector('.layout > .sidebar');
+    const handle = document.querySelector('.layout > .sidebar-resize-handle');
+    if (!sidebar || !handle) return;
+
+    const STORAGE_KEY = 'admin.sidebar.width';
+    const KEYBOARD_STEP = 16;
+    let preferred = readStoredWidth();
+    let dragging = false;
+    let pointerId = null;
+
+    function cssPx(name, fallback) {
+      const value = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue(name)
+      );
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function limits() {
+      return {
+        min: cssPx('--admin-sidebar-width-min', 160),
+        max: cssPx('--admin-sidebar-width-max', 480),
+        mainMin: cssPx('--admin-sidebar-main-min', 360),
+        defaultWidth: cssPx('--admin-sidebar-width-default', 220),
+      };
+    }
+
+    function readStoredWidth() {
+      try {
+        const value = Number.parseFloat(localStorage.getItem(STORAGE_KEY));
+        return Number.isFinite(value) ? value : null;
+      } catch (_err) {
+        return null;
+      }
+    }
+
+    function clampPreferred(width) {
+      const bound = limits();
+      if (!Number.isFinite(width)) return bound.defaultWidth;
+      return Math.round(Math.min(bound.max, Math.max(bound.min, width)));
+    }
+
+    function visualWidth(width) {
+      const bound = limits();
+      const next = clampPreferred(width);
+      const viewportMax = Math.max(bound.min, window.innerWidth - bound.mainMin);
+      return Math.round(Math.min(next, viewportMax));
+    }
+
+    function applyWidth(width, persist) {
+      preferred = clampPreferred(width);
+      const visual = visualWidth(preferred);
+      const bound = limits();
+      document.documentElement.style.setProperty('--admin-sidebar-width', visual + 'px');
+      handle.setAttribute('aria-valuemin', String(bound.min));
+      handle.setAttribute('aria-valuemax', String(bound.max));
+      handle.setAttribute('aria-valuenow', String(visual));
+      handle.setAttribute('aria-valuetext', visual + 'ピクセル');
+      if (!persist) return;
+      try {
+        localStorage.setItem(STORAGE_KEY, String(preferred));
+      } catch (_err) {
+        /* ignore quota / private mode */
+      }
+    }
+
+    function widthFromPointer(event) {
+      const layout = sidebar.parentElement;
+      const left = layout ? layout.getBoundingClientRect().left : 0;
+      return event.clientX - left;
+    }
+
+    function detachDocumentDrag() {
+      document.removeEventListener('pointermove', onPointerMove);
+      document.removeEventListener('pointerup', finishDrag);
+      document.removeEventListener('pointercancel', finishDrag);
+    }
+
+    function finishDrag(event) {
+      if (!dragging || event.pointerId !== pointerId) return;
+      dragging = false;
+      pointerId = null;
+      handle.classList.remove('is-active');
+      document.body.classList.remove('is-sidebar-resizing');
+      detachDocumentDrag();
+      applyWidth(preferred, true);
+    }
+
+    function onPointerMove(event) {
+      if (!dragging || event.pointerId !== pointerId) return;
+      applyWidth(widthFromPointer(event), false);
+    }
+
+    handle.addEventListener('pointerdown', function (event) {
+      if (dragging || !isPrimaryPointerButton(event)) return;
+      dragging = true;
+      pointerId = event.pointerId;
+      handle.classList.add('is-active');
+      document.body.classList.add('is-sidebar-resizing');
+      let captured = false;
+      try {
+        handle.setPointerCapture(event.pointerId);
+        captured = true;
+      } catch (_err) {
+        captured = false;
+      }
+      // setPointerCapture throws when the pointer is not active. Track on document.
+      if (!captured) {
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup', finishDrag);
+        document.addEventListener('pointercancel', finishDrag);
+      }
+      handle.focus({ preventScroll: true });
+      event.preventDefault();
+    });
+
+    handle.addEventListener('pointermove', onPointerMove);
+    handle.addEventListener('pointerup', finishDrag);
+    handle.addEventListener('pointercancel', finishDrag);
+
+    handle.addEventListener('keydown', function (event) {
+      const visual = sidebar.getBoundingClientRect().width;
+      const bound = limits();
+      const step = event.shiftKey ? KEYBOARD_STEP * 4 : KEYBOARD_STEP;
+      let next = null;
+      if (event.key === 'ArrowLeft') next = visual - step;
+      else if (event.key === 'ArrowRight') next = visual + step;
+      else if (event.key === 'Home') next = bound.min;
+      else if (event.key === 'End') next = bound.max;
+      else return;
+      event.preventDefault();
+      applyWidth(next, true);
+    });
+
+    handle.addEventListener('dblclick', function (event) {
+      event.preventDefault();
+      applyWidth(limits().defaultWidth, true);
+    });
+
+    window.addEventListener('resize', function () {
+      applyWidth(preferred, false);
+    });
+
+    applyWidth(preferred == null ? limits().defaultWidth : preferred, false);
+  }
+
   function initHelpTooltipButtons() {
     const buttons = document.querySelectorAll('.view-ui-select-mode-help[data-tooltip], .view-ui-distinct-help[data-tooltip]');
     if (!buttons.length) return;
@@ -4822,6 +4968,7 @@
     initViewDuplicate();
     initViewForm();
     initLayoutDuplicate();
+    initSidebarResize();
     initHelpTooltipButtons();
   }
 

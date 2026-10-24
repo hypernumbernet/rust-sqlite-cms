@@ -164,9 +164,16 @@ fn parse_table_source(source: TableSource<'_>) -> Option<(String, Option<String>
             let alias = table_ref.alias().and_then(name_text);
             Some((base_table, alias))
         }
-        TableSource::JoinClause(_) | TableSource::JoinPrefix(_) | TableSource::SubqueryTableSource(_) => {
-            None
+        // 0.13 keeps parentheses around a FROM term. A single parenthesized
+        // table is still the simple-view shape; the outer alias wins.
+        TableSource::ParenTableSource(paren) => {
+            let (base_table, inner_alias) = parse_table_source(paren.source()?)?;
+            let alias = paren.alias().and_then(name_text).or(inner_alias);
+            Some((base_table, alias))
         }
+        TableSource::JoinClause(_)
+        | TableSource::JoinPrefix(_)
+        | TableSource::SubqueryTableSource(_) => None,
     }
 }
 
@@ -524,6 +531,18 @@ mod tests {
     fn parse_rejects_join_for_phase2_prep() {
         let sql = "SELECT a.id FROM t1 a JOIN t2 b ON a.id = b.ref";
         assert!(super::parse_simple_view_select(sql).is_none());
+    }
+
+    #[test]
+    fn parse_parenthesized_from_keeps_outer_alias() {
+        let sql = r#"SELECT "n"."id" FROM ("custom_notes") AS "n""#;
+        let parsed = super::parse_simple_view_select(sql).expect("parsed");
+        assert_eq!(parsed.base_table, "custom_notes");
+        let ParsedViewColumnList::Columns(columns) = parsed.columns else {
+            panic!("expected columns");
+        };
+        assert_eq!(columns[0].name, "id");
+        assert!(columns[0].expression.is_none());
     }
 
     #[test]

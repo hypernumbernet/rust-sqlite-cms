@@ -22,7 +22,7 @@ Rust + SQLite を基盤とした軽量 CMS。公開サイトの HTML テンプ�
 | DB | SQLite（sqlx 0.9、マイグレーション） |
 | 設定 | figment（TOML + `CMS_` 環境変数） |
 | 認証 | tower-sessions、Argon2 |
-| ビュー SQL パース | syntaqlite 0.5 |
+| ビュー SQL パース | syntaqlite 0.13 |
 | バックアップ | zip（deflate） |
 | ログ | tracing |
 

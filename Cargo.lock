@@ -2077,9 +2077,9 @@ dependencies = [
 
 [[package]]
 name = "syntaqlite"
-version = "0.5.10"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09bb5edc6deaa5ca5edba7f41ca70ee83e25fded3c7c19683435a6ebb926726a"
+checksum = "863c0d46e4a43155e6c8bd911c62109de61f6235b33dbcbfc731403cd2e925b9"
 dependencies = [
  "syntaqlite-common",
  "syntaqlite-syntax",
@@ -2087,15 +2087,15 @@ dependencies = [
 
 [[package]]
 name = "syntaqlite-common"
-version = "0.5.10"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26a6c3659b9f55d4a0d13a59d071bdfb5325599f3f69571a65e79928653991a2"
+checksum = "e3a1d7209ff7491749fde9e23c182fbb773f866ce5fbed657dc50e0da4adf914"
 
 [[package]]
 name = "syntaqlite-syntax"
-version = "0.5.10"
+version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "014c03ce8ae79c1a139bc1ac1249a05a91081e76f1ffdac1780d6bb8e7301ce8"
+checksum = "c9f3d8b41231cb73acbae8e494b6a29be93a2405c7ed5da0b39174bb62058105"
 dependencies = [
  "cc",
 ]

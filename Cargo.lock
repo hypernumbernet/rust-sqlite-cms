@@ -1578,7 +1578,7 @@ dependencies = [
  "http-body-util",
  "minijinja",
  "minijinja-autoreload",
- "rand 0.8.8",
+ "rand 0.10.3",
  "serde",
  "serde_html_form",
  "serde_json",

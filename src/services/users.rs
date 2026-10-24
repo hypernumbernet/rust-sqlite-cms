@@ -1,10 +1,11 @@
 //! ユーザー管理サービス（CRUD・パスワードハッシュ・admin 保護）。
 
 use argon2::{
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
+    password_hash::{
+        rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
+    },
     Argon2,
 };
-use rand::rngs::OsRng;
 use sqlx::SqlitePool;
 
 use crate::error::{DomainError, DomainResult};

@@ -1,10 +1,9 @@
 use argon2::{
-    password_hash::{PasswordHasher, SaltString},
+    password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
     Argon2,
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use getrandom::fill;
-use rand::rngs::OsRng;
 use sqlx::SqlitePool;
 
 use crate::error::{AppError, AppResult};

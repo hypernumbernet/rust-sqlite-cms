@@ -4,8 +4,9 @@ use std::collections::{HashMap, HashSet};
 
 use chrono::{DateTime, Duration, FixedOffset, Local, NaiveDateTime, TimeZone};
 use futures_util::future::try_join_all;
-use rand::rngs::OsRng;
-use rand::Rng;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
+use rand::RngExt;
 use serde::Deserialize;
 use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
@@ -3461,7 +3462,7 @@ where
     }
 
     let mut tx = pool.begin().await?;
-    let mut rng = OsRng;
+    let mut rng = UnwrapErr(SysRng);
     let progress_interval = seed_progress_interval(count);
 
     if rules.is_empty() {
@@ -3520,27 +3521,27 @@ enum SeedCellValue {
     Blob(Vec<u8>),
 }
 
-fn generate_cell_value(rule: &ColumnSeedRule, rng: &mut impl Rng) -> DomainResult<SeedCellValue> {
+fn generate_cell_value(rule: &ColumnSeedRule, rng: &mut impl RngExt) -> DomainResult<SeedCellValue> {
     if should_generate_null(rule, rng) {
         return Ok(SeedCellValue::Null);
     }
 
     Ok(match rule {
         ColumnSeedRule::Integer { min, max, .. } => {
-            SeedCellValue::Integer(rng.gen_range(*min..=*max))
+            SeedCellValue::Integer(rng.random_range(*min..=*max))
         }
-        ColumnSeedRule::Real { min, max, .. } => SeedCellValue::Real(rng.gen_range(*min..*max)),
+        ColumnSeedRule::Real { min, max, .. } => SeedCellValue::Real(rng.random_range(*min..*max)),
         ColumnSeedRule::Text {
             min_len,
             max_len,
             charset,
             ..
         } => {
-            let len = rng.gen_range(*min_len..=*max_len);
+            let len = rng.random_range(*min_len..=*max_len);
             SeedCellValue::Text(random_string(*charset, len, rng))
         }
         ColumnSeedRule::Blob { min_len, max_len, .. } => {
-            let len = rng.gen_range(*min_len..=*max_len) as usize;
+            let len = rng.random_range(*min_len..=*max_len) as usize;
             SeedCellValue::Blob(random_bytes(len, rng))
         }
         ColumnSeedRule::Timestamp { from, to, .. } => {
@@ -3548,11 +3549,11 @@ fn generate_cell_value(rule: &ColumnSeedRule, rng: &mut impl Rng) -> DomainResul
             let to_dt = parse_form_datetime(to, "終了日時")?;
             SeedCellValue::Text(random_timestamp_between(from_dt, to_dt, rng))
         }
-        ColumnSeedRule::Boolean { .. } => SeedCellValue::Integer(if rng.gen_bool(0.5) { 1 } else { 0 }),
+        ColumnSeedRule::Boolean { .. } => SeedCellValue::Integer(if rng.random_bool(0.5) { 1 } else { 0 }),
     })
 }
 
-fn should_generate_null(rule: &ColumnSeedRule, rng: &mut impl Rng) -> bool {
+fn should_generate_null(rule: &ColumnSeedRule, rng: &mut impl RngExt) -> bool {
     let include_null = match rule {
         ColumnSeedRule::Integer { include_null, .. }
         | ColumnSeedRule::Real { include_null, .. }
@@ -3561,20 +3562,20 @@ fn should_generate_null(rule: &ColumnSeedRule, rng: &mut impl Rng) -> bool {
         | ColumnSeedRule::Timestamp { include_null, .. }
         | ColumnSeedRule::Boolean { include_null } => *include_null,
     };
-    include_null && rng.gen_bool(NULL_SEED_PROBABILITY)
+    include_null && rng.random_bool(NULL_SEED_PROBABILITY)
 }
 
-fn random_string(charset: StringCharset, len: u32, rng: &mut impl Rng) -> String {
+fn random_string(charset: StringCharset, len: u32, rng: &mut impl RngExt) -> String {
     let len = len as usize;
     match charset {
         StringCharset::AsciiAlnum => {
             (0..len)
-                .map(|_| ASCII_ALNUM[rng.gen_range(0..ASCII_ALNUM.len())] as char)
+                .map(|_| ASCII_ALNUM[rng.random_range(0..ASCII_ALNUM.len())] as char)
                 .collect()
         }
         StringCharset::AsciiPrintable => {
             (0..len)
-                .map(|_| ASCII_PRINTABLE[rng.gen_range(0..ASCII_PRINTABLE.len())] as char)
+                .map(|_| ASCII_PRINTABLE[rng.random_range(0..ASCII_PRINTABLE.len())] as char)
                 .collect()
         }
         StringCharset::Japanese => {
@@ -3585,26 +3586,26 @@ fn random_string(charset: StringCharset, len: u32, rng: &mut impl Rng) -> String
                 .chain(ASCII_ALNUM.iter().map(|&b| b as char))
                 .collect();
             (0..len)
-                .map(|_| pool[rng.gen_range(0..pool.len())])
+                .map(|_| pool[rng.random_range(0..pool.len())])
                 .collect()
         }
     }
 }
 
-fn random_bytes(len: usize, rng: &mut impl Rng) -> Vec<u8> {
-    (0..len).map(|_| rng.gen_range(0..=255)).collect()
+fn random_bytes(len: usize, rng: &mut impl RngExt) -> Vec<u8> {
+    (0..len).map(|_| rng.random_range(0..=255)).collect()
 }
 
 fn random_timestamp_between(
     from: NaiveDateTime,
     to: NaiveDateTime,
-    rng: &mut impl Rng,
+    rng: &mut impl RngExt,
 ) -> String {
     let diff_secs = to.signed_duration_since(from).num_seconds();
     let offset = if diff_secs <= 0 {
         0
     } else {
-        rng.gen_range(0..=diff_secs)
+        rng.random_range(0..=diff_secs)
     };
     (from + Duration::seconds(offset))
         .format("%Y-%m-%dT%H:%M:%SZ")

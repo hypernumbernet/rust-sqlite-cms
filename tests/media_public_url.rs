@@ -9,7 +9,7 @@ use rust_sqlite_cms::{
     media,
     models::media::MediaInput,
     page_render,
-    repos::{media as media_repo, pages},
+    repos::{media as media_repo, pages, postmeta},
     services,
 };
 use tower::ServiceExt;
@@ -180,6 +180,34 @@ async fn rejects_duplicate_public_url() {
         AppError::Conflict(msg) => assert!(msg.contains("shared.png")),
         other => panic!("expected Conflict, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn custom_public_url_cannot_read_files_outside_uploads() {
+    let app = common::TestApp::new().await;
+    let pool = app.state.pool();
+    let media_id = insert_png_media(&app, "safe.png").await;
+
+    postmeta::set(&pool, media_id, "file_path", "../../../etc/passwd")
+        .await
+        .expect("tamper file_path");
+    postmeta::set(&pool, media_id, "public_url", "/evil-escape.png")
+        .await
+        .expect("tamper public_url");
+
+    let response = app
+        .app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("http://localhost/evil-escape.png")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .expect("request");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

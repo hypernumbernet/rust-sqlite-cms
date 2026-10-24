@@ -97,7 +97,7 @@ data/cms.db             SQLite（パスは設定可）
 migrations/             マイグレーション
 presets/                初回シード・サンプルセット
 assets/                 管理画面 CSS/JS（バイナリ埋め込み）
-src/templates/          管理画面 Askama テンプレート
+templates/              管理画面 Askama テンプレート
 tests/                  統合テスト
 ```
 

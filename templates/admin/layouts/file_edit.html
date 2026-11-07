@@ -9,8 +9,8 @@
   <section class="panel">
     {% if is_new_file %}
     <div class="field">
-      <label for="relative_path">パス（static/ からの相対）</label>
-      <input id="relative_path" name="relative_path" type="text" value="{{ relative_path }}" required placeholder="例: site.css, js/app.js">
+      <label for="relative_path">{{ layout.t("admin.path_relative_to_static") }}</label>
+      <input id="relative_path" name="relative_path" type="text" value="{{ relative_path }}" required placeholder="{{ layout.t("admin.e_g_site_css_js_app_js") }}">
     </div>
     {% endif %}
     <div class="field field--grow">
@@ -24,8 +24,8 @@
 
   <aside class="panel">
     <div class="actions">
-      <button class="button" type="submit">保存する</button>
-      <a class="button secondary" href="{{ back_url }}">レイアウトに戻る</a>
+      <button class="button" type="submit">{{ layout.t("admin.save") }}</button>
+      <a class="button secondary" href="{{ back_url }}">{{ layout.t("admin.layouts.back_to_layout") }}</a>
     </div>
   </aside>
 </form>

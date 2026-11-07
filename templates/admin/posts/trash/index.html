@@ -1,13 +1,13 @@
 {% extends "admin/base.html" %}
 
-{% block title %}ゴミ箱{% endblock %}
+{% block title %}{{ layout.t("breadcrumb.trash") }}{% endblock %}
 {% block nav_posts %}active{% endblock %}
-{% block heading %}ゴミ箱{% endblock %}
+{% block heading %}{{ layout.t("breadcrumb.trash") }}{% endblock %}
 
 {% block content %}
 <div class="toolbar">
-  <p>削除した投稿エントリです。復元するか、完全に削除できます。</p>
-  <a class="button secondary" href="/admin/posts">投稿一覧へ</a>
+  <p>{{ layout.t("admin.posts.trashed_post_entries_restore_or_delete_permanently") }}</p>
+  <a class="button secondary" href="/admin/posts">{{ layout.t("admin.posts.back_to_posts") }}</a>
 </div>
 
 <section class="panel panel-table">
@@ -15,11 +15,11 @@
   <table>
     <thead>
       <tr>
-        <th>タイトル</th>
-        <th>プレースホルダー</th>
-        <th>種別</th>
-        <th>ゴミ箱に入れた日</th>
-        <th>操作</th>
+        <th>{{ layout.t("admin.title") }}</th>
+        <th>{{ layout.t("admin.posts.placeholder") }}</th>
+        <th>{{ layout.t("admin.type_2") }}</th>
+        <th>{{ layout.t("admin.trash.trashed_at") }}</th>
+        <th>{{ layout.t("admin.actions") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -38,11 +38,11 @@
           <div class="op-actions">
             {% if item.can_restore %}
             <form method="post" action="/admin/posts/trash/{{ item.id }}/restore">
-              <button class="button secondary" type="submit">復元</button>
+              <button class="button secondary" type="submit">{{ layout.t("admin.restore") }}</button>
             </form>
             {% endif %}
-            <form method="post" action="/admin/posts/trash/{{ item.id }}/purge" data-confirm="完全に削除すると元に戻せません。続行しますか？">
-              <button class="button danger" type="submit">完全に削除</button>
+            <form method="post" action="/admin/posts/trash/{{ item.id }}/purge" data-confirm="{{ layout.t("admin.delete_permanently") }}{{ layout.t("admin.confirm.cannot_undo_continue") }}{{ layout.t("admin.confirm.continue_question") }}">
+              <button class="button danger" type="submit">{{ layout.t("admin.delete_permanently") }}</button>
             </form>
           </div>
         </td>
@@ -52,7 +52,7 @@
   </table>
   {% else %}
   <div class="empty">
-    ゴミ箱は空です。<a href="/admin/posts">投稿一覧</a>に戻る
+    {{ layout.t("admin.trash.trash_is_empty") }}<a href="/admin/posts">{{ layout.t("admin.posts.post_list") }}</a>{{ layout.t("admin.en_2") }}
   </div>
   {% endif %}
 </section>

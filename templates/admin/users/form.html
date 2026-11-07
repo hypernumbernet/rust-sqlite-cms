@@ -12,28 +12,28 @@
 <form method="post" action="{{ action }}" class="form-layout">
   <section class="panel">
     <div class="field">
-      <label for="login">ログイン名</label>
+      <label for="login">{{ layout.t("login.username_label") }}</label>
       {% if login_readonly %}
       <input id="login" name="login" type="text" value="{{ login }}" readonly>
-      <p class="help">既定ユーザー <code>admin</code> のログイン名は変更できません。</p>
+      <p class="help">{{ layout.t("admin.users.default_user") }} <code>admin</code> {{ layout.t("admin.login_name_cannot_be_changed") }}</p>
       {% else %}
       <input id="login" name="login" type="text" maxlength="60" value="{{ login }}" required>
-      <p class="help">英数字・ハイフン・アンダースコアのみ。ログイン機能実装時に使用します。</p>
+      <p class="help">{{ layout.t("admin.alphanumeric_hyphen_underscore_only_used_when_login_is_i") }}</p>
       {% endif %}
     </div>
 
     <div class="field">
-      <label for="display_name">表示名</label>
+      <label for="display_name">{{ layout.t("admin.display_name") }}</label>
       <input id="display_name" name="display_name" type="text" maxlength="100" value="{{ display_name }}" required>
     </div>
 
     <div class="field">
-      <label>ロール</label>
-      <p class="help">{{ role_label }}（現時点では管理者ロールのみ）</p>
+      <label>{{ layout.t("admin.role") }}</label>
+      <p class="help">{{ role_label }}{{ layout.t("admin.administrator_role_only_for_now") }}</p>
     </div>
 
     <div class="field">
-      <label for="password">パスワード{% if is_edit %}（変更時のみ）{% endif %}</label>
+      <label for="password">{{ layout.t("login.password_label") }}{% if is_edit %}{{ layout.t("login.password_only_when_changing") }}{% endif %}</label>
       <input id="password" name="password" type="password" autocomplete="new-password" {% if !is_edit %}required{% endif %}>
       <p class="help">{{ password_help }}</p>
     </div>
@@ -42,7 +42,7 @@
   <aside class="panel">
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
-      <a class="button secondary" href="/admin/users">一覧に戻る</a>
+      <a class="button secondary" href="/admin/users">{{ layout.t("admin.back_to_list") }}</a>
     </div>
   </aside>
 </form>

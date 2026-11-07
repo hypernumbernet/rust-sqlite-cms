@@ -1,13 +1,13 @@
 <div class="field">
-  <label>インスタンス設定</label>
+  <label>{{ layout.t("admin.settings.instance_settings") }}</label>
   <p class="help mb-8">
-    ウィジェットマスターで定義されたスキーマに基づいて入力欄が自動生成されます。<br>
-    未入力の項目はウィジェットタイプのデフォルト値が使用されます。
+    {{ layout.t("admin.widgets.fields_are_auto_generated_from_the_schema_defined_in_the") }}<br>
+    {{ layout.t("admin.widgets.empty_fields_use_the_widget_type_default") }}
   </p>
   <div id="dynamic-config-fields" class="dynamic-config-fields"></div>
   <input type="hidden" id="config" name="config" value="{{ config }}">
   <details class="config-json-details">
-    <summary>JSONで直接編集（上級者向け）</summary>
+    <summary>{{ layout.t("admin.edit_json_directly_advanced") }}</summary>
     <textarea id="config-raw" class="config-json-raw" rows="3">{{ config }}</textarea>
   </details>
 </div>

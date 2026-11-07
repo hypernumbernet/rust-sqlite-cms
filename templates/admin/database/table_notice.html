@@ -1,11 +1,11 @@
 {% extends "admin/base.html" %}
 
-{% block title %}{{ table_name }} — DB管理{% endblock %}
+{% block title %}{{ table_name }}{{ layout.t("breadcrumb.table_db_admin_suffix") }}{% endblock %}
 {% block nav_database %}active{% endblock %}
-{% block heading %}{{ table_name }} — DB管理{% endblock %}
+{% block heading %}{{ table_name }}{{ layout.t("breadcrumb.table_db_admin_suffix") }}{% endblock %}
 
 {% block content %}
 <div class="notice info">{{ message }}</div>
 
-<p><a class="button secondary" href="/admin/database">DB管理に戻る</a></p>
+<p><a class="button secondary" href="/admin/database">{{ layout.t("admin.database.back_to_database_admin") }}</a></p>
 {% endblock %}

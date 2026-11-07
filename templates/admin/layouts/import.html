@@ -1,37 +1,37 @@
 {% extends "admin/base.html" %}
 
-{% block title %}レイアウトをインポート{% endblock %}
+{% block title %}{{ layout.t("admin.layouts.import_layout") }}{% endblock %}
 {% block nav_layouts %}active{% endblock %}
-{% block heading %}レイアウトをインポート{% endblock %}
+{% block heading %}{{ layout.t("admin.layouts.import_layout") }}{% endblock %}
 
 {% block content %}
 <section class="panel">
-  <p class="help mb-12">ZIP パッケージ（<code>format_version: 1</code>）をアップロードすると、新しいレイアウトの登録または既存レイアウトの更新ができます。ウィジェット・プレースホルダーは含まれません。インポート直後のページは URL 未設定・非公開です。公開するには管理画面のページ編集から URL を設定してください。</p>
+  <p class="help mb-12">{{ layout.t("admin.backup.zip_package") }}<code>format_version: 1</code>{{ layout.t("admin.widgets.to_register_or_update_a_layout_widgets_placeholders_are") }}</p>
   <form method="post" action="/admin/layouts/import" enctype="multipart/form-data">
     <div class="field">
-      <label for="package">パッケージファイル（.zip）</label>
+      <label for="package">{{ layout.t("admin.package_file_zip") }}</label>
       <input id="package" name="package" type="file" accept="application/zip,.zip" required>
     </div>
     <div class="field">
-      <label>既存の layout key がある場合</label>
+      <label>{{ layout.t("admin.if_an_existing_layout_key_exists") }}</label>
       <label class="label-option">
-        <input type="radio" name="mode" value="overwrite" checked> 上書きする
+        <input type="radio" name="mode" value="overwrite" checked> {{ layout.t("admin.overwrite") }}
       </label>
       <label class="label-option">
-        <input type="radio" name="mode" value="skip"> スキップする（変更しない）
+        <input type="radio" name="mode" value="skip"> {{ layout.t("admin.skip_no_change") }}
       </label>
       <label class="label-option">
-        <input type="radio" name="mode" value="rename"> 別の key でインポートする（新規作成）
+        <input type="radio" name="mode" value="rename"> {{ layout.t("admin.import_under_a_new_key_create_new") }}
       </label>
     </div>
     <div class="field">
-      <label for="target_key">インポート先 layout key</label>
-      <input id="target_key" name="target_key" type="text" placeholder="例: corporate-copy">
-      <p class="help">「別の key でインポートする」を選んだときに指定してください。英数字・ハイフン・アンダースコアのみ。</p>
+      <label for="target_key">{{ layout.t("admin.import_target_layout_key") }}</label>
+      <input id="target_key" name="target_key" type="text" placeholder="{{ layout.t("admin.e_g_corporate_copy") }}">
+      <p class="help">{{ layout.t("admin.specify_when_choosing_import_under_a_new_key_alphanumeri") }}</p>
     </div>
     <div class="actions">
-      <button class="button" type="submit">インポート</button>
-      <a class="button secondary" href="/admin/layouts">一覧に戻る</a>
+      <button class="button" type="submit">{{ layout.t("breadcrumb.import") }}</button>
+      <a class="button secondary" href="/admin/layouts">{{ layout.t("admin.back_to_list") }}</a>
     </div>
   </form>
 </section>

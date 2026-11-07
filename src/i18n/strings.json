@@ -1,0 +1,1862 @@
+{
+  "admin.accessibility_alt_text_uses_the_file_name_when_empty": {
+    "en": "Accessibility alt text. Uses the file name when empty.",
+    "ja": "アクセシビリティ用の代替テキスト。空の場合はファイル名が使われます。"
+  },
+  "admin.actions": {
+    "en": "Actions",
+    "ja": "操作"
+  },
+  "admin.add_text_file": {
+    "en": "Add text file",
+    "ja": "テキストファイルを追加"
+  },
+  "admin.adding_renaming_columns_keeps_row_data_only_removed_colu": {
+    "en": "Adding/renaming columns keeps row data; only removed column data is lost. Cannot change column types except NOT NULL to nullable.",
+    "ja": "列の追加・改名は既存の行データを保持します。削除した列のデータのみ失われます。既存列の型は変更できません。NOT NULL から NULL 可への変更のみ可能です。"
+  },
+  "admin.admin_rust_sqlite_cms": {
+    "en": "Admin - rust-sqlite-cms",
+    "ja": "管理画面 - rust-sqlite-cms"
+  },
+  "admin.administrator_role_only_for_now": {
+    "en": "(administrator role only for now)",
+    "ja": "（現時点では管理者ロールのみ）"
+  },
+  "admin.after_creation_you_can_edit_shell_html_site_css_etc_defa": {
+    "en": "After creation you can edit shell.html, site.css, etc. Default shell and site.css are created automatically.",
+    "ja": "作成後、shell.html や site.css などのファイルを編集できます。既定の shell と site.css は自動で用意されます。"
+  },
+  "admin.aggregate": {
+    "en": "Aggregate",
+    "ja": "集計"
+  },
+  "admin.alphanumeric": {
+    "en": "Alphanumeric",
+    "ja": "英数字"
+  },
+  "admin.alphanumeric_hyphen_underscore": {
+    "en": "). Alphanumeric, hyphen, underscore.",
+    "ja": "）。英数字・ハイフン・アンダースコア。"
+  },
+  "admin.alphanumeric_hyphen_underscore_only_cannot_start_with": {
+    "en": "Alphanumeric, hyphen, underscore only (cannot start with _)",
+    "ja": "英数字・ハイフン・アンダースコアのみ（先頭に _ は不可）"
+  },
+  "admin.alphanumeric_hyphen_underscore_only_used_when_login_is_i": {
+    "en": "Alphanumeric, hyphen, underscore only. Used when login is implemented.",
+    "ja": "英数字・ハイフン・アンダースコアのみ。ログイン機能実装時に使用します。"
+  },
+  "admin.alt_text": {
+    "en": "Alt text",
+    "ja": "alt テキスト"
+  },
+  "admin.and_control_characters": {
+    "en": "and control characters ·",
+    "ja": "および制御文字・"
+  },
+  "admin.appropriate_data_is_passed_for_the_type": {
+    "en": "Appropriate data is passed for the type.",
+    "ja": "タイプに応じたデータが渡されます。"
+  },
+  "admin.are_added_on_this_screen": {
+    "en": " are added on this screen.",
+    "ja": "画面で追加します。"
+  },
+  "admin.array": {
+    "en": "(array),",
+    "ja": "（配列）,"
+  },
+  "admin.as_output": {
+    "en": " as output.",
+    "ja": "として出力されます。"
+  },
+  "admin.ascii_printable": {
+    "en": "ASCII printable",
+    "ja": "ASCII印字可能"
+  },
+  "admin.back": {
+    "en": "Back",
+    "ja": "戻る"
+  },
+  "admin.back_to_data_list": {
+    "en": "Back to data list",
+    "ja": "データ一覧に戻る"
+  },
+  "admin.back_to_list": {
+    "en": "Back to list",
+    "ja": "一覧に戻る"
+  },
+  "admin.backup.applying_the_backup_zip_replaces_the_current_database_an": {
+    "en": "Applying the backup ZIP replaces the current database and files under work/",
+    "ja": "バックアップ ZIP を適用すると、現在のデータベースと work/ 配下のファイルが"
+  },
+  "admin.backup.backup_created_at": {
+    "en": "Backup created at:",
+    "ja": "バックアップ作成日時:"
+  },
+  "admin.backup.backup_file_zip": {
+    "en": "Backup file (.zip)",
+    "ja": "バックアップファイル（.zip）"
+  },
+  "admin.backup.confirm_restore_prompt": {
+    "en": "Really restore from backup? All current data will be lost.",
+    "ja": "本当にバックアップからリストアしますか？現在のデータはすべて失われます。"
+  },
+  "admin.backup.download_all_site_data_as_a_single_zip_file": {
+    "en": "Download all site data as a single ZIP file.",
+    "ja": "サイトの全データを ZIP 1 ファイルにまとめてダウンロードします。"
+  },
+  "admin.backup.download_backup": {
+    "en": "Download backup",
+    "ja": "バックアップをダウンロード"
+  },
+  "admin.backup.layout_and_pages": {
+    "en": "Layouts and page bodies (",
+    "ja": "レイアウトとページ本文（"
+  },
+  "admin.backup.only_zip_files_exported_from_this_cms_are_supported_no_s": {
+    "en": "Only ZIP files exported from this CMS are supported. No server restart is needed after restore.",
+    "ja": "この CMS からエクスポートした ZIP のみ対応しています。リストア後もサーバーの再起動は不要です。"
+  },
+  "admin.backup.restore": {
+    "en": "Restore",
+    "ja": "リストア"
+  },
+  "admin.backup.run_restore": {
+    "en": "Run restore",
+    "ja": "リストアを実行"
+  },
+  "admin.backup.section_title": {
+    "en": "Backup",
+    "ja": "バックアップ"
+  },
+  "admin.backup.zip_package": {
+    "en": "ZIP package (",
+    "ja": "ZIP パッケージ（"
+  },
+  "admin.becomes_unpublished": {
+    "en": ") becomes unpublished,",
+    "ja": "）を非公開にすると"
+  },
+  "admin.binary": {
+    "en": "Binary",
+    "ja": "バイナリ"
+  },
+  "admin.body": {
+    "en": "Body",
+    "ja": "本文"
+  },
+  "admin.boolean": {
+    "en": "Boolean",
+    "ja": "真偽値"
+  },
+  "admin.breadcrumb": {
+    "en": "Breadcrumb",
+    "ja": "パンくずリスト"
+  },
+  "admin.by_line_number": {
+    "en": "By line number",
+    "ja": "行番号指定"
+  },
+  "admin.cancel": {
+    "en": "Cancel",
+    "ja": "キャンセル"
+  },
+  "admin.change_that_url_first_leaving_empty_saves_as_draft": {
+    "en": ", change that URL first. Leaving empty saves as draft.",
+    "ja": "の場合は先にその URL を変更してください。空のままだと下書きとして保存します。"
+  },
+  "admin.character_set": {
+    "en": "Character set",
+    "ja": "文字種"
+  },
+  "admin.clear_all_filters": {
+    "en": "Clear all filters",
+    "ja": "フィルターをすべて解除"
+  },
+  "admin.clear_all_sorts": {
+    "en": "Clear all sorts",
+    "ja": "ソートをすべて解除"
+  },
+  "admin.columns_are_added_automatically": {
+    "en": "Columns are added automatically.",
+    "ja": "列は自動で追加されます。"
+  },
+  "admin.columns_are_auto_numbered": {
+    "en": "Columns are auto-numbered.",
+    "ja": "列は自動採番されます。"
+  },
+  "admin.confirm.cannot_undo_continue": {
+    "en": " cannot be undone. ",
+    "ja": "すると元に戻せません。"
+  },
+  "admin.confirm.continue_question": {
+    "en": "Continue?",
+    "ja": "続行しますか？"
+  },
+  "admin.confirm.delete_placeholder_and_posts": {
+    "en": "Delete placeholder \"{{ placeholder.name }}\" and its posts?",
+    "ja": "「{{ placeholder.name }}」と配下の投稿を削除しますか？"
+  },
+  "admin.confirm.delete_this": {
+    "en": "This ",
+    "ja": "この"
+  },
+  "admin.confirm.delete_widget": {
+    "en": " delete?",
+    "ja": "を削除しますか？"
+  },
+  "admin.confirm.delete_widget_type": {
+    "en": "Delete widget \"{{ type_label }}\"?",
+    "ja": "「{{ type_label }}」を削除しますか？"
+  },
+  "admin.confirm.delete_widget_type_with_label": {
+    "en": "Delete \"{{ widget_type.type_label }}\"?",
+    "ja": "「{{ widget_type.type_label }}」を削除しますか？"
+  },
+  "admin.confirm.install_question": {
+    "en": " install this?",
+    "ja": "をインストールしますか？"
+  },
+  "admin.confirm.move_to_trash_question": {
+    "en": " Move to trash?",
+    "ja": "に移動します。よろしいですか？"
+  },
+  "admin.confirm.posts_moved_to_trash": {
+    "en": "Posts will be moved to trash.",
+    "ja": "投稿はゴミ箱に移動します。"
+  },
+  "admin.confirm.publish_layout_replace": {
+    "en": " replace on the live site? All published pages become unpublished and URLs cleared.",
+    "ja": "を公開サイトに差し替えますか？現在公開中のページはすべて非公開になり、URL が解除されます。"
+  },
+  "admin.confirm.purge_image": {
+    "en": "Move this image to trash?",
+    "ja": "この画像をゴミ箱に移動します。よろしいですか？"
+  },
+  "admin.confirm.purge_post": {
+    "en": "Move this post to trash?",
+    "ja": "この投稿をゴミ箱に移動します。よろしいですか？"
+  },
+  "admin.confirm.purge_slide": {
+    "en": "Move this slide to trash?",
+    "ja": "このスライドをゴミ箱に移動します。よろしいですか？"
+  },
+  "admin.confirm.question_mark": {
+    "en": "?",
+    "ja": "しますか？"
+  },
+  "admin.confirm.really_restore": {
+    "en": "Really ",
+    "ja": "本当に"
+  },
+  "admin.confirm.same_data_skip": {
+    "en": "Skipped if data with the same name exists.",
+    "ja": "同名のデータがある場合は追加されません。"
+  },
+  "admin.confirm.same_table_skip": {
+    "en": "Skipped if a table with the same name exists.",
+    "ja": "同名のテーブルがある場合は追加されません。"
+  },
+  "admin.confirm.will_be_lost": {
+    "en": " will be lost.",
+    "ja": "はすべて失われます。"
+  },
+  "admin.confirm_move": {
+    "en": "Confirm move",
+    "ja": "移動の確認"
+  },
+  "admin.continue": {
+    "en": "Continue",
+    "ja": "続行"
+  },
+  "admin.create_blank": {
+    "en": "Create blank",
+    "ja": "空のまま作成"
+  },
+  "admin.create_empty": {
+    "en": "Create empty",
+    "ja": "空から作成"
+  },
+  "admin.create_with_this_design": {
+    "en": "Create with this design",
+    "ja": "このデザインで作成"
+  },
+  "admin.css_margin_e_g_16px_8px_16px_optional": {
+    "en": "CSS margin (e.g. 16px, 8px 16px). Optional.",
+    "ja": "CSS margin 形式（例: 16px、8px 16px）。空可。"
+  },
+  "admin.css_size_e_g_100_600px": {
+    "en": "CSS size (e.g. 100%, 600px)",
+    "ja": "CSS サイズ（例: 100%、600px）"
+  },
+  "admin.css_size_e_g_400px_50vh": {
+    "en": "CSS size (e.g. 400px, 50vh)",
+    "ja": "CSS サイズ（例: 400px、50vh）"
+  },
+  "admin.current_data": {
+    "en": "Current data",
+    "ja": "現在のデータ"
+  },
+  "admin.current_status": {
+    "en": "Current status:",
+    "ja": "現在の状態:"
+  },
+  "admin.dashboard.welcome_suffix": {
+    "en": "Welcome",
+    "ja": "へようこそ"
+  },
+  "admin.data": {
+    "en": "Data",
+    "ja": "データ"
+  },
+  "admin.database.add_column": {
+    "en": "Add column",
+    "ja": "カラムを追加"
+  },
+  "admin.database.add_layout_sets_and_db_table_sets_without_affecting_exis": {
+    "en": "Add layout sets and DB table sets without affecting existing data. Installation aborts if conflicting names exist.",
+    "ja": "レイアウトセットと DBテーブルセットを、既存データに影響を与えずに追加できます。同名のデータがある場合は安全のためインストールを中止します。"
+  },
+  "admin.database.add_remove_columns_same_column_may_repeat_choose_enter_e": {
+    "en": "Add/remove columns; same column may repeat. Choose “Enter expression” to add an expression (e.g.",
+    "ja": "カラムを追加・削除できます。同じカラムを複数回追加できます。カラム選択で「式を入力」を選ぶと、式（例:"
+  },
+  "admin.database.back_to_database_admin": {
+    "en": "Back to database admin",
+    "ja": "DB管理に戻る"
+  },
+  "admin.database.can_be_added_each_row_s_column_field_is_a_name_or_expres": {
+    "en": ") can be added. Each row’s column field is a name or expression. Checkboxes include columns in output. Columns used only in WHERE appear unchecked. Alias sets output names (defaults to name/expression). Output names must be unique. Enter WHERE conditions (e.g.",
+    "ja": "）を追加できます。各行のカラム名欄はカラム名または式を直接編集できます。チェックボックスで出力に含めるかどうかを指定できます。WHERE 条件のみで出力しないカラムは、チェックが外れた状態で表示されます。別名欄で出力列名を指定できます（未入力時は元のカラム名または式）。出力列名（別名または元カラム名・式）は重複できません。WHERE 欄には条件部分を入力してください（例:"
+  },
+  "admin.database.cms_system_table_data_is_read_only_cannot_edit_columns_o": {
+    "en": "CMS system table data is read-only. Cannot edit columns or generate test data.",
+    "ja": "CMSシステムテーブルのデータは閲覧専用です。列編集・テストデータ生成はできません。"
+  },
+  "admin.database.column": {
+    "en": "Column",
+    "ja": "カラム"
+  },
+  "admin.database.column_name": {
+    "en": "Column name",
+    "ja": "カラム名"
+  },
+  "admin.database.column_type": {
+    "en": "Type",
+    "ja": "型"
+  },
+  "admin.database.columns_are_added_automatically_define_only_extra_column": {
+    "en": "Columns are added automatically. Define only extra columns here. Column names may be Unicode (",
+    "ja": "列は自動で追加されます。ここでは追加カラムのみ定義してください。カラム名も Unicode 可（"
+  },
+  "admin.database.columns_to_add": {
+    "en": "Columns to add",
+    "ja": "追加するカラム"
+  },
+  "admin.database.db_table_set": {
+    "en": "DB table set",
+    "ja": "DBテーブルセット"
+  },
+  "admin.database.duplicate_table": {
+    "en": "Duplicate table",
+    "ja": "テーブルを複製"
+  },
+  "admin.database.duplicate_table_name": {
+    "en": "Duplicate table name",
+    "ja": "複製先テーブル名"
+  },
+  "admin.database.duplicate_view": {
+    "en": "Duplicate view",
+    "ja": "ビューを複製"
+  },
+  "admin.database.duplicate_view_name": {
+    "en": "Duplicate view name",
+    "ja": "複製先ビュー名"
+  },
+  "admin.database.in_expression_rows_enter_the_expression_in_the_column_na": {
+    "en": "). In expression rows, enter the expression in the column name field (e.g.",
+    "ja": "）。式の行では、カラム名欄に式（例:"
+  },
+  "admin.database.loading_column_list": {
+    "en": "Loading column list…",
+    "ja": "カラム一覧を読み込み中…"
+  },
+  "admin.database.max_120_chars_no_control_chars_quotes_semicolons_cms_cor": {
+    "en": "Max 120 chars. No control chars, quotes, semicolons, /, \\. CMS core table names are reserved.",
+    "ja": "120 文字以内。制御文字・ダブルクォート・セミコロン・/・\\ は使用できません。CMS コアテーブル名は使用できません。"
+  },
+  "admin.database.no_tables": {
+    "en": "No tables.",
+    "ja": "テーブルがありません。"
+  },
+  "admin.database.no_user_defined_columns": {
+    "en": "No user-defined columns.",
+    "ja": "ユーザー定義カラムがありません。"
+  },
+  "admin.database.no_views": {
+    "en": "No views.",
+    "ja": "ビューがありません。"
+  },
+  "admin.database.open_in_database_admin": {
+    "en": "Open in database admin",
+    "ja": "DB管理で確認する"
+  },
+  "admin.database.per_column_generation": {
+    "en": "Per-column generation",
+    "ja": "カラムごとの生成設定"
+  },
+  "admin.database.preview_error": {
+    "en": "Preview error",
+    "ja": "プレビューエラー"
+  },
+  "admin.database.preview_error_rust_sqlite_cms": {
+    "en": "Preview error - rust-sqlite-cms",
+    "ja": "プレビューエラー - rust-sqlite-cms"
+  },
+  "admin.database.preview_from_page_list": {
+    "en": "Preview from page list",
+    "ja": "ページ一覧でプレビュー"
+  },
+  "admin.database.seed_count_prefix": {
+    "en": "1–",
+    "ja": "1〜"
+  },
+  "admin.database.seed_count_suffix": {
+    "en": " items at most.",
+    "ja": " 件まで指定できます。"
+  },
+  "admin.database.select_column": {
+    "en": "Select column",
+    "ja": "カラムを選択"
+  },
+  "admin.database.select_help_tooltip": {
+    "en": "Empty means a normal SELECT. Distinct adds SELECT DISTINCT. Aggregate adds GROUP BY on all output columns.",
+    "ja": "空欄は通常の SELECT です。重複排除は SELECT DISTINCT を付与します。集計は出力カラムすべてで GROUP BY を付与します。"
+  },
+  "admin.database.select_table": {
+    "en": "Select table",
+    "ja": "テーブルを選択"
+  },
+  "admin.database.selecting_a_source_table_shows_its_columns": {
+    "en": "Selecting a source table shows its columns.",
+    "ja": "元テーブルを選択するとカラム一覧が表示されます。"
+  },
+  "admin.database.source_table": {
+    "en": "Source table",
+    "ja": "元テーブル"
+  },
+  "admin.database.sql_editor": {
+    "en": "SQL editor",
+    "ja": "SQL編集"
+  },
+  "admin.database.sqlite_database_posts_pages_widgets_users_settings": {
+    "en": "SQLite database (posts, pages, widgets, users, settings)",
+    "ja": "SQLite データベース（投稿・ページ・ウィジェット・ユーザー・設定）"
+  },
+  "admin.database.starts_unpublished_after_install_preview_from_pages_then": {
+    "en": "Starts unpublished after install. Preview from pages, then publish the site from layouts via “Publish to site” (",
+    "ja": "インストール直後は非公開です。ページ一覧のプレビューで内容を確認し、整備後にレイアウト一覧の「サイトに公開」で公開サイト（"
+  },
+  "admin.database.switching_to_visual_edit_may_not_preserve_complex_sql_ex": {
+    "en": "Switching to visual edit may not preserve complex SQL exactly. Prefer the SQL tab for advanced SQL.",
+    "ja": "ビジュアル編集に切り替えると、現在の SQL 定義がビジュアル編集用の形式に変換される過程で、元の定義が正確に保持されない場合があります。複雑な SQL を編集している場合は SQL編集タブの利用を推奨します。"
+  },
+  "admin.database.system_tables": {
+    "en": "System tables",
+    "ja": "システムテーブル"
+  },
+  "admin.database.table_name": {
+    "en": "Table name",
+    "ja": "テーブル名"
+  },
+  "admin.database.table_name_cannot_be_changed": {
+    "en": "Table name cannot be changed.",
+    "ja": "テーブル名は変更できません。"
+  },
+  "admin.database.tables": {
+    "en": "Tables:",
+    "ja": "テーブル:"
+  },
+  "admin.database.tables_2": {
+    "en": "Tables",
+    "ja": "テーブル"
+  },
+  "admin.database.this_definition_is_not_supported_in_visual_editor_edit_j": {
+    "en": "This definition is not supported in visual editor. Edit JOIN/complex WHERE SQL in the SQL tab.",
+    "ja": "この定義はビジュアル編集に対応していません。JOIN・複雑な WHERE などを含む SQL は SQL編集タブで編集してください。"
+  },
+  "admin.database.view_data_is_read_only": {
+    "en": "View data is read-only.",
+    "ja": "ビューのデータは閲覧専用です。"
+  },
+  "admin.database.view_definition": {
+    "en": "View definition",
+    "ja": "ビュー定義"
+  },
+  "admin.database.view_list": {
+    "en": "View list",
+    "ja": "ビュー一覧"
+  },
+  "admin.database.view_name": {
+    "en": "View name",
+    "ja": "ビュー名"
+  },
+  "admin.database.view_name_description": {
+    "en": "View name description",
+    "ja": "ビュー名の説明"
+  },
+  "admin.database.views": {
+    "en": "Views",
+    "ja": "ビュー"
+  },
+  "admin.database.where_clause_example": {
+    "en": "). Enter WHERE conditions (e.g.",
+    "ja": "）、WHERE 欄に条件部分（例:"
+  },
+  "admin.date_time": {
+    "en": "Date/time",
+    "ja": "日時"
+  },
+  "admin.default": {
+    "en": "Default",
+    "ja": "既定"
+  },
+  "admin.delete": {
+    "en": "Delete",
+    "ja": "削除する"
+  },
+  "admin.delete_2": {
+    "en": "Delete",
+    "ja": "削除"
+  },
+  "admin.delete_permanently": {
+    "en": "Delete permanently",
+    "ja": "完全に削除"
+  },
+  "admin.description": {
+    "en": "Description",
+    "ja": "説明"
+  },
+  "admin.details_debug": {
+    "en": "Details (debug)",
+    "ja": "詳細（Debug）"
+  },
+  "admin.directory_name_e_g": {
+    "en": "Directory name (e.g.",
+    "ja": "ディレクトリ名（例:"
+  },
+  "admin.display_date": {
+    "en": "Display date",
+    "ja": "表示日"
+  },
+  "admin.display_name": {
+    "en": "Display name",
+    "ja": "表示名"
+  },
+  "admin.display_name_shown_in_the_admin": {
+    "en": "Display name shown in the admin.",
+    "ja": "管理画面での表示名です。"
+  },
+  "admin.distinct": {
+    "en": "Distinct",
+    "ja": "重複排除"
+  },
+  "admin.download_json": {
+    "en": "Download JSON",
+    "ja": "JSON をダウンロード"
+  },
+  "admin.draft": {
+    "en": "Draft",
+    "ja": "下書き"
+  },
+  "admin.duplicate": {
+    "en": "Duplicate",
+    "ja": "複製"
+  },
+  "admin.duplicate_data": {
+    "en": "Duplicate data",
+    "ja": "データも複製"
+  },
+  "admin.e_g_corporate_copy": {
+    "en": "e.g. corporate-copy",
+    "ja": "例: corporate-copy"
+  },
+  "admin.e_g_img_or_assets_logo_png": {
+    "en": "e.g. img/ or assets/logo.png",
+    "ja": "例: img/ または assets/logo.png"
+  },
+  "admin.e_g_news_copy": {
+    "en": "e.g. news_copy",
+    "ja": "例: news_copy"
+  },
+  "admin.e_g_site_css_js_app_js": {
+    "en": "e.g. site.css, js/app.js",
+    "ja": "例: site.css, js/app.js"
+  },
+  "admin.edit": {
+    "en": "Edit",
+    "ja": "編集"
+  },
+  "admin.edit_cell": {
+    "en": "Edit cell",
+    "ja": "セルを編集"
+  },
+  "admin.edit_in_the_ui": {
+    "en": " edit in the UI.",
+    "ja": "画面で編集します。"
+  },
+  "admin.edit_json_directly_advanced": {
+    "en": "Edit JSON directly (advanced)",
+    "ja": "JSONで直接編集（上級者向け）"
+  },
+  "admin.edit_text_files_css_js_etc_via_edit_upload_images_and_fo": {
+    "en": "Edit text files (CSS/JS, etc.) via Edit. Upload images and fonts.",
+    "ja": "テキストファイル（CSS / JS 等）は「編集」から変更できます。画像・フォントはアップロードで追加します。"
+  },
+  "admin.en_2": {
+    "en": "Back to",
+    "ja": "に戻る"
+  },
+  "admin.en_3": {
+    "en": "e.g.",
+    "ja": "例:"
+  },
+  "admin.end_date_time": {
+    "en": "End date/time",
+    "ja": "終了日時"
+  },
+  "admin.enter_the_select_statement_after_this": {
+    "en": " Enter the SELECT statement after this.",
+    "ja": "の後ろに続く SELECT 文を入力してください。"
+  },
+  "admin.etc": {
+    "en": "etc.,",
+    "ja": "など,"
+  },
+  "admin.excerpt": {
+    "en": "Excerpt",
+    "ja": "抜粋"
+  },
+  "admin.excerpts_are_preferred_in_template_lists": {
+    "en": "Excerpts are preferred in template lists.",
+    "ja": "テンプレートの一覧表示では、抜粋が優先して使われます。"
+  },
+  "admin.export": {
+    "en": "Export",
+    "ja": "エクスポート"
+  },
+  "admin.expression_to_add": {
+    "en": "Expression to add",
+    "ja": "追加する式"
+  },
+  "admin.file_list_to_edit_shell_html_and_site_css": {
+    "en": " file list to edit shell.html and site.css.",
+    "ja": "のファイル一覧から shell.html や site.css を編集できます。"
+  },
+  "admin.files": {
+    "en": "Files",
+    "ja": "ファイル"
+  },
+  "admin.files_restored": {
+    "en": "Files restored:",
+    "ja": "復元ファイル数:"
+  },
+  "admin.fit_all_column_widths": {
+    "en": "Fit all column widths",
+    "ja": "全列幅調整"
+  },
+  "admin.float": {
+    "en": "Float",
+    "ja": "回り込み（float）"
+  },
+  "admin.float.left": {
+    "en": "Left",
+    "ja": "左"
+  },
+  "admin.float.right": {
+    "en": "Right",
+    "ja": "右"
+  },
+  "admin.generate": {
+    "en": "Generate",
+    "ja": "生成する"
+  },
+  "admin.generated_from_title_when_left_empty": {
+    "en": "Generated from title when left empty.",
+    "ja": "未入力の場合はタイトルから自動生成します。"
+  },
+  "admin.generates_0_or_1_at_random": {
+    "en": "Generates 0 or 1 at random.",
+    "ja": "0 または 1 をランダムに生成します。"
+  },
+  "admin.here_multiple_conditions_are_anded_drag_to_reorder": {
+    "en": ") here. Multiple conditions are ANDed. Drag to reorder.",
+    "ja": "）を入力してください。複数列の条件は AND で結合されます。ドラッグで並び順を変更できます。"
+  },
+  "admin.https_example_com_or_about": {
+    "en": "https://example.com or /about",
+    "ja": "https://example.com または /about"
+  },
+  "admin.identifier_starting_with_a_letter_or_underscore_e_g": {
+    "en": "Identifier starting with a letter or underscore (e.g.",
+    "ja": "英字またはアンダースコアで始まる識別子（例:"
+  },
+  "admin.if_an_existing_layout_key_exists": {
+    "en": "If an existing layout key exists",
+    "ja": "既存の layout key がある場合"
+  },
+  "admin.if_an_existing_type_key_exists": {
+    "en": "If an existing type_key exists",
+    "ja": "既存の type_key がある場合"
+  },
+  "admin.image": {
+    "en": "Image",
+    "ja": "画像"
+  },
+  "admin.image_pick_float_and_margin_are": {
+    "en": "Image pick, float, and margin are",
+    "ja": "画像の選択・回り込み・マージンは"
+  },
+  "admin.import_target_layout_key": {
+    "en": "Import target layout key",
+    "ja": "インポート先 layout key"
+  },
+  "admin.import_target_type_key": {
+    "en": "Import target type_key",
+    "ja": "インポート先 type_key"
+  },
+  "admin.import_under_a_new_key_create_new": {
+    "en": "Import under a new key (create new)",
+    "ja": "別の key でインポートする（新規作成）"
+  },
+  "admin.import_under_a_new_type_key_create_new": {
+    "en": "Import under a new type_key (create new)",
+    "ja": "別の type_key でインポートする（新規作成）"
+  },
+  "admin.include": {
+    "en": "Include",
+    "ja": "含める"
+  },
+  "admin.includes": {
+    "en": "Includes:",
+    "ja": "次の内容が含まれます:"
+  },
+  "admin.install": {
+    "en": "Install",
+    "ja": "インストール"
+  },
+  "admin.installation_complete": {
+    "en": "Installation complete",
+    "ja": "インストール完了"
+  },
+  "admin.integer": {
+    "en": "Integer",
+    "ja": "整数"
+  },
+  "admin.is_auto_generated_from": {
+    "en": " is auto-generated from",
+    "ja": "から自動生成されます。"
+  },
+  "admin.is_replaced": {
+    "en": ") is replaced.",
+    "ja": "等）に差し替えられます。"
+  },
+  "admin.is_saved_together_no_restart_required": {
+    "en": " is saved together. No restart required.",
+    "ja": "も同期して保存します。再起動は不要です。"
+  },
+  "admin.is_used": {
+    "en": " is used.",
+    "ja": "として利用されます。"
+  },
+  "admin.is_used_on_the_public_site": {
+    "en": " is used on the public site.",
+    "ja": "として公開サイトで利用されます。"
+  },
+  "admin.item_limit": {
+    "en": "Item limit",
+    "ja": "表示件数"
+  },
+  "admin.json_package": {
+    "en": "JSON package (",
+    "ja": "JSON パッケージ（"
+  },
+  "admin.layouts.back_to_layout": {
+    "en": "Back to layout",
+    "ja": "レイアウトに戻る"
+  },
+  "admin.layouts.duplicate_layout": {
+    "en": "Duplicate layout",
+    "ja": "レイアウトを複製"
+  },
+  "admin.layouts.each_page_belongs_to_a_layout_and_is_published_via_minij": {
+    "en": "Each page belongs to a layout and is published via MiniJinja. If the URL is",
+    "ja": "各ページはレイアウトに属し、MiniJinja で公開されます。URL が"
+  },
+  "admin.layouts.import_layout": {
+    "en": "Import layout",
+    "ja": "レイアウトをインポート"
+  },
+  "admin.layouts.install_sample_layout_sets_to_try_site_structure_quickly": {
+    "en": "Install sample layout sets to try site structure quickly.",
+    "ja": "サンプルレイアウトセットをインストールして、すぐにサイト構成を試せます。"
+  },
+  "admin.layouts.layout_management": {
+    "en": "Layout management",
+    "ja": "レイアウト管理"
+  },
+  "admin.layouts.layout_set": {
+    "en": "Layout set",
+    "ja": "レイアウトセット"
+  },
+  "admin.layouts.manage_the_public_site_shell_and_static_assets_per_layou": {
+    "en": "Manage the public site shell and static assets per layout. Every page belongs to one layout.",
+    "ja": "公開サイトの共通枠（shell）と静的アセットをレイアウト単位で管理します。各ページは必ずいずれかのレイアウトに属します。"
+  },
+  "admin.layouts.publish_from_layout_list": {
+    "en": "Publish from layout list",
+    "ja": "レイアウト一覧で公開"
+  },
+  "admin.layouts.status_published": {
+    "en": "Published (live)",
+    "ja": "公開中"
+  },
+  "admin.layouts.when_on_duplicates_placeholders_and_posts_referenced_in": {
+    "en": "When ON, duplicates placeholders and posts referenced in the layout and rewrites template names for the new key. Post publish state is copied as-is.",
+    "ja": "ON にすると、レイアウト内で参照しているプレースホルダーと投稿も複製し、複製先テンプレートの参照名を新 key 用に書き換えます。投稿の公開状態は元のままコピーされます。"
+  },
+  "admin.line_number": {
+    "en": "Line number",
+    "ja": "行番号"
+  },
+  "admin.link_url": {
+    "en": "Link URL",
+    "ja": "リンク URL"
+  },
+  "admin.log_out": {
+    "en": "Log out",
+    "ja": "ログアウト"
+  },
+  "admin.login_name_cannot_be_changed": {
+    "en": " login name cannot be changed.",
+    "ja": "のログイン名は変更できません。"
+  },
+  "admin.manage": {
+    "en": "Manage",
+    "ja": "管理"
+  },
+  "admin.manage_accounts_and_roles": {
+    "en": "Manage accounts and roles.",
+    "ja": "アカウントとロールを管理します。"
+  },
+  "admin.manage_accounts_that_access_the_admin_the_default": {
+    "en": "Manage accounts that access the admin. The default",
+    "ja": "管理画面にアクセスするアカウントを管理します。既定の"
+  },
+  "admin.manage_image_and_file_uploads": {
+    "en": "Manage image and file uploads.",
+    "ja": "画像やファイルのアップロードを管理します。"
+  },
+  "admin.manage_minijinja_templates_and_static_html_in_one_place": {
+    "en": "Manage MiniJinja templates and static HTML in one place.",
+    "ja": "MiniJinja テンプレートと静的 HTML を一元管理します。"
+  },
+  "admin.manage_site_name_description_and_site_url": {
+    "en": "Manage site name, description, and site URL.",
+    "ja": "サイト名・説明・サイト URL を管理します。"
+  },
+  "admin.margin": {
+    "en": "Margin",
+    "ja": "マージン"
+  },
+  "admin.max": {
+    "en": "Max",
+    "ja": "最大"
+  },
+  "admin.max_120_chars_no_control_chars_double_quotes_semicolons": {
+    "en": "Max 120 chars. No control chars, double quotes, semicolons, /, or \\.",
+    "ja": "120 文字以内。制御文字・ダブルクォート・セミコロン・/・\\ は使用できません。"
+  },
+  "admin.max_bytes": {
+    "en": "Max bytes",
+    "ja": "最大バイト数"
+  },
+  "admin.max_length": {
+    "en": "Max length",
+    "ja": "最大文字数"
+  },
+  "admin.media.media_file": {
+    "en": "Media file (",
+    "ja": "メディアファイル（"
+  },
+  "admin.media.no_media_yet_upload_files_using_the_form_above": {
+    "en": "No media yet. Upload files using the form above.",
+    "ja": "まだメディアがありません。上のフォームからファイルをアップロードしてください。"
+  },
+  "admin.min": {
+    "en": "Min",
+    "ja": "最小"
+  },
+  "admin.min_bytes": {
+    "en": "Min bytes",
+    "ja": "最小バイト数"
+  },
+  "admin.min_length": {
+    "en": "Min length",
+    "ja": "最小文字数"
+  },
+  "admin.mixed_japanese": {
+    "en": "Mixed Japanese",
+    "ja": "日本語混在"
+  },
+  "admin.move": {
+    "en": "Move",
+    "ja": "移動"
+  },
+  "admin.must_start_with_lowercase_only_lowercase_letters_digits": {
+    "en": "Must start with lowercase; only lowercase letters, digits, underscore.",
+    "ja": "英小文字で始まり、英小文字・数字・アンダースコアのみ。"
+  },
+  "admin.name": {
+    "en": "Name",
+    "ja": "名前"
+  },
+  "admin.new": {
+    "en": "New ",
+    "ja": "新しい"
+  },
+  "admin.new_layout_key": {
+    "en": "New layout key",
+    "ja": "新しい layout key"
+  },
+  "admin.no_data": {
+    "en": "No data.",
+    "ja": "データがありません。"
+  },
+  "admin.no_files": {
+    "en": "No files.",
+    "ja": "ファイルがありません。"
+  },
+  "admin.no_images": {
+    "en": "No images.",
+    "ja": "画像がありません。"
+  },
+  "admin.none": {
+    "en": "None",
+    "ja": "なし"
+  },
+  "admin.not_allowed": {
+    "en": " not allowed).",
+    "ja": "は不可）。"
+  },
+  "admin.note": {
+    "en": "Note:",
+    "ja": "注意:"
+  },
+  "admin.null_allowed": {
+    "en": "NULL allowed",
+    "ja": "NULL可"
+  },
+  "admin.number_of_rows": {
+    "en": "Number of rows",
+    "ja": "生成件数"
+  },
+  "admin.on_first_boot": {
+    "en": "On first boot,",
+    "ja": "初回起動時に"
+  },
+  "admin.only_column_rows_are_generated": {
+    "en": "Only column rows are generated.",
+    "ja": "列のみの行が生成されます。"
+  },
+  "admin.overwrite": {
+    "en": "Overwrite",
+    "ja": "上書きする"
+  },
+  "admin.overwrite_everything": {
+    "en": "overwrite everything",
+    "ja": "すべて上書き"
+  },
+  "admin.package_file_json": {
+    "en": "Package file (.json)",
+    "ja": "パッケージファイル（.json）"
+  },
+  "admin.package_file_zip": {
+    "en": "Package file (.zip)",
+    "ja": "パッケージファイル（.zip）"
+  },
+  "admin.pages.a_url_is_required_to_publish_top_page": {
+    "en": "A URL is required to publish. Top page (",
+    "ja": "公開するには URL の指定が必要です。トップページ（"
+  },
+  "admin.pages.add_page": {
+    "en": "Add page",
+    "ja": "ページを追加"
+  },
+  "admin.pages.alphanumeric_hyphen_underscore_only_copies_shell_static": {
+    "en": "Alphanumeric, hyphen, underscore only. Copies shell / static / pages (duplicate pages are unpublished with no URL).",
+    "ja": "英数字・ハイフン・アンダースコアのみ。shell / static / ページをコピーします（複製先ページは非公開・URL 未設定）。"
+  },
+  "admin.pages.back_to_page_list": {
+    "en": "Back to page list",
+    "ja": "ページ一覧に戻る"
+  },
+  "admin.pages.back_to_pages": {
+    "en": "Back to pages",
+    "ja": "ページ一覧へ戻る"
+  },
+  "admin.pages.editing_this_minijinja_html_updates_every_page_using_the": {
+    "en": "Editing this MiniJinja HTML updates every page using the placeholder on",
+    "ja": "このHTML（MiniJinja）を編集すると、対応するプレースホルダーを使うすべてのページで"
+  },
+  "admin.pages.inserted_into_the_page_as_variables": {
+    "en": "inserted into the page as variables.",
+    "ja": "変数としてページに挿入されます。"
+  },
+  "admin.pages.is_shown_as_the_top_page": {
+    "en": " is shown as the top page.",
+    "ja": "のページがトップページとして表示されます。"
+  },
+  "admin.pages.makes_this_the_top_page_if_another_page_is_already": {
+    "en": " makes this the top page. If another page is already",
+    "ja": "を指定するとトップページになります。既に別ページが"
+  },
+  "admin.pages.on_the_public_site": {
+    "en": " on the public site",
+    "ja": "が公開ページで"
+  },
+  "admin.pages.page_count": {
+    "en": "Page count",
+    "ja": "ページ数"
+  },
+  "admin.pages.site_name_and_description_appear_on_public_pages": {
+    "en": "Site name and description appear on public pages (",
+    "ja": "サイト名と説明は公開ページ（"
+  },
+  "admin.pages.target_page": {
+    "en": "Target page",
+    "ja": "対象ページ"
+  },
+  "admin.pages.type_fixed_key_independent_of_placeholder_name_on_pages": {
+    "en": "Type-fixed key independent of placeholder name. On pages use",
+    "ja": "プレースホルダー名に依存しないタイプ固定キーです。ページ側では"
+  },
+  "admin.pages.upload_and_manage_images_and_pdfs_set_a_public_url_for_e": {
+    "en": "Upload and manage images and PDFs. Set a public URL for each item to use in templates and pages. For favicon, upload an image or ICO and set the public URL to",
+    "ja": "画像や PDF をアップロードして管理します。各メディアに公開 URL を設定でき、テンプレートやページから参照できます。favicon に使う場合は、画像または ICO をアップロードし、公開 URL を"
+  },
+  "admin.password_when_changing_only": {
+    "en": "Password (when changing only)",
+    "ja": "パスワード（変更時のみ）"
+  },
+  "admin.path": {
+    "en": "Path",
+    "ja": "パス"
+  },
+  "admin.path_relative_to_static": {
+    "en": "Path (relative to static/)",
+    "ja": "パス（static/ からの相対）"
+  },
+  "admin.pick_a_starter_design_to_begin_editing_with_a_copy_of_it": {
+    "en": "Pick a starter design to begin editing with a copy of its HTML.",
+    "ja": "スターターデザインを選ぶと、その HTML を複製した状態で編集を始められます。"
+  },
+  "admin.posts.add_on_this_screen_each_placeholder_s_published_entries": {
+    "en": "Add on this screen. Each placeholder's published entries become slides.",
+    "ja": "画面で追加します。各プレースホルダー配下の「公開済みエントリ」がスライドになります。"
+  },
+  "admin.posts.back_to_posts": {
+    "en": "Back to posts",
+    "ja": "投稿一覧へ"
+  },
+  "admin.posts.based_on_this_definition_input_fields_are_auto_generated": {
+    "en": "Based on this definition, input fields are auto-generated on the placeholder edit screen.",
+    "ja": "ここで定義した内容に基づいて、プレースホルダー編集画面で入力欄が自動生成されます。"
+  },
+  "admin.posts.becomes_available_per_instance_settings_are_managed_on_t": {
+    "en": " becomes available. Per-instance settings are managed on the placeholder.",
+    "ja": "として利用可能になります。インスタンスごとの設定（表示件数など）はプレースホルダー側で管理します。"
+  },
+  "admin.posts.changeable_in_json_on_this_screen_each_placeholder_can_o": {
+    "en": "Changeable in JSON on this screen. Each placeholder can override instance settings; one published entry is shown.",
+    "ja": "画面の JSON 設定で変更できます。各プレースホルダーでインスタンス設定を上書きし、公開済みエントリ 1 件が表示されます。"
+  },
+  "admin.posts.configure_as_entries_under_the_placeholder_width_height": {
+    "en": "Configure as entries under the placeholder. Width, height, fit, and radius are set in placeholder instance settings.",
+    "ja": "画面でプレースホルダー配下のエントリとして設定します。表示幅・高さ・収め方・角丸はプレースホルダー編集画面のインスタンス設定で指定します。"
+  },
+  "admin.posts.create_edit_and_publish_posts_news_etc_per_placeholder": {
+    "en": "Create, edit, and publish posts (news, etc.) per placeholder.",
+    "ja": "プレースホルダーごとに投稿（お知らせなど）を作成・編集・公開します。"
+  },
+  "admin.posts.defines_auto_generated_fields_on_the_placeholder_edit_sc": {
+    "en": "Defines auto-generated fields on the placeholder edit screen.",
+    "ja": "プレースホルダー編集画面で自動生成する入力欄の定義です。"
+  },
+  "admin.posts.delete_placeholder_and_posts": {
+    "en": "Delete this placeholder and its posts?",
+    "ja": "プレースホルダーと配下の投稿を削除しますか？"
+  },
+  "admin.posts.duplicate_including_posts": {
+    "en": "Duplicate including posts",
+    "ja": "投稿内容も含めて複製"
+  },
+  "admin.posts.no_placeholders_yet_use_add_new_to_create_the_first_one": {
+    "en": "No placeholders yet. Use \"Add new\" to create the first one.",
+    "ja": "まだプレースホルダーはありません。「新規追加」から最初のプレースホルダーを作成してください。"
+  },
+  "admin.posts.no_posts_yet_use_add_new_to_create_the_first_post": {
+    "en": "No posts yet. Use \"Add new\" to create the first post.",
+    "ja": "まだ投稿はありません。「新規追加」から最初の投稿を作成してください。"
+  },
+  "admin.posts.no_slides_yet_use_add_slide_to_register_images": {
+    "en": "No slides yet. Use \"Add slide\" to register images.",
+    "ja": "まだスライドがありません。「スライドを追加」から画像を登録してください。"
+  },
+  "admin.posts.placeholder": {
+    "en": "Placeholder",
+    "ja": "プレースホルダー"
+  },
+  "admin.posts.placeholder_management": {
+    "en": "Placeholder management",
+    "ja": "プレースホルダー管理"
+  },
+  "admin.posts.placeholder_name": {
+    "en": "· Placeholder name:",
+    "ja": "· プレースホルダー名:"
+  },
+  "admin.posts.placeholder_name_2": {
+    "en": "Placeholder name",
+    "ja": "プレースホルダー名"
+  },
+  "admin.posts.placeholder_name_html": {
+    "en": "{{ placeholder_name }}_html",
+    "ja": "&#123;&#123; プレースホルダー名 &#125;&#125;_html"
+  },
+  "admin.posts.placeholders_using_this_type": {
+    "en": "Placeholders using this type",
+    "ja": "このタイプを使うプレースホルダーは"
+  },
+  "admin.posts.post_list": {
+    "en": "Post list",
+    "ja": "投稿一覧"
+  },
+  "admin.posts.seconds_until_the_next_slide_1_30": {
+    "en": "Seconds until the next slide (1–30).",
+    "ja": "次のスライドに自動で切り替わるまでの秒数（1〜30）。"
+  },
+  "admin.posts.shared_item_limit_1_50_for_placeholders_of_this_type": {
+    "en": "Shared item limit (1–50) for placeholders of this type.",
+    "ja": "このタイプのプレースホルダー共通の表示件数（1〜50）。"
+  },
+  "admin.posts.slide_interval_seconds": {
+    "en": "Slide interval (seconds)",
+    "ja": "スライド間隔（秒）"
+  },
+  "admin.posts.trashed_post_entries_restore_or_delete_permanently": {
+    "en": "Trashed post entries. Restore or delete permanently.",
+    "ja": "削除した投稿エントリです。復元するか、完全に削除できます。"
+  },
+  "admin.preparing": {
+    "en": "Preparing…",
+    "ja": "準備中…"
+  },
+  "admin.preview.dev_details": {
+    "en": "— Showing developer-facing details",
+    "ja": "— 開発者向けの詳細を表示しています"
+  },
+  "admin.preview.error_page_title": {
+    "en": "Preview error - rust-sqlite-cms",
+    "ja": "プレビューエラー - rust-sqlite-cms"
+  },
+  "admin.preview.error_title": {
+    "en": "Preview error - rust-sqlite-cms",
+    "ja": "プレビューエラー - rust-sqlite-cms"
+  },
+  "admin.public_url": {
+    "en": "Public URL",
+    "ja": "公開 URL"
+  },
+  "admin.public_url_e_g": {
+    "en": "Public URL (e.g.",
+    "ja": "公開する URL（例:"
+  },
+  "admin.publish": {
+    "en": "Publish",
+    "ja": "公開する"
+  },
+  "admin.publish_status": {
+    "en": "Publish status",
+    "ja": "公開状態"
+  },
+  "admin.publish_to_site": {
+    "en": "Publish to site",
+    "ja": "サイトに公開"
+  },
+  "admin.published": {
+    "en": "Published",
+    "ja": "公開"
+  },
+  "admin.published_items_appear_in_the_carousel": {
+    "en": "Published items appear in the carousel.",
+    "ja": "公開にするとカルーセルに表示されます。"
+  },
+  "admin.punctuation.mid_dot": {
+    "en": "·",
+    "ja": "・"
+  },
+  "admin.real": {
+    "en": "Real",
+    "ja": "実数"
+  },
+  "admin.region_height": {
+    "en": "Region height",
+    "ja": "領域の高さ"
+  },
+  "admin.region_width": {
+    "en": "Region width",
+    "ja": "領域の幅"
+  },
+  "admin.restore": {
+    "en": "Restore",
+    "ja": "復元"
+  },
+  "admin.returns_404": {
+    "en": " returns 404.",
+    "ja": "は 404 になります。"
+  },
+  "admin.role": {
+    "en": "Role",
+    "ja": "ロール"
+  },
+  "admin.row": {
+    "en": "Row —",
+    "ja": "行 —"
+  },
+  "admin.row_count": {
+    "en": "Row count",
+    "ja": "行数"
+  },
+  "admin.samples.ready_to_use_samples": {
+    "en": "Ready-to-use samples",
+    "ja": "すぐに使えるサンプル"
+  },
+  "admin.save": {
+    "en": "Save",
+    "ja": "保存する"
+  },
+  "admin.save_2": {
+    "en": "Save",
+    "ja": "保存"
+  },
+  "admin.save_changes": {
+    "en": "Save changes",
+    "ja": "変更を保存"
+  },
+  "admin.save_path_optional": {
+    "en": "Save path (optional)",
+    "ja": "保存パス（任意）"
+  },
+  "admin.see": {
+    "en": "See:",
+    "ja": "確認先:"
+  },
+  "admin.select_modifier_help": {
+    "en": "SELECT modifier help",
+    "ja": "SELECT 修飾の説明"
+  },
+  "admin.select_modifiers": {
+    "en": "SELECT modifiers",
+    "ja": "SELECT 修飾"
+  },
+  "admin.select_statement": {
+    "en": "SELECT statement",
+    "ja": "SELECT 文"
+  },
+  "admin.set_null": {
+    "en": "Set NULL",
+    "ja": "NULL にする"
+  },
+  "admin.set_range_length_and_charset_per_type_nullable_columns_m": {
+    "en": "Set range, length, and charset per type. Nullable columns may include NULL.",
+    "ja": "型に応じた範囲・文字数・文字種を指定してください。NULL可の列では NULL を含めることもできます。"
+  },
+  "admin.settings.generation_settings": {
+    "en": "Generation settings",
+    "ja": "生成設定"
+  },
+  "admin.settings.instance_settings": {
+    "en": "Instance settings",
+    "ja": "インスタンス設定"
+  },
+  "admin.settings.instance_settings_schema_json": {
+    "en": "Instance settings schema (JSON)",
+    "ja": "インスタンス設定スキーマ定義（JSON）"
+  },
+  "admin.settings.no_image_entries_yet_use_add_new_to_add_images": {
+    "en": "No image entries yet. Use \"Add new\" to add images.",
+    "ja": "まだ画像エントリがありません。「新規追加」から画像を設定してください。"
+  },
+  "admin.settings.optional_when_set_clicking_the_image_opens_this_url": {
+    "en": "Optional. When set, clicking the image opens this URL.",
+    "ja": "任意。設定すると画像クリックでこの URL に遷移します。"
+  },
+  "admin.settings.reflect_immediately_suffix": {
+    "en": ") take effect on public pages immediately.",
+    "ja": "など）に即時反映されます。"
+  },
+  "admin.settings.settings_file": {
+    "en": "Settings file (",
+    "ja": "設定ファイル（"
+  },
+  "admin.settings.settings_file_2": {
+    "en": "Settings file",
+    "ja": "設定ファイル"
+  },
+  "admin.settings.shared_settings": {
+    "en": "Shared settings",
+    "ja": "共通設定"
+  },
+  "admin.settings.site_vars_reflect": {
+    "en": ", etc.) immediately. Settings file",
+    "ja": "など）に即時反映されます。 設定ファイル"
+  },
+  "admin.settings.text": {
+    "en": ".",
+    "ja": "に設定してください。"
+  },
+  "admin.settings.update_settings": {
+    "en": "Update settings",
+    "ja": "設定を更新"
+  },
+  "admin.settings.work_config_site_section": {
+    "en": "Settings file work/config.toml [site]",
+    "ja": "設定ファイル work/config.toml の [site]"
+  },
+  "admin.shell_title": {
+    "en": "Admin",
+    "ja": "管理画面"
+  },
+  "admin.shell_title_suffix": {
+    "en": " - rust-sqlite-cms",
+    "ja": " - rust-sqlite-cms"
+  },
+  "admin.show": {
+    "en": "Show",
+    "ja": "表示"
+  },
+  "admin.sidebar_width": {
+    "en": "Sidebar width",
+    "ja": "サイドバーの幅"
+  },
+  "admin.site_description": {
+    "en": "Site description",
+    "ja": "サイトの説明"
+  },
+  "admin.site_name": {
+    "en": "Site name",
+    "ja": "サイト名"
+  },
+  "admin.site_url": {
+    "en": "Site URL",
+    "ja": "サイト URL"
+  },
+  "admin.size": {
+    "en": "Size",
+    "ja": "サイズ"
+  },
+  "admin.skip_no_change": {
+    "en": "Skip (no change)",
+    "ja": "スキップする（変更しない）"
+  },
+  "admin.slug": {
+    "en": "Slug",
+    "ja": "スラッグ"
+  },
+  "admin.specify_when_choosing_import_under_a_new_key_alphanumeri": {
+    "en": "Specify when choosing \"Import under a new key\". Alphanumeric, hyphen, underscore only.",
+    "ja": "「別の key でインポートする」を選んだときに指定してください。英数字・ハイフン・アンダースコアのみ。"
+  },
+  "admin.specify_when_choosing_import_under_a_new_type_key_must_s": {
+    "en": "Specify when choosing \"Import under a new type_key\". Must start with lowercase a–z; only lowercase, digits, underscore.",
+    "ja": "「別の type_key でインポートする」を選んだときに指定してください。英小文字で始まり、英小文字・数字・アンダースコアのみ。"
+  },
+  "admin.start_date_time": {
+    "en": "Start date/time",
+    "ja": "開始日時"
+  },
+  "admin.start_writing_html_from_scratch_without_a_template": {
+    "en": "Start writing HTML from scratch without a template.",
+    "ja": "テンプレートを使わず、空の状態から HTML を書き始めます。"
+  },
+  "admin.status": {
+    "en": "Status",
+    "ja": "状態"
+  },
+  "admin.summary": {
+    "en": "Summary",
+    "ja": "概要"
+  },
+  "admin.switch_to_visual_editor": {
+    "en": "Switch to visual editor",
+    "ja": "ビジュアル編集への切り替え"
+  },
+  "admin.system": {
+    "en": "System",
+    "ja": "システム"
+  },
+  "admin.template_usage_example": {
+    "en": "Template usage example",
+    "ja": "テンプレートでの利用例"
+  },
+  "admin.template_variables": {
+    "en": "Template variables",
+    "ja": "テンプレート変数"
+  },
+  "admin.text": {
+    "en": "Text",
+    "ja": "文字列"
+  },
+  "admin.this_cannot_be_undone": {
+    "en": ". This cannot be undone.",
+    "ja": "されます。この操作は元に戻せません。"
+  },
+  "admin.this_template_is_rendered_server_side_and": {
+    "en": "This template is rendered server-side and",
+    "ja": "このテンプレートはサーバーサイドでレンダリングされ、"
+  },
+  "admin.title": {
+    "en": "Title",
+    "ja": "タイトル"
+  },
+  "admin.to_embed": {
+    "en": " to embed.",
+    "ja": "で差し込みます。"
+  },
+  "admin.trash.trash_is_empty": {
+    "en": "Trash is empty.",
+    "ja": "ゴミ箱は空です。"
+  },
+  "admin.trash.trashed_at": {
+    "en": "Trashed at",
+    "ja": "ゴミ箱に入れた日"
+  },
+  "admin.type": {
+    "en": "Type",
+    "ja": "タイプ"
+  },
+  "admin.type_2": {
+    "en": "Type",
+    "ja": "種別"
+  },
+  "admin.type_defaults_width_100_height_auto_etc_are": {
+    "en": "Type defaults (width 100%, height auto, etc.) are",
+    "ja": "型のデフォルト（幅 100%、高さ auto など）は"
+  },
+  "admin.type_key_type_key": {
+    "en": "Type key (type_key)",
+    "ja": "タイプキー (type_key)"
+  },
+  "admin.update": {
+    "en": "Update",
+    "ja": "更新する"
+  },
+  "admin.updated": {
+    "en": "Updated",
+    "ja": "更新日"
+  },
+  "admin.upload": {
+    "en": "Upload",
+    "ja": "アップロード"
+  },
+  "admin.upload_file": {
+    "en": "Upload file",
+    "ja": "ファイルをアップロード"
+  },
+  "admin.upload_from_admin_first": {
+    "en": "upload from the admin first.",
+    "ja": "画面から先にアップロードしてください。"
+  },
+  "admin.user.honorific_suffix": {
+    "en": "",
+    "ja": "さん"
+  },
+  "admin.users.add_user": {
+    "en": "Add user",
+    "ja": "ユーザーを追加"
+  },
+  "admin.users.default_user": {
+    "en": "default user",
+    "ja": "既定ユーザー"
+  },
+  "admin.users.no_users_registered": {
+    "en": "No users registered.",
+    "ja": "ユーザーが登録されていません。"
+  },
+  "admin.users.system_user": {
+    "en": "System / User",
+    "ja": "システムユーザー"
+  },
+  "admin.users.this_user_cannot_be_deleted": {
+    "en": "This user cannot be deleted.",
+    "ja": "ユーザーは削除できません。"
+  },
+  "admin.variables_for_the_fragment_template_html_template": {
+    "en": "Variables for the fragment template (html_template)",
+    "ja": "断片テンプレート（html_template）で使う変数"
+  },
+  "admin.visual_editor": {
+    "en": "Visual editor",
+    "ja": "ビジュアル編集"
+  },
+  "admin.welcome": {
+    "en": "Welcome",
+    "ja": "へようこそ"
+  },
+  "admin.when_on_copies_row_data_for_columns_that_match_name_and": {
+    "en": "When ON, copies row data for columns that match name and definition in the duplicate.",
+    "ja": "ON にすると、複製先の列定義と名前が一致する列のデータをコピーします。"
+  },
+  "admin.widgets.about_this_widget_type": {
+    "en": "About this widget type",
+    "ja": "このウィジェットタイプについて"
+  },
+  "admin.widgets.custom_widget_types": {
+    "en": "Custom widget types",
+    "ja": "カスタムウィジェットタイプ"
+  },
+  "admin.widgets.define_settings_available_on_placeholders_instances_usin": {
+    "en": "Define settings available on placeholders (instances) using this widget.",
+    "ja": "このウィジェットを使うプレースホルダー（インスタンス）で持てる設定項目を定義します。"
+  },
+  "admin.widgets.delete_blocked_by_placeholder": {
+    "en": "Cannot delete while placeholders are attached.",
+    "ja": "プレースホルダーが紐付いている場合は削除できません。"
+  },
+  "admin.widgets.edit_the_html_structure_of_this_widget_type": {
+    "en": "Edit the HTML structure of this widget type.",
+    "ja": "ウィジェットタイプのHTML構成を編集します。"
+  },
+  "admin.widgets.empty_fields_use_the_widget_type_default": {
+    "en": "Empty fields use the widget type default.",
+    "ja": "未入力の項目はウィジェットタイプのデフォルト値が使用されます。"
+  },
+  "admin.widgets.fields_are_auto_generated_from_the_schema_defined_in_the": {
+    "en": "Fields are auto-generated from the schema defined in the widget master.",
+    "ja": "ウィジェットマスターで定義されたスキーマに基づいて入力欄が自動生成されます。"
+  },
+  "admin.widgets.html_composing_the_widget_minijinja_template": {
+    "en": "HTML composing the widget (MiniJinja template)",
+    "ja": "ウィジェットを構成するHTML（MiniJinjaテンプレート）"
+  },
+  "admin.widgets.import_widget": {
+    "en": "Import widget",
+    "ja": "ウィジェットをインポート"
+  },
+  "admin.widgets.instance_settings_on_placeholder_edit": {
+    "en": "Configure per-instance settings (item limits, etc.) on the placeholder edit screen.",
+    "ja": "インスタンスごとの設定（表示件数など）はプレースホルダー編集側で行ってください。"
+  },
+  "admin.widgets.lowercase_letters_digits_underscore_changing_this_update": {
+    "en": "Lowercase letters, digits, underscore. Changing this updates widget URLs.",
+    "ja": "英小文字・数字・アンダースコア。変更するとこのウィジェットのURLも変わります。"
+  },
+  "admin.widgets.manage_placeholders_and_widget_types_embedded_in_templat": {
+    "en": "Manage placeholders and widget types embedded in templates.",
+    "ja": "テンプレートに差し込むプレースホルダーとウィジェットタイプを管理します。"
+  },
+  "admin.widgets.manage_shared_widget_type_settings_such_as_item_limits": {
+    "en": "Manage shared widget-type settings (such as item limits).",
+    "ja": "ウィジェットタイプの共通設定（表示件数など）を管理します。"
+  },
+  "admin.widgets.output_instance_settings_hint": {
+    "en": " is rendered. Configure per-instance settings (item limits, etc.) on the placeholder edit screen.",
+    "ja": "として出力されます。 インスタンスごとの設定（表示件数など）はプレースホルダー編集側で行ってください。"
+  },
+  "admin.widgets.register_type_key_intro": {
+    "en": "Register a widget type with a new type_key. When you edit HTML (MiniJinja), ",
+    "ja": "新しい type_key でウィジェットタイプを登録します。HTML（MiniJinja）を編集すると、"
+  },
+  "admin.widgets.register_type_key_pages": {
+    "en": "On pages using the matching placeholder, ",
+    "ja": "対応するプレースホルダーを使うページで"
+  },
+  "admin.widgets.registers_the_widget_type_editing_html_minijinja_updates": {
+    "en": " registers the widget type. Editing HTML (MiniJinja) updates pages using",
+    "ja": "でウィジェットタイプを登録します。HTML（MiniJinja）を編集すると、 対応するプレースホルダーを使うページで"
+  },
+  "admin.widgets.to_register_a_new_widget_type_or_update_an_existing_one": {
+    "en": ") to register a new widget type or update an existing one.",
+    "ja": "）をアップロードすると、新しいウィジェットタイプの登録または既存タイプの更新ができます。"
+  },
+  "admin.widgets.to_register_or_update_a_layout_widgets_placeholders_are": {
+    "en": ") to register or update a layout. Widgets/placeholders are not included. Imported pages start unpublished without URL; set URL in page edit to publish.",
+    "ja": "）をアップロードすると、新しいレイアウトの登録または既存レイアウトの更新ができます。ウィジェット・プレースホルダーは含まれません。インポート直後のページは URL 未設定・非公開です。公開するには管理画面のページ編集から URL を設定してください。"
+  },
+  "admin.widgets.widget_appearance_html_is": {
+    "en": "Widget appearance (HTML) is",
+    "ja": "ウィジェットの見た目（HTML）は"
+  },
+  "admin.widgets.widget_type": {
+    "en": "Widget type:",
+    "ja": "ウィジェットタイプ:"
+  },
+  "admin.widgets.widget_type_2": {
+    "en": "Widget type",
+    "ja": "ウィジェットタイプ"
+  },
+  "auth.login_failed": {
+    "en": "The login name or password is incorrect",
+    "ja": "ログイン名またはパスワードが正しくありません"
+  },
+  "breadcrumb.backup": {
+    "en": "Backup / Restore",
+    "ja": "バックアップ / リストア"
+  },
+  "breadcrumb.choose_design": {
+    "en": "Choose a design",
+    "ja": "デザインを選ぶ"
+  },
+  "breadcrumb.column_edit": {
+    "en": "Edit columns",
+    "ja": "列編集"
+  },
+  "breadcrumb.dashboard": {
+    "en": "Dashboard",
+    "ja": "ダッシュボード"
+  },
+  "breadcrumb.data_read_only": {
+    "en": " data (read-only)",
+    "ja": " データ（閲覧専用）"
+  },
+  "breadcrumb.data_suffix": {
+    "en": " data",
+    "ja": " データ"
+  },
+  "breadcrumb.database": {
+    "en": "Database admin",
+    "ja": "DB管理"
+  },
+  "breadcrumb.import": {
+    "en": "Import",
+    "ja": "インポート"
+  },
+  "breadcrumb.layout_new": {
+    "en": "New layout",
+    "ja": "新規レイアウト"
+  },
+  "breadcrumb.layouts": {
+    "en": "Layouts",
+    "ja": "レイアウト"
+  },
+  "breadcrumb.media": {
+    "en": "Media",
+    "ja": "メディア"
+  },
+  "breadcrumb.pages": {
+    "en": "Pages",
+    "ja": "ページ"
+  },
+  "breadcrumb.placeholder_new": {
+    "en": "New placeholder",
+    "ja": "新規プレースホルダー"
+  },
+  "breadcrumb.posts": {
+    "en": "Posts",
+    "ja": "投稿"
+  },
+  "breadcrumb.preview": {
+    "en": "Preview",
+    "ja": "プレビュー"
+  },
+  "breadcrumb.read_only_paren": {
+    "en": "(read-only)",
+    "ja": "（閲覧専用）"
+  },
+  "breadcrumb.samples": {
+    "en": "Samples",
+    "ja": "サンプル"
+  },
+  "breadcrumb.seed_data": {
+    "en": "Generate test data",
+    "ja": "テストデータ生成"
+  },
+  "breadcrumb.settings": {
+    "en": "Settings",
+    "ja": "設定"
+  },
+  "breadcrumb.table_create": {
+    "en": "Create table",
+    "ja": "テーブル作成"
+  },
+  "breadcrumb.table_db_admin_suffix": {
+    "en": " — Database admin",
+    "ja": " — DB管理"
+  },
+  "breadcrumb.trash": {
+    "en": "Trash",
+    "ja": "ゴミ箱"
+  },
+  "breadcrumb.user_new": {
+    "en": "New user",
+    "ja": "新規ユーザー"
+  },
+  "breadcrumb.users": {
+    "en": "User",
+    "ja": "ユーザー"
+  },
+  "breadcrumb.view_create": {
+    "en": "Create view",
+    "ja": "ビュー作成"
+  },
+  "breadcrumb.view_definition_edit": {
+    "en": "Edit definition",
+    "ja": "定義編集"
+  },
+  "breadcrumb.widget_new": {
+    "en": "Add new",
+    "ja": "新規追加"
+  },
+  "breadcrumb.widgets": {
+    "en": "Widgets",
+    "ja": "ウィジェット"
+  },
+  "login.page_title": {
+    "en": "Log in - rust-sqlite-cms",
+    "ja": "ログイン - rust-sqlite-cms"
+  },
+  "login.password_label": {
+    "en": "Password",
+    "ja": "パスワード"
+  },
+  "login.password_only_when_changing": {
+    "en": "(when changing only)",
+    "ja": "（変更時のみ）"
+  },
+  "login.submit": {
+    "en": "Log in",
+    "ja": "ログイン"
+  },
+  "login.subtitle": {
+    "en": "Sign in to the admin",
+    "ja": "管理画面にログイン"
+  },
+  "login.username_label": {
+    "en": "Login name",
+    "ja": "ログイン名"
+  },
+  "nav.backup": {
+    "en": "Backup / Restore",
+    "ja": "バックアップ / リストア"
+  },
+  "nav.backup_short": {
+    "en": "Backup",
+    "ja": "バックアップ"
+  },
+  "nav.dashboard": {
+    "en": "Dashboard",
+    "ja": "ダッシュボード"
+  },
+  "nav.database": {
+    "en": "Database admin",
+    "ja": "DB管理"
+  },
+  "nav.layouts": {
+    "en": "Layouts",
+    "ja": "レイアウト"
+  },
+  "nav.media": {
+    "en": "Media",
+    "ja": "メディア"
+  },
+  "nav.pages": {
+    "en": "Pages",
+    "ja": "ページ"
+  },
+  "nav.posts": {
+    "en": "Posts",
+    "ja": "投稿"
+  },
+  "nav.samples": {
+    "en": "Samples",
+    "ja": "サンプル"
+  },
+  "nav.settings": {
+    "en": "Settings",
+    "ja": "設定"
+  },
+  "nav.users": {
+    "en": "User",
+    "ja": "ユーザー"
+  },
+  "nav.widgets": {
+    "en": "Widgets",
+    "ja": "ウィジェット"
+  },
+  "public.contact.email_invalid": {
+    "en": "Please enter a valid email address.",
+    "ja": "メールアドレスを正しく入力してください。"
+  },
+  "public.contact.email_label": {
+    "en": "Email address",
+    "ja": "メールアドレス"
+  },
+  "public.contact.init_failed": {
+    "en": "Could not initialize the form. Please reload the page.",
+    "ja": "フォームを初期化できませんでした。ページを再読み込みしてください。"
+  },
+  "public.contact.message_invalid": {
+    "en": "Please enter your message correctly.",
+    "ja": "お問い合わせ内容を正しく入力してください。"
+  },
+  "public.contact.message_label": {
+    "en": "Message",
+    "ja": "お問い合わせ内容"
+  },
+  "public.contact.name_invalid": {
+    "en": "Please enter your name correctly.",
+    "ja": "お名前を正しく入力してください。"
+  },
+  "public.contact.name_label": {
+    "en": "Name",
+    "ja": "お名前"
+  },
+  "public.contact.not_contact_placeholder": {
+    "en": "This placeholder is not a contact form.",
+    "ja": "このプレースホルダーはお問い合わせフォームではありません。"
+  },
+  "public.contact.phone_label": {
+    "en": "Phone number",
+    "ja": "電話番号"
+  },
+  "public.contact.phone_too_long": {
+    "en": "Phone number must be at most 30 characters.",
+    "ja": "電話番号は 30 文字以内で入力してください。"
+  },
+  "public.contact.required_marker": {
+    "en": "(required)",
+    "ja": "（必須）"
+  },
+  "public.contact.submit": {
+    "en": "Send",
+    "ja": "送信する"
+  },
+  "public.contact.submit_failed": {
+    "en": "Submission failed. Check your input and try again.",
+    "ja": "送信に失敗しました。入力内容を確認して再度お試しください。"
+  },
+  "public.contact.success_default": {
+    "en": "We received your inquiry. Our team will get back to you.",
+    "ja": "お問い合わせを受け付けました。担当者より折り返しご連絡いたします。"
+  },
+  "public.contact.token_expired": {
+    "en": "The form has expired. Please reload the page.",
+    "ja": "フォームの有効期限が切れています。ページを再読み込みしてください。"
+  },
+  "public.contact.token_invalid": {
+    "en": "Invalid form token.",
+    "ja": "無効なフォームトークンです。"
+  }
+}

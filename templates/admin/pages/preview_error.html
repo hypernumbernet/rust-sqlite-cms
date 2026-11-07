@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/admin/admin.css">
-  <title>プレビューエラー - rust-sqlite-cms</title>
+  <title>{{ t("admin.database.preview_error_rust_sqlite_cms") }}</title>
   <style>
     body.preview-error-page {
       line-height: 1.5;
@@ -61,31 +61,31 @@
 </head>
 <body class="preview-error-page">
   <div class="preview-error-wrap">
-    <h1>プレビューエラー</h1>
-    <p class="preview-error-meta">HTTP {{ status_code }} {{ status_label }} — 開発者向けの詳細を表示しています</p>
+    <h1>{{ t("admin.database.preview_error") }}</h1>
+    <p class="preview-error-meta">HTTP {{ status_code }} {{ status_label }} {{ t("admin.preview.dev_details") }}</p>
 
     {% if has_page %}
     <section class="panel">
-      <h2>対象ページ</h2>
+      <h2>{{ t("admin.pages.target_page") }}</h2>
       <dl>
         <dt>ID</dt><dd>{{ page_id }}</dd>
-        <dt>名前</dt><dd>{{ page_name }}</dd>
-        <dt>ファイル</dt><dd>{{ file_name }}</dd>
+        <dt>{{ t("admin.name") }}</dt><dd>{{ page_name }}</dd>
+        <dt>{{ t("admin.files") }}</dt><dd>{{ file_name }}</dd>
       </dl>
     </section>
     {% endif %}
 
     <section class="panel">
-      <h2>概要</h2>
+      <h2>{{ t("admin.summary") }}</h2>
       <pre>{{ summary }}</pre>
     </section>
 
     <section class="panel">
-      <h2>詳細（Debug）</h2>
+      <h2>{{ t("admin.details_debug") }}</h2>
       <pre>{{ detail }}</pre>
     </section>
 
-    <p><a href="/admin/pages">ページ一覧に戻る</a></p>
+    <p><a href="/admin/pages">{{ t("admin.pages.back_to_page_list") }}</a></p>
   </div>
 </body>
 </html>

@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}ページを追加{% endblock %}
+{% block title %}{{ layout.t("admin.pages.add_page") }}{% endblock %}
 {% block nav_pages %}active{% endblock %}
-{% block heading %}デザインを選ぶ{% endblock %}
+{% block heading %}{{ layout.t("breadcrumb.choose_design") }}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -13,7 +13,7 @@
 
 {% block content %}
 <div class="toolbar">
-  <p>スターターデザインを選ぶと、その HTML を複製した状態で編集を始められます。</p>
+  <p>{{ layout.t("admin.pick_a_starter_design_to_begin_editing_with_a_copy_of_it") }}</p>
 </div>
 
 <div class="card-grid card-grid--wide">
@@ -21,17 +21,17 @@
   <div class="card--pick">
     <h3>{{ preset.label }}</h3>
     <p>{{ preset.description }}</p>
-    <a class="button" href="/admin/pages/new/{{ preset.key }}">このデザインで作成</a>
+    <a class="button" href="/admin/pages/new/{{ preset.key }}">{{ layout.t("admin.create_with_this_design") }}</a>
   </div>
   {% endfor %}
   <div class="card--pick blank">
-    <h3>空から作成</h3>
-    <p>テンプレートを使わず、空の状態から HTML を書き始めます。</p>
-    <a class="button secondary" href="/admin/pages/new/blank">空のまま作成</a>
+    <h3>{{ layout.t("admin.create_empty") }}</h3>
+    <p>{{ layout.t("admin.start_writing_html_from_scratch_without_a_template") }}</p>
+    <a class="button secondary" href="/admin/pages/new/blank">{{ layout.t("admin.create_blank") }}</a>
   </div>
 </div>
 
 <div class="back">
-  <a href="/admin/pages">ページ一覧へ戻る</a>
+  <a href="/admin/pages">{{ layout.t("admin.pages.back_to_pages") }}</a>
 </div>
 {% endblock %}

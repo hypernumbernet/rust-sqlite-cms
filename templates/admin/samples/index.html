@@ -1,13 +1,13 @@
 {% extends "admin/base.html" %}
 
-{% block title %}サンプル{% endblock %}
+{% block title %}{{ layout.t("nav.samples") }}{% endblock %}
 {% block nav_samples %}active{% endblock %}
-{% block heading %}サンプル{% endblock %}
+{% block heading %}{{ layout.t("nav.samples") }}{% endblock %}
 
 {% block content %}
 <section class="welcome">
-  <h2>すぐに使えるサンプル</h2>
-  <p>レイアウトセットと DBテーブルセットを、既存データに影響を与えずに追加できます。同名のデータがある場合は安全のためインストールを中止します。</p>
+  <h2>{{ layout.t("admin.samples.ready_to_use_samples") }}</h2>
+  <p>{{ layout.t("admin.database.add_layout_sets_and_db_table_sets_without_affecting_exis") }}</p>
 </section>
 
 {% if !message.is_empty() %}
@@ -20,34 +20,34 @@
 
 {% if let Some(result) = last_result %}
 <div class="callout-success callout-success--mt-lg sample-install-result">
-  <h3>インストール完了</h3>
+  <h3>{{ layout.t("admin.installation_complete") }}</h3>
   <p><strong>{{ result.message }}</strong></p>
   {% if result.result_kind == "layout" %}
   <ul class="sample-install-stats">
-    <li><span class="kind">レイアウト</span> {{ result.layout_key }}</li>
-    <li><span class="kind">プレースホルダー</span> {{ result.placeholders_count }}</li>
-    <li><span class="kind">投稿</span> {{ result.posts_count }}</li>
-    <li><span class="kind">メディア</span> {{ result.media_count }}</li>
-    <li><span class="kind">ページ</span> {{ result.pages_count }}</li>
+    <li><span class="kind">{{ layout.t("nav.layouts") }}</span> {{ result.layout_key }}</li>
+    <li><span class="kind">{{ layout.t("admin.posts.placeholder") }}</span> {{ result.placeholders_count }}</li>
+    <li><span class="kind">{{ layout.t("nav.posts") }}</span> {{ result.posts_count }}</li>
+    <li><span class="kind">{{ layout.t("nav.media") }}</span> {{ result.media_count }}</li>
+    <li><span class="kind">{{ layout.t("nav.pages") }}</span> {{ result.pages_count }}</li>
   </ul>
   <p>
-    <a href="/admin/pages" class="button">ページ一覧でプレビュー</a>
-    <a href="/admin/layouts" class="button secondary">レイアウト一覧で公開</a>
+    <a href="/admin/pages" class="button">{{ layout.t("admin.database.preview_from_page_list") }}</a>
+    <a href="/admin/layouts" class="button secondary">{{ layout.t("admin.layouts.publish_from_layout_list") }}</a>
   </p>
   {% else %}
   <ul class="sample-install-stats">
-    <li><span class="kind">テーブル</span> {{ result.tables_count }}</li>
-    <li><span class="kind">ビュー</span> {{ result.views_count }}</li>
-    <li><span class="kind">行数</span> {{ result.rows_count }}</li>
+    <li><span class="kind">{{ layout.t("admin.database.tables_2") }}</span> {{ result.tables_count }}</li>
+    <li><span class="kind">{{ layout.t("admin.database.views") }}</span> {{ result.views_count }}</li>
+    <li><span class="kind">{{ layout.t("admin.row_count") }}</span> {{ result.rows_count }}</li>
   </ul>
   <p>
-    <a href="/admin/database" class="button">DB管理で確認する</a>
+    <a href="/admin/database" class="button">{{ layout.t("admin.database.open_in_database_admin") }}</a>
   </p>
   {% endif %}
 </div>
 {% endif %}
 
-<h2 class="sample-section-title">レイアウトセット</h2>
+<h2 class="sample-section-title">{{ layout.t("admin.layouts.layout_set") }}</h2>
 <div class="card-grid card-grid--wide sample-set-grid">
   {% for set in layout_sets %}
   <article class="card--pick sample-set-card">
@@ -62,19 +62,19 @@
       {% endfor %}
     </div>
     <div class="sample-set-card__actions">
-      <form method="post" action="/admin/samples" data-confirm="「{{ set.label }}」をインストールしますか？同名のデータがある場合は追加されません。">
+      <form method="post" action="/admin/samples" data-confirm="「{{ set.label }}」{{ layout.t("admin.confirm.install_question") }}{{ layout.t("admin.confirm.same_data_skip") }}">
         <input type="hidden" name="sample" value="{{ set.key }}">
         <input type="hidden" name="action" value="install">
-        <button type="submit" class="button">インストール</button>
+        <button type="submit" class="button">{{ layout.t("admin.install") }}</button>
       </form>
     </div>
   </article>
   {% endfor %}
 </div>
 
-<p class="text-muted sample-set-note">インストール直後は非公開です。ページ一覧のプレビューで内容を確認し、整備後にレイアウト一覧の「サイトに公開」で公開サイト（<code>/</code>、<code>/news</code> 等）に差し替えられます。</p>
+<p class="text-muted sample-set-note">{{ layout.t("admin.database.starts_unpublished_after_install_preview_from_pages_then") }}<code>/</code>、<code>/news</code> {{ layout.t("admin.is_replaced") }}</p>
 
-<h2 class="sample-section-title">DBテーブルセット</h2>
+<h2 class="sample-section-title">{{ layout.t("admin.database.db_table_set") }}</h2>
 <div class="card-grid card-grid--wide sample-set-grid">
   {% for set in table_sets %}
   <article class="card--pick sample-set-card">
@@ -89,19 +89,19 @@
       {% endfor %}
     </div>
     <p class="sample-set-card__preview">
-      テーブル:
+      {{ layout.t("admin.database.tables") }}
       {% for name in set.table_names %}
       <code>{{ name }}</code>{% if !loop.last %}, {% endif %}
       {% endfor %}
     </p>
     <p class="sample-set-card__preview">
-      確認先: <a href="/admin/database">DB管理</a>
+      {{ layout.t("admin.see") }} <a href="/admin/database">{{ layout.t("nav.database") }}</a>
     </p>
     <div class="sample-set-card__actions">
-      <form method="post" action="/admin/samples" data-confirm="「{{ set.label }}」をインストールしますか？同名のテーブルがある場合は追加されません。">
+      <form method="post" action="/admin/samples" data-confirm="「{{ set.label }}」{{ layout.t("admin.confirm.install_question") }}{{ layout.t("admin.confirm.same_table_skip") }}">
         <input type="hidden" name="sample" value="{{ set.key }}">
         <input type="hidden" name="action" value="install">
-        <button type="submit" class="button">インストール</button>
+        <button type="submit" class="button">{{ layout.t("admin.install") }}</button>
       </form>
     </div>
   </article>

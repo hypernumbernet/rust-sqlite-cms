@@ -14,68 +14,68 @@
   <section class="panel">
     <div class="field">
       <div class="field-label-with-help">
-        <label for="name">ビュー名</label>
-        <button type="button" class="view-ui-distinct-help" data-tooltip="120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。CMS コアテーブル名は使用できません。" aria-label="ビュー名の説明">?</button>
+        <label for="name">{{ layout.t("admin.database.view_name") }}</label>
+        <button type="button" class="view-ui-distinct-help" data-tooltip="{{ layout.t("admin.database.max_120_chars_no_control_chars_quotes_semicolons_cms_cor") }}" aria-label="{{ layout.t("admin.database.view_name_description") }}">?</button>
       </div>
       <input id="name" name="name" type="text" maxlength="120" value="{{ name }}"{% if name_readonly %} readonly{% endif %} required>
     </div>
 
     <div class="field">
-      <label>ビュー定義</label>
-      <nav class="tab-nav view-form-tabs" aria-label="ビュー定義">
-        <button type="button"{% if edit_mode != "ui" %} class="active"{% endif %} data-view-tab="sql">SQL編集</button>
-        <button type="button"{% if edit_mode == "ui" %} class="active"{% endif %} data-view-tab="ui">ビジュアル編集</button>
+      <label>{{ layout.t("admin.database.view_definition") }}</label>
+      <nav class="tab-nav view-form-tabs" aria-label="{{ layout.t("admin.database.view_definition") }}">
+        <button type="button"{% if edit_mode != "ui" %} class="active"{% endif %} data-view-tab="sql">{{ layout.t("admin.database.sql_editor") }}</button>
+        <button type="button"{% if edit_mode == "ui" %} class="active"{% endif %} data-view-tab="ui">{{ layout.t("admin.visual_editor") }}</button>
       </nav>
 
       <div class="tab-panel" id="view-tab-ui"{% if edit_mode != "ui" %} hidden{% endif %}>
         <div id="view-ui-unsupported" class="notice info" hidden>
-          この定義はビジュアル編集に対応していません。JOIN・複雑な WHERE などを含む SQL は SQL編集タブで編集してください。
+          {{ layout.t("admin.database.this_definition_is_not_supported_in_visual_editor_edit_j") }}
         </div>
 
         <div id="view-ui-builder">
           <div class="field-row view-ui-base-row">
             <div class="view-ui-base-table-field">
-              <label for="view-ui-base-table">元テーブル</label>
+              <label for="view-ui-base-table">{{ layout.t("admin.database.source_table") }}</label>
               <select id="view-ui-base-table">
-                <option value="">テーブルを選択</option>
+                <option value="">{{ layout.t("admin.database.select_table") }}</option>
                 {% for table in table_options %}
                 <option value="{{ table.name }}">{{ table.name }}</option>
                 {% endfor %}
               </select>
             </div>
             <div class="view-ui-select-mode-control">
-              <label for="view-ui-select-mode">SELECT 修飾</label>
-              <select id="view-ui-select-mode" aria-label="SELECT 修飾">
+              <label for="view-ui-select-mode">{{ layout.t("admin.select_modifiers") }}</label>
+              <select id="view-ui-select-mode" aria-label="{{ layout.t("admin.select_modifiers") }}">
                 <option value=""></option>
-                <option value="distinct">重複排除</option>
-                <option value="group_by">集計</option>
+                <option value="distinct">{{ layout.t("admin.distinct") }}</option>
+                <option value="group_by">{{ layout.t("admin.aggregate") }}</option>
               </select>
-              <button type="button" class="view-ui-select-mode-help" data-tooltip="空欄は通常の SELECT です。重複排除は SELECT DISTINCT を付与します。集計は出力カラムすべてで GROUP BY を付与します。" aria-label="SELECT 修飾の説明">?</button>
+              <button type="button" class="view-ui-select-mode-help" data-tooltip="{{ layout.t("admin.database.select_help_tooltip") }}" aria-label="{{ layout.t("admin.select_modifier_help") }}">?</button>
             </div>
           </div>
 
           <div id="view-ui-error" class="error" hidden></div>
 
-          <p id="view-ui-loading" class="help" hidden>カラム一覧を読み込み中…</p>
-          <p id="view-ui-empty" class="help">元テーブルを選択するとカラム一覧が表示されます。</p>
+          <p id="view-ui-loading" class="help" hidden>{{ layout.t("admin.database.loading_column_list") }}</p>
+          <p id="view-ui-empty" class="help">{{ layout.t("admin.database.selecting_a_source_table_shows_its_columns") }}</p>
 
           <div id="view-ui-columns-wrap" class="view-ui-columns-wrap" hidden>
             <ul id="view-ui-columns" class="view-ui-column-list"></ul>
             <div id="view-ui-add-column" class="view-ui-add-column-row">
-              <select id="view-ui-add-column-select" aria-label="追加するカラム">
-                <option value="">カラムを選択</option>
+              <select id="view-ui-add-column-select" aria-label="{{ layout.t("admin.database.columns_to_add") }}">
+                <option value="">{{ layout.t("admin.database.select_column") }}</option>
               </select>
-              <input type="text" id="view-ui-add-column-expression" class="view-ui-add-column-expression" placeholder='例: LENGTH("body")' hidden disabled aria-label="追加する式">
-              <button type="button" class="view-ui-icon-btn" id="view-ui-add-column-btn" aria-label="カラムを追加">+</button>
+              <input type="text" id="view-ui-add-column-expression" class="view-ui-add-column-expression" placeholder='{{ layout.t("admin.en_3") }} LENGTH("body")' hidden disabled aria-label="{{ layout.t("admin.expression_to_add") }}">
+              <button type="button" class="view-ui-icon-btn" id="view-ui-add-column-btn" aria-label="{{ layout.t("admin.database.add_column") }}">+</button>
             </div>
           </div>
-          <p class="help">カラムを追加・削除できます。同じカラムを複数回追加できます。カラム選択で「式を入力」を選ぶと、式（例: <code>LENGTH("body")</code>）を追加できます。各行のカラム名欄はカラム名または式を直接編集できます。チェックボックスで出力に含めるかどうかを指定できます。WHERE 条件のみで出力しないカラムは、チェックが外れた状態で表示されます。別名欄で出力列名を指定できます（未入力時は元のカラム名または式）。出力列名（別名または元カラム名・式）は重複できません。WHERE 欄には条件部分を入力してください（例: <code>IS NOT NULL</code>、<code>&gt; 5</code>）。式の行では、カラム名欄に式（例: <code>LENGTH("body")</code>）、WHERE 欄に条件部分（例: <code>&gt; 5</code>）を入力してください。複数列の条件は AND で結合されます。ドラッグで並び順を変更できます。</p>
+          <p class="help">{{ layout.t("admin.database.add_remove_columns_same_column_may_repeat_choose_enter_e") }} <code>LENGTH("body")</code>{{ layout.t("admin.database.can_be_added_each_row_s_column_field_is_a_name_or_expres") }} <code>IS NOT NULL</code>、<code>&gt; 5</code>{{ layout.t("admin.database.in_expression_rows_enter_the_expression_in_the_column_na") }} <code>LENGTH("body")</code>{{ layout.t("admin.database.where_clause_example") }} <code>&gt; 5</code>{{ layout.t("admin.here_multiple_conditions_are_anded_drag_to_reorder") }}</p>
         </div>
       </div>
 
       <div class="tab-panel" id="view-tab-sql"{% if edit_mode == "ui" %} hidden{% endif %}>
         <textarea id="definition" name="definition" rows="8" required>{{ definition }}</textarea>
-        <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
+        <p class="help"><code>CREATE VIEW ... AS</code> {{ layout.t("admin.enter_the_select_statement_after_this") }}</p>
       </div>
     </div>
 
@@ -90,13 +90,13 @@
 <dialog id="view-ui-switch-confirm-dialog" class="view-ui-switch-confirm-dialog">
   <div class="view-ui-switch-confirm-dialog-inner">
     <div class="view-ui-switch-confirm-dialog-header">
-      <h2>ビジュアル編集への切り替え</h2>
+      <h2>{{ layout.t("admin.switch_to_visual_editor") }}</h2>
     </div>
     <div class="view-ui-switch-confirm-dialog-body">
-      <p class="notice info">ビジュアル編集に切り替えると、現在の SQL 定義がビジュアル編集用の形式に変換される過程で、元の定義が正確に保持されない場合があります。複雑な SQL を編集している場合は SQL編集タブの利用を推奨します。</p>
+      <p class="notice info">{{ layout.t("admin.database.switching_to_visual_edit_may_not_preserve_complex_sql_ex") }}</p>
       <div class="view-ui-switch-confirm-dialog-actions">
-        <button type="button" class="button" id="view-ui-switch-confirm-ok">続行</button>
-        <button type="button" class="button secondary" id="view-ui-switch-confirm-cancel">キャンセル</button>
+        <button type="button" class="button" id="view-ui-switch-confirm-ok">{{ layout.t("admin.continue") }}</button>
+        <button type="button" class="button secondary" id="view-ui-switch-confirm-cancel">{{ layout.t("admin.cancel") }}</button>
       </div>
     </div>
   </div>

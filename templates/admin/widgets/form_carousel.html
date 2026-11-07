@@ -7,41 +7,41 @@
 <form method="post" action="/admin/widgets/{{ type_key }}/edit" class="form-layout">
   <section class="panel">
     <div class="field">
-      <label>説明</label>
+      <label>{{ layout.t("admin.description") }}</label>
       <p class="help">{{ description }}</p>
-      <p class="help">このタイプを使うプレースホルダーは <a href="/admin/posts">投稿</a> 画面で追加します。各プレースホルダー配下の「公開済みエントリ」がスライドになります。</p>
+      <p class="help">{{ layout.t("admin.posts.placeholders_using_this_type") }} <a href="/admin/posts">{{ layout.t("nav.posts") }}</a> {{ layout.t("admin.posts.add_on_this_screen_each_placeholder_s_published_entries") }}</p>
     </div>
   </section>
 
   <aside class="panel">
     <div class="field">
-      <label>ウィジェットタイプ</label>
+      <label>{{ layout.t("admin.widgets.widget_type_2") }}</label>
       <p class="readonly">{{ type_label }}</p>
       <p class="help"><code>{{ type_key }}</code></p>
     </div>
 
     <div class="field">
-      <label for="interval">スライド間隔（秒）</label>
+      <label for="interval">{{ layout.t("admin.posts.slide_interval_seconds") }}</label>
       <input id="interval" name="interval" type="number" min="1" max="30" value="{{ interval }}">
-      <p class="help">次のスライドに自動で切り替わるまでの秒数（1〜30）。</p>
+      <p class="help">{{ layout.t("admin.posts.seconds_until_the_next_slide_1_30") }}</p>
     </div>
 
     <div class="field-row">
       <div class="field">
-        <label for="width">領域の幅</label>
+        <label for="width">{{ layout.t("admin.region_width") }}</label>
         <input id="width" name="width" type="text" value="{{ width }}" placeholder="100%">
-        <p class="help">CSS サイズ（例: 100%、600px）</p>
+        <p class="help">{{ layout.t("admin.css_size_e_g_100_600px") }}</p>
       </div>
       <div class="field">
-        <label for="height">領域の高さ</label>
+        <label for="height">{{ layout.t("admin.region_height") }}</label>
         <input id="height" name="height" type="text" value="{{ height }}" placeholder="400px">
-        <p class="help">CSS サイズ（例: 400px、50vh）</p>
+        <p class="help">{{ layout.t("admin.css_size_e_g_400px_50vh") }}</p>
       </div>
     </div>
 
     <div class="actions">
-      <button class="button" type="submit">更新する</button>
-      <a class="button secondary" href="/admin/widgets">戻る</a>
+      <button class="button" type="submit">{{ layout.t("admin.update") }}</button>
+      <a class="button secondary" href="/admin/widgets">{{ layout.t("admin.back") }}</a>
     </div>
   </aside>
 </form>

@@ -8,28 +8,28 @@
 <form method="post" action="{{ action }}" class="form-layout">
   <section class="panel">
     <div class="field">
-      <label>説明</label>
+      <label>{{ layout.t("admin.description") }}</label>
       <p class="help">{{ description }}</p>
-      <p class="help">このタイプを使うプレースホルダーは <a href="/admin/posts">投稿</a> 画面で追加します。</p>
+      <p class="help">{{ layout.t("admin.posts.placeholders_using_this_type") }} <a href="/admin/posts">{{ layout.t("nav.posts") }}</a> {{ layout.t("admin.are_added_on_this_screen") }}</p>
     </div>
   </section>
 
   <aside class="panel">
     <div class="field">
-      <label>ウィジェットタイプ</label>
+      <label>{{ layout.t("admin.widgets.widget_type_2") }}</label>
       <p class="readonly">{{ type_label }}</p>
       <p class="help"><code>{{ type_key }}</code></p>
     </div>
 
     <div class="field">
-      <label for="limit">表示件数</label>
+      <label for="limit">{{ layout.t("admin.item_limit") }}</label>
       <input id="limit" name="limit" type="number" min="1" max="50" value="{{ limit }}">
-      <p class="help">このタイプのプレースホルダー共通の表示件数（1〜50）。</p>
+      <p class="help">{{ layout.t("admin.posts.shared_item_limit_1_50_for_placeholders_of_this_type") }}</p>
     </div>
 
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
-      <a class="button secondary" href="/admin/widgets">戻る</a>
+      <a class="button secondary" href="/admin/widgets">{{ layout.t("admin.back") }}</a>
     </div>
   </aside>
 </form>

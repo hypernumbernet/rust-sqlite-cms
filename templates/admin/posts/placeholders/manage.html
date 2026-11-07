@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}{{ placeholder_name }} — 投稿{% endblock %}
+{% block title %}{{ placeholder_name }} — {{ layout.t("nav.posts") }}{% endblock %}
 {% block nav_posts %}active{% endblock %}
-{% block heading %}{{ placeholder_name }} — 投稿{% endblock %}
+{% block heading %}{{ placeholder_name }} — {{ layout.t("nav.posts") }}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -30,11 +30,11 @@
 {% endblock %}
 
 {% block content %}
-<p class="meta-line">ウィジェットタイプ: {{ type_label }}{% if type_hint != "" %}（{{ type_hint }}）{% endif %}</p>
+<p class="meta-line">{{ layout.t("admin.widgets.widget_type") }} {{ type_label }}{% if type_hint != "" %}（{{ type_hint }}）{% endif %}</p>
 
-<nav class="tab-nav" aria-label="プレースホルダー管理">
-  <a href="{{ entries_tab_url }}"{% if is_entries_tab %} class="active"{% endif %}>投稿</a>
-  <a href="{{ settings_tab_url }}"{% if is_settings_tab %} class="active"{% endif %}>設定</a>
+<nav class="tab-nav" aria-label="{{ layout.t("admin.posts.placeholder_management") }}">
+  <a href="{{ entries_tab_url }}"{% if is_entries_tab %} class="active"{% endif %}>{{ layout.t("nav.posts") }}</a>
+  <a href="{{ settings_tab_url }}"{% if is_settings_tab %} class="active"{% endif %}>{{ layout.t("nav.settings") }}</a>
 </nav>
 
 <div class="tab-panel"{% if !is_entries_tab %} hidden{% endif %}>

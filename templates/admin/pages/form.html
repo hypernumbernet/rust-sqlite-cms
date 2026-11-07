@@ -23,45 +23,45 @@
 
   <aside class="panel">
     <div class="field">
-      <label for="name">名前</label>
+      <label for="name">{{ layout.t("admin.name") }}</label>
       <input id="name" name="name" type="text" value="{{ name }}" required>
-      <p class="help">管理画面での表示名です。</p>
+      <p class="help">{{ layout.t("admin.display_name_shown_in_the_admin") }}</p>
     </div>
 
     <div class="field">
-      <label for="layout_id">レイアウト</label>
+      <label for="layout_id">{{ layout.t("nav.layouts") }}</label>
       <select id="layout_id" name="layout_id" required>
         {% for opt in layout_options %}
         <option value="{{ opt.id }}"{% if opt.selected %} selected{% endif %}>{{ opt.label }}</option>
         {% endfor %}
       </select>
-      <p class="help"><a href="/admin/layouts">レイアウト管理</a>のファイル一覧から shell.html や site.css を編集できます。</p>
+      <p class="help"><a href="/admin/layouts">{{ layout.t("admin.layouts.layout_management") }}</a>{{ layout.t("admin.file_list_to_edit_shell_html_and_site_css") }}</p>
     </div>
 
     <div class="field">
       <label for="url_path">URL</label>
       <input id="url_path" name="url_path" type="text" value="{{ url_path }}" placeholder="/about">
-      <p class="help">公開する URL（例: <code>/about</code>）。<code>/</code> を指定するとトップページになります。既に別ページが <code>/</code> の場合は先にその URL を変更してください。空のままだと下書きとして保存します。</p>
+      <p class="help">{{ layout.t("admin.public_url_e_g") }} <code>/about</code>）。<code>/</code> {{ layout.t("admin.pages.makes_this_the_top_page_if_another_page_is_already") }} <code>/</code> {{ layout.t("admin.change_that_url_first_leaving_empty_saves_as_draft") }}</p>
     </div>
 
     <div class="field">
       <div class="checkbox">
         <input id="is_published" name="is_published" type="checkbox" value="1"{% if is_published %} checked{% endif %}>
-        <label for="is_published">公開する</label>
+        <label for="is_published">{{ layout.t("admin.publish") }}</label>
       </div>
-      <p class="help">公開するには URL の指定が必要です。トップページ（<code>/</code>）を非公開にすると <code>/</code> は 404 になります。</p>
+      <p class="help">{{ layout.t("admin.pages.a_url_is_required_to_publish_top_page") }}<code>/</code>{{ layout.t("admin.becomes_unpublished") }} <code>/</code> {{ layout.t("admin.returns_404") }}</p>
     </div>
 
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
-      <a class="button secondary" href="/admin/pages">戻る</a>
+      <a class="button secondary" href="/admin/pages">{{ layout.t("admin.back") }}</a>
     </div>
   </aside>
 </form>
 
 {% if is_edit %}
-<form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="このページを削除しますか？">
-  <button class="button danger" type="submit">削除する</button>
+<form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="{{ layout.t("admin.confirm.delete_this") }}{{ layout.t("nav.pages") }}{{ layout.t("admin.confirm.delete_widget") }}">
+  <button class="button danger" type="submit">{{ layout.t("admin.delete") }}</button>
 </form>
 {% endif %}
 

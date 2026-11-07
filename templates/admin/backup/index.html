@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}バックアップ{% endblock %}
+{% block title %}{{ layout.t("nav.backup_short") }}{% endblock %}
 {% block nav_backup %}active{% endblock %}
-{% block heading %}バックアップ / リストア{% endblock %}
+{% block heading %}{{ layout.t("nav.backup") }}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -76,26 +76,26 @@
 
 <div class="backup-panels">
   <section class="panel">
-    <h2>バックアップ</h2>
-    <p>サイトの全データを ZIP 1 ファイルにまとめてダウンロードします。</p>
+    <h2>{{ layout.t("nav.backup_short") }}</h2>
+    <p>{{ layout.t("admin.backup.download_all_site_data_as_a_single_zip_file") }}</p>
 
     <div class="notice info">
-      次の内容が含まれます:
+      {{ layout.t("admin.includes") }}
       <ul>
-        <li>SQLite データベース（投稿・ページ・ウィジェット・ユーザー・設定）</li>
-        <li>設定ファイル（<code>{{ config_path }}</code>）</li>
-        <li>レイアウトとページ本文（<code>{{ work_dir }}/layouts/</code>）</li>
-        <li>メディアファイル（<code>{{ uploads_dir }}/</code>）</li>
+        <li>{{ layout.t("admin.database.sqlite_database_posts_pages_widgets_users_settings") }}</li>
+        <li>{{ layout.t("admin.settings.settings_file") }}<code>{{ config_path }}</code>）</li>
+        <li>{{ layout.t("admin.backup.layout_and_pages") }}<code>{{ work_dir }}/layouts/</code>）</li>
+        <li>{{ layout.t("admin.media.media_file") }}<code>{{ uploads_dir }}/</code>）</li>
       </ul>
     </div>
 
-    <h3>現在のデータ</h3>
+    <h3>{{ layout.t("admin.current_data") }}</h3>
     <ul class="backup-stats">
-      <li><span>投稿</span><strong>{{ stats.posts_count }}</strong></li>
-      <li><span>ページ</span><strong>{{ stats.pages_count }}</strong></li>
-      <li><span>メディア</span><strong>{{ stats.media_count }}</strong></li>
-      <li><span>レイアウト</span><strong>{{ stats.layouts_count }}</strong></li>
-      <li><span>ユーザー</span><strong>{{ stats.users_count }}</strong></li>
+      <li><span>{{ layout.t("nav.posts") }}</span><strong>{{ stats.posts_count }}</strong></li>
+      <li><span>{{ layout.t("nav.pages") }}</span><strong>{{ stats.pages_count }}</strong></li>
+      <li><span>{{ layout.t("nav.media") }}</span><strong>{{ stats.media_count }}</strong></li>
+      <li><span>{{ layout.t("nav.layouts") }}</span><strong>{{ stats.layouts_count }}</strong></li>
+      <li><span>{{ layout.t("nav.users") }}</span><strong>{{ stats.users_count }}</strong></li>
     </ul>
 
     <div class="backup-paths">
@@ -105,24 +105,24 @@
     </div>
 
     <div class="actions mt-16">
-      <a class="button" href="/admin/backup/export">バックアップをダウンロード</a>
+      <a class="button" href="/admin/backup/export">{{ layout.t("admin.backup.download_backup") }}</a>
     </div>
   </section>
 
   <section class="panel panel-danger">
-    <h2>リストア</h2>
+    <h2>{{ layout.t("admin.backup.restore") }}</h2>
     <div class="callout-warning">
-      <strong>注意:</strong> バックアップ ZIP を適用すると、現在のデータベースと work/ 配下のファイルが<strong>すべて上書き</strong>されます。この操作は元に戻せません。
+      <strong>{{ layout.t("admin.note") }}</strong> {{ layout.t("admin.backup.applying_the_backup_zip_replaces_the_current_database_an") }}<strong>{{ layout.t("admin.overwrite_everything") }}</strong>{{ layout.t("admin.this_cannot_be_undone") }}
     </div>
 
-    <form method="post" action="/admin/backup/restore" enctype="multipart/form-data" data-confirm="本当にバックアップからリストアしますか？現在のデータはすべて失われます。">
+    <form method="post" action="/admin/backup/restore" enctype="multipart/form-data" data-confirm="{{ layout.t("admin.backup.confirm_restore_prompt") }}">
       <div class="field">
-        <label for="package">バックアップファイル（.zip）</label>
+        <label for="package">{{ layout.t("admin.backup.backup_file_zip") }}</label>
         <input id="package" name="package" type="file" accept="application/zip,.zip" required>
-        <p class="help">この CMS からエクスポートした ZIP のみ対応しています。リストア後もサーバーの再起動は不要です。</p>
+        <p class="help">{{ layout.t("admin.backup.only_zip_files_exported_from_this_cms_are_supported_no_s") }}</p>
       </div>
       <div class="actions">
-        <button class="button danger" type="submit">リストアを実行</button>
+        <button class="button danger" type="submit">{{ layout.t("admin.backup.run_restore") }}</button>
       </div>
     </form>
 
@@ -130,9 +130,9 @@
     <div class="callout-success callout-success--mt">
       <p><strong>{{ result.message }}</strong></p>
       <ul>
-        <li>復元ファイル数: {{ result.restored_files_count }}</li>
+        <li>{{ layout.t("admin.files_restored") }} {{ result.restored_files_count }}</li>
         {% if let Some(created_at) = result.backup_created_at %}
-        <li>バックアップ作成日時: {{ created_at }}</li>
+        <li>{{ layout.t("admin.backup.backup_created_at") }} {{ created_at }}</li>
         {% endif %}
       </ul>
     </div>

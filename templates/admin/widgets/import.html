@@ -1,37 +1,37 @@
 {% extends "admin/base.html" %}
 
-{% block title %}ウィジェットをインポート{% endblock %}
+{% block title %}{{ layout.t("admin.widgets.import_widget") }}{% endblock %}
 {% block nav_widgets %}active{% endblock %}
-{% block heading %}ウィジェットをインポート{% endblock %}
+{% block heading %}{{ layout.t("admin.widgets.import_widget") }}{% endblock %}
 
 {% block content %}
 <section class="panel">
-  <p class="help mb-12">JSON パッケージ（<code>format_version: 1</code>）をアップロードすると、新しいウィジェットタイプの登録または既存タイプの更新ができます。</p>
+  <p class="help mb-12">{{ layout.t("admin.json_package") }}<code>format_version: 1</code>{{ layout.t("admin.widgets.to_register_a_new_widget_type_or_update_an_existing_one") }}</p>
   <form method="post" action="/admin/widgets/import" enctype="multipart/form-data">
     <div class="field">
-      <label for="package">パッケージファイル（.json）</label>
+      <label for="package">{{ layout.t("admin.package_file_json") }}</label>
       <input id="package" name="package" type="file" accept="application/json,.json" required>
     </div>
     <div class="field">
-      <label>既存の type_key がある場合</label>
+      <label>{{ layout.t("admin.if_an_existing_type_key_exists") }}</label>
       <label class="label-option">
-        <input type="radio" name="mode" value="overwrite" checked> 上書きする
+        <input type="radio" name="mode" value="overwrite" checked> {{ layout.t("admin.overwrite") }}
       </label>
       <label class="label-option">
-        <input type="radio" name="mode" value="skip"> スキップする（変更しない）
+        <input type="radio" name="mode" value="skip"> {{ layout.t("admin.skip_no_change") }}
       </label>
       <label class="label-option">
-        <input type="radio" name="mode" value="rename"> 別の type_key でインポートする（新規作成）
+        <input type="radio" name="mode" value="rename"> {{ layout.t("admin.import_under_a_new_type_key_create_new") }}
       </label>
     </div>
     <div class="field">
-      <label for="target_key">インポート先 type_key</label>
-      <input id="target_key" name="target_key" type="text" placeholder="例: news_copy">
-      <p class="help">「別の type_key でインポートする」を選んだときに指定してください。英小文字で始まり、英小文字・数字・アンダースコアのみ。</p>
+      <label for="target_key">{{ layout.t("admin.import_target_type_key") }}</label>
+      <input id="target_key" name="target_key" type="text" placeholder="{{ layout.t("admin.e_g_news_copy") }}">
+      <p class="help">{{ layout.t("admin.specify_when_choosing_import_under_a_new_type_key_must_s") }}</p>
     </div>
     <div class="actions">
-      <button class="button" type="submit">インポート</button>
-      <a class="button secondary" href="/admin/widgets">一覧に戻る</a>
+      <button class="button" type="submit">{{ layout.t("breadcrumb.import") }}</button>
+      <a class="button secondary" href="/admin/widgets">{{ layout.t("admin.back_to_list") }}</a>
     </div>
   </form>
 </section>

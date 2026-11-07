@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}ページ{% endblock %}
+{% block title %}{{ layout.t("nav.pages") }}{% endblock %}
 {% block nav_pages %}active{% endblock %}
-{% block heading %}ページ{% endblock %}
+{% block heading %}{{ layout.t("nav.pages") }}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -14,20 +14,20 @@
 {% block content %}
 
 <div class="toolbar">
-  <p>各ページはレイアウトに属し、MiniJinja で公開されます。URL が <code>/</code> のページがトップページとして表示されます。</p>
-  <a class="button" href="/admin/pages/new">新規追加</a>
+  <p>{{ layout.t("admin.layouts.each_page_belongs_to_a_layout_and_is_published_via_minij") }} <code>/</code> {{ layout.t("admin.pages.is_shown_as_the_top_page") }}</p>
+  <a class="button" href="/admin/pages/new">{{ layout.t("breadcrumb.widget_new") }}</a>
 </div>
 
 <section class="panel panel-table">
   <table>
     <thead>
       <tr>
-        <th>名前</th>
-        <th>レイアウト</th>
+        <th>{{ layout.t("admin.name") }}</th>
+        <th>{{ layout.t("nav.layouts") }}</th>
         <th>URL</th>
-        <th>状態</th>
-        <th>更新日</th>
-        <th>操作</th>
+        <th>{{ layout.t("admin.status") }}</th>
+        <th>{{ layout.t("admin.updated") }}</th>
+        <th>{{ layout.t("admin.actions") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -46,14 +46,14 @@
         <td>{{ page.updated_at }}</td>
         <td>
           <div class="op-actions">
-            <a class="button secondary" href="/admin/pages/{{ page.id }}/preview" target="_blank" rel="noopener">プレビュー</a>
+            <a class="button secondary" href="/admin/pages/{{ page.id }}/preview" target="_blank" rel="noopener">{{ layout.t("breadcrumb.preview") }}</a>
             {% if page.is_published && page.has_url %}
-            <a class="button secondary" href="{{ page.url_path }}" target="_blank" rel="noopener">表示</a>
+            <a class="button secondary" href="{{ page.url_path }}" target="_blank" rel="noopener">{{ layout.t("admin.show") }}</a>
             {% endif %}
-            <a class="button secondary" href="/admin/pages/{{ page.id }}/edit">編集</a>
+            <a class="button secondary" href="/admin/pages/{{ page.id }}/edit">{{ layout.t("admin.edit") }}</a>
             {% if page.can_delete %}
-            <form method="post" action="/admin/pages/{{ page.id }}/delete" data-confirm="このページを削除しますか？">
-              <button class="button danger" type="submit">削除</button>
+            <form method="post" action="/admin/pages/{{ page.id }}/delete" data-confirm="{{ layout.t("admin.confirm.delete_this") }}{{ layout.t("nav.pages") }}{{ layout.t("admin.confirm.delete_widget") }}">
+              <button class="button danger" type="submit">{{ layout.t("admin.delete_2") }}</button>
             </form>
             {% endif %}
           </div>

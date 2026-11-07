@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}{{ table_name }} — テストデータ生成{% endblock %}
+{% block title %}{{ table_name }} — {{ layout.t("breadcrumb.seed_data") }}{% endblock %}
 {% block nav_database %}active{% endblock %}
-{% block heading %}{{ table_name }} — テストデータ生成{% endblock %}
+{% block heading %}{{ table_name }} — {{ layout.t("breadcrumb.seed_data") }}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -80,30 +80,30 @@
 {% endif %}
 
 <div id="seed-progress" class="db-data-status" hidden role="status" aria-live="polite">
-  <span class="seed-progress-text">準備中…</span>
+  <span class="seed-progress-text">{{ layout.t("admin.preparing") }}</span>
   <progress id="seed-progress-bar" max="100" value="0"></progress>
 </div>
 
 <form method="post" action="{{ action }}" class="form-layout" id="seed-form" data-data-url="{{ data_url }}">
   <section class="panel">
     <div class="field">
-      <label for="count">生成件数</label>
+      <label for="count">{{ layout.t("admin.number_of_rows") }}</label>
       <input id="count" name="count" type="number" min="1" max="{{ max_count }}" value="{{ count }}" required>
-      <p class="help">1〜{{ max_count }} 件まで指定できます。<code>id</code> 列は自動採番されます。</p>
+      <p class="help">{{ layout.t("admin.database.seed_count_prefix") }}{{ max_count }}{{ layout.t("admin.database.seed_count_suffix") }}<code>id</code> {{ layout.t("admin.columns_are_auto_numbered") }}</p>
     </div>
 
     {% if has_columns %}
     <div class="field">
-      <label>カラムごとの生成設定</label>
-      <p class="help">型に応じた範囲・文字数・文字種を指定してください。NULL可の列では NULL を含めることもできます。</p>
+      <label>{{ layout.t("admin.database.per_column_generation") }}</label>
+      <p class="help">{{ layout.t("admin.set_range_length_and_charset_per_type_nullable_columns_m") }}</p>
 
       <div class="seed-builder panel panel-table">
         <table>
           <thead>
             <tr>
-              <th>カラム名</th>
-              <th>型</th>
-              <th>生成設定</th>
+              <th>{{ layout.t("admin.database.column_name") }}</th>
+              <th>{{ layout.t("admin.database.column_type") }}</th>
+              <th>{{ layout.t("admin.settings.generation_settings") }}</th>
               <th>NULL</th>
             </tr>
           </thead>
@@ -119,69 +119,69 @@
               <td class="seed-params">
                 <div class="seed-param-group" data-type="integer">
                   <span class="seed-param">
-                    <label>最小</label>
+                    <label>{{ layout.t("admin.min") }}</label>
                     <input name="col_int_min" type="number" value="{{ column.int_min }}">
                   </span>
                   <span class="seed-param">
-                    <label>最大</label>
+                    <label>{{ layout.t("admin.max") }}</label>
                     <input name="col_int_max" type="number" value="{{ column.int_max }}">
                   </span>
                 </div>
                 <div class="seed-param-group" data-type="real">
                   <span class="seed-param">
-                    <label>最小</label>
+                    <label>{{ layout.t("admin.min") }}</label>
                     <input name="col_real_min" type="number" step="any" value="{{ column.real_min }}">
                   </span>
                   <span class="seed-param">
-                    <label>最大</label>
+                    <label>{{ layout.t("admin.max") }}</label>
                     <input name="col_real_max" type="number" step="any" value="{{ column.real_max }}">
                   </span>
                 </div>
                 <div class="seed-param-group" data-type="text">
                   <span class="seed-param">
-                    <label>最小文字数</label>
+                    <label>{{ layout.t("admin.min_length") }}</label>
                     <input name="col_text_min" type="number" min="1" value="{{ column.text_min }}">
                   </span>
                   <span class="seed-param">
-                    <label>最大文字数</label>
+                    <label>{{ layout.t("admin.max_length") }}</label>
                     <input name="col_text_max" type="number" min="1" value="{{ column.text_max }}">
                   </span>
                   <span class="seed-param">
-                    <label>文字種</label>
+                    <label>{{ layout.t("admin.character_set") }}</label>
                     <select name="col_charset">
-                      <option value="ascii_alnum"{% if column.charset == "ascii_alnum" %} selected{% endif %}>英数字</option>
-                      <option value="ascii_printable"{% if column.charset == "ascii_printable" %} selected{% endif %}>ASCII印字可能</option>
-                      <option value="japanese"{% if column.charset == "japanese" %} selected{% endif %}>日本語混在</option>
+                      <option value="ascii_alnum"{% if column.charset == "ascii_alnum" %} selected{% endif %}>{{ layout.t("admin.alphanumeric") }}</option>
+                      <option value="ascii_printable"{% if column.charset == "ascii_printable" %} selected{% endif %}>{{ layout.t("admin.ascii_printable") }}</option>
+                      <option value="japanese"{% if column.charset == "japanese" %} selected{% endif %}>{{ layout.t("admin.mixed_japanese") }}</option>
                     </select>
                   </span>
                 </div>
                 <div class="seed-param-group" data-type="blob">
                   <span class="seed-param">
-                    <label>最小バイト数</label>
+                    <label>{{ layout.t("admin.min_bytes") }}</label>
                     <input name="col_blob_min" type="number" min="1" value="{{ column.blob_min }}">
                   </span>
                   <span class="seed-param">
-                    <label>最大バイト数</label>
+                    <label>{{ layout.t("admin.max_bytes") }}</label>
                     <input name="col_blob_max" type="number" min="1" value="{{ column.blob_max }}">
                   </span>
                 </div>
                 <div class="seed-param-group" data-type="timestamp">
                   <span class="seed-param">
-                    <label>開始日時</label>
+                    <label>{{ layout.t("admin.start_date_time") }}</label>
                     <input name="col_timestamp_from" type="datetime-local" value="{{ column.timestamp_from }}">
                   </span>
                   <span class="seed-param">
-                    <label>終了日時</label>
+                    <label>{{ layout.t("admin.end_date_time") }}</label>
                     <input name="col_timestamp_to" type="datetime-local" value="{{ column.timestamp_to }}">
                   </span>
                 </div>
                 <div class="seed-param-group" data-type="boolean">
-                  <span class="seed-param-note">0 または 1 をランダムに生成します。</span>
+                  <span class="seed-param-note">{{ layout.t("admin.generates_0_or_1_at_random") }}</span>
                 </div>
               </td>
               <td class="seed-null-cell">
                 {% if column.nullable %}
-                <label><input type="checkbox" class="null-checkbox"{% if column.include_null %} checked{% endif %}> 含める</label>
+                <label><input type="checkbox" class="null-checkbox"{% if column.include_null %} checked{% endif %}> {{ layout.t("admin.include") }}</label>
                 <input type="hidden" name="col_include_null" class="null-value" value="{% if column.include_null %}1{% else %}0{% endif %}">
                 {% else %}
                 <input type="hidden" name="col_include_null" value="0">
@@ -195,14 +195,14 @@
       </div>
     </div>
     {% else %}
-    <p class="help">ユーザー定義カラムがありません。<code>id</code> 列のみの行が生成されます。</p>
+    <p class="help">{{ layout.t("admin.database.no_user_defined_columns") }}<code>id</code> {{ layout.t("admin.only_column_rows_are_generated") }}</p>
     {% endif %}
   </section>
 
   <aside class="panel">
     <div class="actions">
-      <button class="button" type="submit">生成する</button>
-      <a class="button secondary" href="{{ data_url }}">データ一覧に戻る</a>
+      <button class="button" type="submit">{{ layout.t("admin.generate") }}</button>
+      <a class="button secondary" href="{{ data_url }}">{{ layout.t("admin.back_to_data_list") }}</a>
     </div>
   </aside>
 </form>

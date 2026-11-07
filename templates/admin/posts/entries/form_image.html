@@ -12,7 +12,7 @@
 <form method="post" action="{{ action }}" class="form-layout">
   <section class="panel">
     <div class="field">
-      <label>画像 <span class="field-label-muted">（必須）</span></label>
+      <label>{{ layout.t("admin.image") }} <span class="field-label-muted">{{ layout.t("public.contact.required_marker") }}</span></label>
       {% if has_media %}
       <div class="media-grid">
         {% for item in media_items %}
@@ -25,51 +25,51 @@
       </div>
       {% else %}
       <div class="empty-media">
-        画像がありません。<a href="/admin/media">メディア</a> 画面から先にアップロードしてください。
+        {{ layout.t("admin.no_images") }}<a href="/admin/media">{{ layout.t("nav.media") }}</a> {{ layout.t("admin.upload_from_admin_first") }}
       </div>
       {% endif %}
     </div>
 
     <div class="field">
-      <label for="title">alt テキスト</label>
+      <label for="title">{{ layout.t("admin.alt_text") }}</label>
       <input id="title" name="title" type="text" value="{{ title }}">
-      <p class="help">アクセシビリティ用の代替テキスト。空の場合はファイル名が使われます。</p>
+      <p class="help">{{ layout.t("admin.accessibility_alt_text_uses_the_file_name_when_empty") }}</p>
     </div>
 
     <div class="field">
-      <label for="content">リンク URL</label>
-      <input id="content" name="content" type="text" value="{{ content }}" placeholder="https://example.com または /about">
-      <p class="help">任意。設定すると画像クリックでこの URL に遷移します。</p>
+      <label for="content">{{ layout.t("admin.link_url") }}</label>
+      <input id="content" name="content" type="text" value="{{ content }}" placeholder="{{ layout.t("admin.https_example_com_or_about") }}">
+      <p class="help">{{ layout.t("admin.settings.optional_when_set_clicking_the_image_opens_this_url") }}</p>
     </div>
   </section>
 
   <aside class="panel">
     <div class="field">
-      <label for="post_status">公開状態</label>
+      <label for="post_status">{{ layout.t("admin.publish_status") }}</label>
       <select id="post_status" name="post_status">
-        <option value="draft"{% if is_draft %} selected{% endif %}>下書き</option>
-        <option value="publish"{% if is_publish %} selected{% endif %}>公開</option>
+        <option value="draft"{% if is_draft %} selected{% endif %}>{{ layout.t("admin.draft") }}</option>
+        <option value="publish"{% if is_publish %} selected{% endif %}>{{ layout.t("admin.published") }}</option>
       </select>
     </div>
 
     <div class="field">
-      <label for="float">回り込み（float）</label>
+      <label for="float">{{ layout.t("admin.float") }}</label>
       <select id="float" name="float">
-        <option value="none"{% if is_float_none %} selected{% endif %}>なし</option>
-        <option value="left"{% if is_float_left %} selected{% endif %}>左</option>
-        <option value="right"{% if is_float_right %} selected{% endif %}>右</option>
+        <option value="none"{% if is_float_none %} selected{% endif %}>{{ layout.t("admin.none") }}</option>
+        <option value="left"{% if is_float_left %} selected{% endif %}>{{ layout.t("admin.float.left") }}</option>
+        <option value="right"{% if is_float_right %} selected{% endif %}>{{ layout.t("admin.float.right") }}</option>
       </select>
     </div>
 
     <div class="field">
-      <label for="margin">マージン</label>
+      <label for="margin">{{ layout.t("admin.margin") }}</label>
       <input id="margin" name="margin" type="text" value="{{ margin }}" placeholder="16px">
-      <p class="help">CSS margin 形式（例: 16px、8px 16px）。空可。</p>
+      <p class="help">{{ layout.t("admin.css_margin_e_g_16px_8px_16px_optional") }}</p>
     </div>
 
     <div class="actions">
       <button class="button" type="submit"{% if !has_media %} disabled{% endif %}>{{ submit_label }}</button>
-      <a class="button secondary" href="{{ back_url }}">戻る</a>
+      <a class="button secondary" href="{{ back_url }}">{{ layout.t("admin.back") }}</a>
     </div>
   </aside>
 </form>

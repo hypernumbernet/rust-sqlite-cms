@@ -14,41 +14,41 @@
 <form method="post" action="{{ action }}" class="form-layout">
   <section class="panel">
     <div class="field">
-      <label for="title">タイトル</label>
+      <label for="title">{{ layout.t("admin.title") }}</label>
       <input id="title" name="title" type="text" value="{{ title }}" required>
     </div>
 
     <div class="field">
-      <label for="content">本文</label>
+      <label for="content">{{ layout.t("admin.body") }}</label>
       <textarea id="content" name="content">{{ content }}</textarea>
     </div>
 
     <div class="field">
-      <label for="excerpt">抜粋</label>
+      <label for="excerpt">{{ layout.t("admin.excerpt") }}</label>
       <textarea id="excerpt" name="excerpt">{{ excerpt }}</textarea>
-      <p class="help">テンプレートの一覧表示では、抜粋が優先して使われます。</p>
+      <p class="help">{{ layout.t("admin.excerpts_are_preferred_in_template_lists") }}</p>
     </div>
   </section>
 
   <aside class="panel">
     <div class="field">
-      <label for="post_status">公開状態</label>
+      <label for="post_status">{{ layout.t("admin.publish_status") }}</label>
       <select id="post_status" name="post_status">
-        <option value="draft"{% if is_draft %} selected{% endif %}>下書き</option>
-        <option value="publish"{% if is_publish %} selected{% endif %}>公開</option>
+        <option value="draft"{% if is_draft %} selected{% endif %}>{{ layout.t("admin.draft") }}</option>
+        <option value="publish"{% if is_publish %} selected{% endif %}>{{ layout.t("admin.published") }}</option>
       </select>
-      <p class="help">現在の状態: {{ post_status }}</p>
+      <p class="help">{{ layout.t("admin.current_status") }} {{ post_status }}</p>
     </div>
 
     <div class="field">
-      <label for="post_name">スラッグ</label>
+      <label for="post_name">{{ layout.t("admin.slug") }}</label>
       <input id="post_name" name="post_name" type="text" value="{{ post_name }}">
-      <p class="help">未入力の場合はタイトルから自動生成します。</p>
+      <p class="help">{{ layout.t("admin.generated_from_title_when_left_empty") }}</p>
     </div>
 
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
-      <a class="button secondary" href="{{ back_url }}">戻る</a>
+      <a class="button secondary" href="{{ back_url }}">{{ layout.t("admin.back") }}</a>
     </div>
   </aside>
 </form>

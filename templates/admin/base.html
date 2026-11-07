@@ -30,7 +30,7 @@
     })();
   </script>
   {% endif %}
-  <title>{% block title %}管理画面{% endblock %} - rust-sqlite-cms</title>
+  <title>{% block title %}{{ layout.t("admin.shell_title") }}{% endblock %}{{ layout.t("admin.shell_title_suffix") }}</title>
   {% if layout.embed %}
   <style>
     body.embed-mode .layout { display: block; min-height: auto; }
@@ -71,24 +71,24 @@
         <span class="brand-version">v{{ layout.app_version }}</span>
       </div>
       <nav>
-        <a href="/admin" class="{% block nav_dashboard %}{% endblock %}">ダッシュボード</a>
-        <a href="/admin/posts" class="{% block nav_posts %}{% endblock %}">投稿</a>
-        <a href="/admin/pages" class="{% block nav_pages %}{% endblock %}">ページ</a>
-        <a href="/admin/layouts" class="{% block nav_layouts %}{% endblock %}">レイアウト</a>
-        <a href="/admin/widgets" class="{% block nav_widgets %}{% endblock %}">ウィジェット</a>
-        <a href="/admin/media" class="{% block nav_media %}{% endblock %}">メディア</a>
-        <a href="/admin/samples" class="{% block nav_samples %}{% endblock %}">サンプル</a>
-        <a href="/admin/users" class="{% block nav_users %}{% endblock %}">ユーザー</a>
-        <a href="/admin/backup" class="{% block nav_backup %}{% endblock %}">バックアップ</a>
-        <a href="/admin/database" class="{% block nav_database %}{% endblock %}">DB管理</a>
-        <a href="/admin/settings" class="{% block nav_settings %}{% endblock %}">設定</a>
+        <a href="/admin" class="{% block nav_dashboard %}{% endblock %}">{{ layout.t("nav.dashboard") }}</a>
+        <a href="/admin/posts" class="{% block nav_posts %}{% endblock %}">{{ layout.t("nav.posts") }}</a>
+        <a href="/admin/pages" class="{% block nav_pages %}{% endblock %}">{{ layout.t("nav.pages") }}</a>
+        <a href="/admin/layouts" class="{% block nav_layouts %}{% endblock %}">{{ layout.t("nav.layouts") }}</a>
+        <a href="/admin/widgets" class="{% block nav_widgets %}{% endblock %}">{{ layout.t("nav.widgets") }}</a>
+        <a href="/admin/media" class="{% block nav_media %}{% endblock %}">{{ layout.t("nav.media") }}</a>
+        <a href="/admin/samples" class="{% block nav_samples %}{% endblock %}">{{ layout.t("nav.samples") }}</a>
+        <a href="/admin/users" class="{% block nav_users %}{% endblock %}">{{ layout.t("nav.users") }}</a>
+        <a href="/admin/backup" class="{% block nav_backup %}{% endblock %}">{{ layout.t("nav.backup_short") }}</a>
+        <a href="/admin/database" class="{% block nav_database %}{% endblock %}">{{ layout.t("nav.database") }}</a>
+        <a href="/admin/settings" class="{% block nav_settings %}{% endblock %}">{{ layout.t("nav.settings") }}</a>
       </nav>
     </aside>
     <div
       class="sidebar-resize-handle"
       role="separator"
       aria-orientation="vertical"
-      aria-label="サイドバーの幅"
+      aria-label="{{ layout.t("admin.sidebar_width") }}"
       tabindex="0"
     ></div>
     {% endif %}
@@ -96,7 +96,7 @@
       <header class="topbar{% if layout.embed %} topbar--embed{% endif %}">
         <div class="topbar-main">
           {% if !layout.breadcrumbs.is_empty() %}
-          <nav class="breadcrumb breadcrumb--heading" aria-label="パンくずリスト">
+          <nav class="breadcrumb breadcrumb--heading" aria-label="{{ layout.t("admin.breadcrumb") }}">
             {% for item in layout.breadcrumbs %}
               {% if !loop.first %}<span class="breadcrumb-sep" aria-hidden="true">/</span>{% endif %}
               {% if !item.href.is_empty() %}
@@ -107,13 +107,13 @@
             {% endfor %}
           </nav>
           {% elif !layout.embed %}
-          <h1 class="topbar-title">{% block heading %}管理画面{% endblock %}</h1>
+          <h1 class="topbar-title">{% block heading %}{{ layout.t("admin.shell_title") }}{% endblock %}</h1>
           {% endif %}
         </div>
         {% if !layout.embed %}
         <form method="post" action="/admin/logout" class="user-form">
-          <span class="user">{{ layout.user_display_name }} さん</span>
-          <button type="submit" class="logout-btn">ログアウト</button>
+          <span class="user">{{ layout.user_display_name }}{{ layout.t("admin.user.honorific_suffix") }}</span>
+          <button type="submit" class="logout-btn">{{ layout.t("admin.log_out") }}</button>
         </form>
         {% endif %}
       </header>

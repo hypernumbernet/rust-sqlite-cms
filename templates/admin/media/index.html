@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}メディア{% endblock %}
+{% block title %}{{ layout.t("nav.media") }}{% endblock %}
 {% block nav_media %}active{% endblock %}
-{% block heading %}メディア{% endblock %}
+{% block heading %}{{ layout.t("nav.media") }}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -80,7 +80,7 @@
 
 {% block content %}
 <div class="toolbar">
-  <p>画像や PDF をアップロードして管理します。各メディアに公開 URL を設定でき、テンプレートやページから参照できます。favicon に使う場合は、画像または ICO をアップロードし、公開 URL を <code>/favicon.ico</code> に設定してください。</p>
+  <p>{{ layout.t("admin.pages.upload_and_manage_images_and_pdfs_set_a_public_url_for_e") }} <code>/favicon.ico</code> {{ layout.t("admin.settings.text") }}</p>
 </div>
 
 {% if !error_message.is_empty() %}
@@ -93,7 +93,7 @@
 <section class="panel">
   <form class="upload-form" method="post" action="/admin/media/upload" enctype="multipart/form-data">
     <input type="file" name="file" accept="image/*,.pdf,.svg,.ico" required>
-    <button class="button" type="submit">アップロード</button>
+    <button class="button" type="submit">{{ layout.t("admin.upload") }}</button>
   </form>
 </section>
 
@@ -112,13 +112,13 @@
       <h3 class="card-title">{{ item.title }}</h3>
       <p class="meta">{{ item.file_size_label }} · {{ item.updated_at }}</p>
       <form method="post" action="/admin/media/{{ item.id }}/public-url" class="url-row">
-        <input type="text" name="public_url" value="{{ item.public_url }}" aria-label="公開 URL">
-        <button class="button secondary" type="submit">保存</button>
+        <input type="text" name="public_url" value="{{ item.public_url }}" aria-label="{{ layout.t("admin.public_url") }}">
+        <button class="button secondary" type="submit">{{ layout.t("admin.save_2") }}</button>
       </form>
       <div class="ops">
-        <a class="button secondary" href="{{ item.public_url }}" target="_blank" rel="noopener">表示</a>
-        <form method="post" action="/admin/media/{{ item.id }}/delete" data-confirm="このメディアを削除しますか？">
-          <button class="button danger" type="submit">削除</button>
+        <a class="button secondary" href="{{ item.public_url }}" target="_blank" rel="noopener">{{ layout.t("admin.show") }}</a>
+        <form method="post" action="/admin/media/{{ item.id }}/delete" data-confirm="{{ layout.t("admin.confirm.delete_this") }}{{ layout.t("nav.media") }}{{ layout.t("admin.confirm.delete_widget") }}">
+          <button class="button danger" type="submit">{{ layout.t("admin.delete_2") }}</button>
         </form>
       </div>
     </div>
@@ -127,7 +127,7 @@
 </div>
 {% else %}
 <section class="empty">
-  <p>まだメディアがありません。上のフォームからファイルをアップロードしてください。</p>
+  <p>{{ layout.t("admin.media.no_media_yet_upload_files_using_the_form_above") }}</p>
 </section>
 {% endif %}
 {% endblock %}

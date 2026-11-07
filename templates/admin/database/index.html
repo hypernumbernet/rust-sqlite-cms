@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}DB管理{% endblock %}
+{% block title %}{{ layout.t("nav.database") }}{% endblock %}
 {% block nav_database %}active{% endblock %}
-{% block heading %}DB管理{% endblock %}
+{% block heading %}{{ layout.t("nav.database") }}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -16,18 +16,18 @@
 
 {% block content %}
 <div class="db-tab-bar">
-  <nav class="tab-nav" aria-label="DB管理">
-    <a href="/admin/database"{% if is_tables_tab %} class="active"{% endif %}>テーブル</a>
-    <a href="/admin/database?tab=views"{% if is_views_tab %} class="active"{% endif %}>ビュー</a>
+  <nav class="tab-nav" aria-label="{{ layout.t("nav.database") }}">
+    <a href="/admin/database"{% if is_tables_tab %} class="active"{% endif %}>{{ layout.t("admin.database.tables_2") }}</a>
+    <a href="/admin/database?tab=views"{% if is_views_tab %} class="active"{% endif %}>{{ layout.t("admin.database.views") }}</a>
   </nav>
   <div class="toolbar-actions">
     {% if is_tables_tab %}
     <label class="checkbox">
       <input type="checkbox" id="db-show-system-tables">
-      <span>システムテーブル</span>
+      <span>{{ layout.t("admin.database.system_tables") }}</span>
     </label>
     {% endif %}
-    <a class="button" href="{{ new_url }}">新規追加</a>
+    <a class="button" href="{{ new_url }}">{{ layout.t("breadcrumb.widget_new") }}</a>
   </div>
 </div>
 
@@ -44,10 +44,10 @@
     <table>
       <thead>
         <tr>
-          <th>名前</th>
-          <th class="row-count">行数</th>
-          <th>種別</th>
-          <th>操作</th>
+          <th>{{ layout.t("admin.name") }}</th>
+          <th class="row-count">{{ layout.t("admin.row_count") }}</th>
+          <th>{{ layout.t("admin.type_2") }}</th>
+          <th>{{ layout.t("admin.actions") }}</th>
         </tr>
       </thead>
       <tbody id="db-tables-body">
@@ -64,19 +64,19 @@
             {% if let Some(count) = item.row_count %}{{ count }}{% else %}—{% endif %}
           </td>
           <td>
-            {% if item.is_system %}システム{% else %}ユーザー{% endif %}
+            {% if item.is_system %}{{ layout.t("admin.system") }}{% else %}{{ layout.t("nav.users") }}{% endif %}
           </td>
           <td>
             {% if item.can_edit || item.can_view_data %}
             <div class="op-actions">
               {% if item.can_view_data %}
-              <a class="button secondary" href="{{ item.data_url }}">データ</a>
+              <a class="button secondary" href="{{ item.data_url }}">{{ layout.t("admin.data") }}</a>
               {% endif %}
               {% if item.can_edit %}
-              <a class="button secondary" href="{{ item.edit_url }}">列編集</a>
+              <a class="button secondary" href="{{ item.edit_url }}">{{ layout.t("breadcrumb.column_edit") }}</a>
               <button type="button" class="button secondary"
                 data-table-duplicate
-                data-table-name="{{ item.name }}">複製</button>
+                data-table-name="{{ item.name }}">{{ layout.t("admin.duplicate") }}</button>
               {% endif %}
             </div>
             {% else %}
@@ -88,7 +88,7 @@
       </tbody>
     </table>
     {% endif %}
-    <p class="empty" id="db-tables-empty"{% if has_user_tables %} hidden{% endif %}>テーブルがありません。</p>
+    <p class="empty" id="db-tables-empty"{% if has_user_tables %} hidden{% endif %}>{{ layout.t("admin.database.no_tables") }}</p>
   </section>
 </div>
 
@@ -98,8 +98,8 @@
     <table>
       <thead>
         <tr>
-          <th>名前</th>
-          <th>操作</th>
+          <th>{{ layout.t("admin.name") }}</th>
+          <th>{{ layout.t("admin.actions") }}</th>
         </tr>
       </thead>
       <tbody>
@@ -112,20 +112,20 @@
             <span class="text-mono">{{ item.name }}</span>
             {% endif %}
             {% if item.is_system %}
-            <span class="badge-pill">システム</span>
+            <span class="badge-pill">{{ layout.t("admin.system") }}</span>
             {% endif %}
           </td>
           <td>
             {% if item.can_edit || item.can_view_data %}
             <div class="op-actions">
               {% if item.can_view_data %}
-              <a class="button secondary" href="{{ item.data_url }}">データ</a>
+              <a class="button secondary" href="{{ item.data_url }}">{{ layout.t("admin.data") }}</a>
               {% endif %}
               {% if item.can_edit %}
-              <a class="button secondary" href="{{ item.edit_url }}">定義編集</a>
+              <a class="button secondary" href="{{ item.edit_url }}">{{ layout.t("breadcrumb.view_definition_edit") }}</a>
               <button type="button" class="button secondary"
                 data-view-duplicate
-                data-view-name="{{ item.name }}">複製</button>
+                data-view-name="{{ item.name }}">{{ layout.t("admin.duplicate") }}</button>
               {% endif %}
             </div>
             {% else %}
@@ -137,7 +137,7 @@
       </tbody>
     </table>
     {% else %}
-    <p class="empty">ビューがありません。</p>
+    <p class="empty">{{ layout.t("admin.database.no_views") }}</p>
     {% endif %}
   </section>
 </div>
@@ -147,45 +147,45 @@
 <dialog id="table-duplicate-dialog" class="admin-duplicate-dialog admin-duplicate-dialog-wide">
   <div class="admin-duplicate-dialog-inner">
     <div class="admin-duplicate-dialog-header">
-      <h2>テーブルを複製</h2>
+      <h2>{{ layout.t("admin.database.duplicate_table") }}</h2>
     </div>
     <form id="table-duplicate-form" class="admin-duplicate-dialog-body" method="post" action="">
       <p class="help" id="table-duplicate-source"></p>
       <div class="field">
-        <label for="table-duplicate-target-name">複製先テーブル名</label>
+        <label for="table-duplicate-target-name">{{ layout.t("admin.database.duplicate_table_name") }}</label>
         <input id="table-duplicate-target-name" name="name" type="text" maxlength="120" required>
-        <p class="help">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。</p>
+        <p class="help">{{ layout.t("admin.max_120_chars_no_control_chars_double_quotes_semicolons") }}</p>
       </div>
       <div class="field">
-        <label>カラム</label>
-        <p class="help"><code>id INTEGER PRIMARY KEY</code> 列は自動で追加されます。</p>
+        <label>{{ layout.t("admin.database.column") }}</label>
+        <p class="help"><code>id INTEGER PRIMARY KEY</code> {{ layout.t("admin.columns_are_added_automatically") }}</p>
         <div class="table-duplicate-column-builder panel panel-table">
           <table>
             <thead>
               <tr>
-                <th>カラム名</th>
-                <th>型</th>
+                <th>{{ layout.t("admin.database.column_name") }}</th>
+                <th>{{ layout.t("admin.database.column_type") }}</th>
                 <th>NULL</th>
-                <th>操作</th>
+                <th>{{ layout.t("admin.actions") }}</th>
               </tr>
             </thead>
             <tbody id="table-duplicate-column-rows"></tbody>
           </table>
         </div>
         <div class="table-duplicate-column-actions">
-          <button type="button" class="button secondary" id="table-duplicate-add-column-btn">カラムを追加</button>
+          <button type="button" class="button secondary" id="table-duplicate-add-column-btn">{{ layout.t("admin.database.add_column") }}</button>
         </div>
       </div>
       <div class="field">
         <label class="label-option">
           <input type="checkbox" id="table-duplicate-include-data" name="include_data" value="1">
-          データも複製
+          {{ layout.t("admin.duplicate_data") }}
         </label>
-        <p class="help">ON にすると、複製先の列定義と名前が一致する列のデータをコピーします。</p>
+        <p class="help">{{ layout.t("admin.when_on_copies_row_data_for_columns_that_match_name_and") }}</p>
       </div>
       <div class="admin-duplicate-dialog-actions">
-        <button type="submit" class="button">複製</button>
-        <button type="button" class="button secondary" id="table-duplicate-cancel">キャンセル</button>
+        <button type="submit" class="button">{{ layout.t("admin.duplicate") }}</button>
+        <button type="button" class="button secondary" id="table-duplicate-cancel">{{ layout.t("admin.cancel") }}</button>
       </div>
     </form>
   </div>
@@ -194,23 +194,23 @@
 <dialog id="view-duplicate-dialog" class="admin-duplicate-dialog admin-duplicate-dialog-medium">
   <div class="admin-duplicate-dialog-inner">
     <div class="admin-duplicate-dialog-header">
-      <h2>ビューを複製</h2>
+      <h2>{{ layout.t("admin.database.duplicate_view") }}</h2>
     </div>
     <form id="view-duplicate-form" class="admin-duplicate-dialog-body" method="post" action="">
       <p class="help" id="view-duplicate-source"></p>
       <div class="field">
-        <label for="view-duplicate-target-name">複製先ビュー名</label>
+        <label for="view-duplicate-target-name">{{ layout.t("admin.database.duplicate_view_name") }}</label>
         <input id="view-duplicate-target-name" name="name" type="text" maxlength="120" required>
-        <p class="help">120 文字以内。制御文字・ダブルクォート・セミコロン・/・\ は使用できません。</p>
+        <p class="help">{{ layout.t("admin.max_120_chars_no_control_chars_double_quotes_semicolons") }}</p>
       </div>
       <div class="field">
-        <label for="view-duplicate-definition">SELECT 文</label>
+        <label for="view-duplicate-definition">{{ layout.t("admin.select_statement") }}</label>
         <textarea id="view-duplicate-definition" name="definition" rows="8" required></textarea>
-        <p class="help"><code>CREATE VIEW ... AS</code> の後ろに続く SELECT 文を入力してください。</p>
+        <p class="help"><code>CREATE VIEW ... AS</code> {{ layout.t("admin.enter_the_select_statement_after_this") }}</p>
       </div>
       <div class="admin-duplicate-dialog-actions">
-        <button type="submit" class="button">複製</button>
-        <button type="button" class="button secondary" id="view-duplicate-cancel">キャンセル</button>
+        <button type="submit" class="button">{{ layout.t("admin.duplicate") }}</button>
+        <button type="button" class="button secondary" id="view-duplicate-cancel">{{ layout.t("admin.cancel") }}</button>
       </div>
     </form>
   </div>
@@ -223,22 +223,22 @@
     </td>
     <td>
       <select name="col_type">
-        <option value="integer">整数</option>
-        <option value="real">実数</option>
-        <option value="text" selected>文字列</option>
-        <option value="blob">バイナリ</option>
-        <option value="timestamp">日時</option>
-        <option value="boolean">真偽値</option>
+        <option value="integer">{{ layout.t("admin.integer") }}</option>
+        <option value="real">{{ layout.t("admin.real") }}</option>
+        <option value="text" selected>{{ layout.t("admin.text") }}</option>
+        <option value="blob">{{ layout.t("admin.binary") }}</option>
+        <option value="timestamp">{{ layout.t("admin.date_time") }}</option>
+        <option value="boolean">{{ layout.t("admin.boolean") }}</option>
       </select>
     </td>
     <td>
       <select name="col_nullable">
-        <option value="1" selected>NULL可</option>
+        <option value="1" selected>{{ layout.t("admin.null_allowed") }}</option>
         <option value="0">NOT NULL</option>
       </select>
     </td>
     <td>
-      <button type="button" class="button secondary column-remove-btn">削除</button>
+      <button type="button" class="button secondary column-remove-btn">{{ layout.t("admin.delete_2") }}</button>
     </td>
   </tr>
 </template>

@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}{{ table_name }} — データ{% if read_only %}（閲覧専用）{% endif %}{% endblock %}
+{% block title %}{{ table_name }} —{{ layout.t("breadcrumb.data_suffix") }}{% if read_only %}{{ layout.t("breadcrumb.read_only_paren") }}{% endif %}{% endblock %}
 {% block nav_database %}active{% endblock %}
-{% block heading %}{{ table_name }} — データ{% if read_only %}（閲覧専用）{% endif %}{% endblock %}
+{% block heading %}{{ table_name }} —{{ layout.t("breadcrumb.data_suffix") }}{% if read_only %}{{ layout.t("breadcrumb.read_only_paren") }}{% endif %}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -16,34 +16,34 @@
 <div class="db-data-toolbar">
   <div class="toolbar-info">
     <div id="db-data-status" class="db-data-status" role="status" aria-live="polite">
-      <span class="db-data-status-text">準備中…</span>
+      <span class="db-data-status-text">{{ layout.t("admin.preparing") }}</span>
     </div>
-    <button type="button" id="db-data-row-goto" class="data-count" disabled aria-label="行番号指定">行 —</button>
+    <button type="button" id="db-data-row-goto" class="data-count" disabled aria-label="{{ layout.t("admin.by_line_number") }}">{{ layout.t("admin.row") }}</button>
     <div id="db-data-sort-indicator" class="db-data-sort-indicator" hidden>
       <span class="db-data-sort-indicator-label" id="db-data-sort-indicator-label"></span>
-      <button type="button" class="db-data-sort-clear" id="db-data-sort-clear" aria-label="ソートをすべて解除">×</button>
+      <button type="button" class="db-data-sort-clear" id="db-data-sort-clear" aria-label="{{ layout.t("admin.clear_all_sorts") }}">×</button>
     </div>
     <div id="db-data-filter-indicator" class="db-data-filter-indicator" hidden>
       <span class="db-data-filter-indicator-label" id="db-data-filter-indicator-label"></span>
-      <button type="button" class="db-data-filter-clear" id="db-data-filter-clear" aria-label="フィルターをすべて解除">×</button>
+      <button type="button" class="db-data-filter-clear" id="db-data-filter-clear" aria-label="{{ layout.t("admin.clear_all_filters") }}">×</button>
     </div>
     {% if read_only && is_view %}
-    <span class="toolbar-notice notice info">ビューのデータは閲覧専用です。</span>
+    <span class="toolbar-notice notice info">{{ layout.t("admin.database.view_data_is_read_only") }}</span>
     {% elif read_only %}
-    <span class="toolbar-notice notice info">CMSシステムテーブルのデータは閲覧専用です。列編集・テストデータ生成はできません。</span>
+    <span class="toolbar-notice notice info">{{ layout.t("admin.database.cms_system_table_data_is_read_only_cannot_edit_columns_o") }}</span>
     {% endif %}
   </div>
   <div class="toolbar-actions">
     {% if is_view %}
-    <a class="button secondary" href="/admin/database?tab=views">ビュー一覧</a>
+    <a class="button secondary" href="/admin/database?tab=views">{{ layout.t("admin.database.view_list") }}</a>
     {% endif %}
     {% if !read_only %}
-    <a class="button secondary" href="{{ seed_url }}">テストデータ生成</a>
+    <a class="button secondary" href="{{ seed_url }}">{{ layout.t("breadcrumb.seed_data") }}</a>
     <a class="button secondary" href="{{ edit_url }}">{{ edit_label }}</a>
     {% elif !edit_url.is_empty() %}
     <a class="button secondary" href="{{ edit_url }}">{{ edit_label }}</a>
     {% endif %}
-    <button type="button" id="db-data-fit-all-columns" class="button secondary" disabled>全列幅調整</button>
+    <button type="button" id="db-data-fit-all-columns" class="button secondary" disabled>{{ layout.t("admin.fit_all_column_widths") }}</button>
   </div>
 </div>
 
@@ -66,13 +66,13 @@
       <tbody id="db-table-body"></tbody>
     </table>
   </div>
-  <p class="empty" id="db-table-empty" hidden>データがありません。</p>
+  <p class="empty" id="db-table-empty" hidden>{{ layout.t("admin.no_data") }}</p>
 </section>
 
 <dialog id="db-cell-edit-dialog" class="db-cell-edit-dialog">
   <div class="db-cell-edit-dialog-inner">
     <div class="db-cell-edit-dialog-header">
-      <h2>セルを編集</h2>
+      <h2>{{ layout.t("admin.edit_cell") }}</h2>
     </div>
     <form id="db-cell-edit-form" class="db-cell-edit-dialog-body">
       <div class="db-cell-edit-value-field">
@@ -85,13 +85,13 @@
       <div class="db-cell-edit-null-wrap" id="db-cell-edit-null-wrap" hidden>
         <label class="db-cell-edit-null-label" for="db-cell-edit-null">
           <input type="checkbox" id="db-cell-edit-null" name="null">
-          <span>NULL にする</span>
+          <span>{{ layout.t("admin.set_null") }}</span>
         </label>
       </div>
       <p class="notice error db-cell-edit-error" id="db-cell-edit-error" hidden></p>
       <div class="db-cell-edit-dialog-actions">
-        <button type="submit" class="button">保存</button>
-        <button type="button" class="button secondary" id="db-cell-edit-cancel">キャンセル</button>
+        <button type="submit" class="button">{{ layout.t("admin.save_2") }}</button>
+        <button type="button" class="button secondary" id="db-cell-edit-cancel">{{ layout.t("admin.cancel") }}</button>
       </div>
     </form>
   </div>
@@ -100,16 +100,16 @@
 <dialog id="db-row-goto-dialog" class="db-row-goto-dialog">
   <div class="db-row-goto-dialog-inner">
     <div class="db-row-goto-dialog-header">
-      <h2>行番号指定</h2>
+      <h2>{{ layout.t("admin.by_line_number") }}</h2>
     </div>
     <form id="db-row-goto-form" class="db-row-goto-dialog-body">
       <div class="field">
-        <label for="db-row-goto-input">行番号 <span id="db-row-goto-range" class="field-label-muted"></span></label>
+        <label for="db-row-goto-input">{{ layout.t("admin.line_number") }} <span id="db-row-goto-range" class="field-label-muted"></span></label>
         <input type="number" id="db-row-goto-input" name="row" min="1" required inputmode="numeric">
       </div>
       <div class="db-row-goto-dialog-actions">
-        <button type="submit" class="button">移動</button>
-        <button type="button" class="button secondary" id="db-row-goto-cancel">キャンセル</button>
+        <button type="submit" class="button">{{ layout.t("admin.move") }}</button>
+        <button type="button" class="button secondary" id="db-row-goto-cancel">{{ layout.t("admin.cancel") }}</button>
       </div>
     </form>
   </div>
@@ -118,13 +118,13 @@
 <dialog id="db-sorted-nav-confirm-dialog" class="db-sorted-nav-confirm-dialog">
   <div class="db-sorted-nav-confirm-dialog-inner">
     <div class="db-sorted-nav-confirm-dialog-header">
-      <h2>移動の確認</h2>
+      <h2>{{ layout.t("admin.confirm_move") }}</h2>
     </div>
     <div class="db-sorted-nav-confirm-dialog-body">
       <p class="notice info db-sorted-nav-confirm-message" id="db-sorted-nav-confirm-message"></p>
       <div class="db-sorted-nav-confirm-dialog-actions">
-        <button type="button" class="button" id="db-sorted-nav-confirm-ok">続行</button>
-        <button type="button" class="button secondary" id="db-sorted-nav-confirm-cancel">キャンセル</button>
+        <button type="button" class="button" id="db-sorted-nav-confirm-ok">{{ layout.t("admin.continue") }}</button>
+        <button type="button" class="button secondary" id="db-sorted-nav-confirm-cancel">{{ layout.t("admin.cancel") }}</button>
       </div>
     </div>
   </div>

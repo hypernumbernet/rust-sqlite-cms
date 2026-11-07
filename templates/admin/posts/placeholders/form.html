@@ -13,9 +13,9 @@
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
       {% if is_edit %}
-      <a class="button secondary" href="{{ entries_url }}">投稿一覧</a>
+      <a class="button secondary" href="{{ entries_url }}">{{ layout.t("admin.posts.post_list") }}</a>
       {% endif %}
-      <a class="button secondary" href="/admin/posts">戻る</a>
+      <a class="button secondary" href="/admin/posts">{{ layout.t("admin.back") }}</a>
     </div>
   </section>
 
@@ -24,8 +24,8 @@
 </form>
 
 {% if is_edit %}
-<form method="post" action="{{ delete_action }}" class="placeholder-delete-form" data-confirm="プレースホルダーと配下の投稿を削除しますか？&#10;投稿はゴミ箱に移動します。">
-  <button class="button danger" type="submit">削除する</button>
+<form method="post" action="{{ delete_action }}" class="placeholder-delete-form" data-confirm="{{ layout.t("admin.posts.delete_placeholder_and_posts") }}&#10;{{ layout.t("admin.confirm.posts_moved_to_trash") }}">
+  <button class="button danger" type="submit">{{ layout.t("admin.delete") }}</button>
 </form>
 {% endif %}
 

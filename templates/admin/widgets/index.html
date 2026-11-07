@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}ウィジェット{% endblock %}
+{% block title %}{{ layout.t("nav.widgets") }}{% endblock %}
 {% block nav_widgets %}active{% endblock %}
-{% block heading %}ウィジェット{% endblock %}
+{% block heading %}{{ layout.t("nav.widgets") }}{% endblock %}
 
 {% block extra_styles %}
 <style>
@@ -13,9 +13,9 @@
 
 {% block content %}
 <div class="toolbar">
-  <p>ウィジェットタイプのHTML構成を編集します。<code>html_template</code> が公開ページで <code>&#123;&#123; プレースホルダー名 &#125;&#125;_html</code> として利用可能になります。インスタンスごとの設定（表示件数など）はプレースホルダー側で管理します。</p>
-  <a class="button" href="/admin/widgets/new">新規追加</a>
-  <a class="button secondary" href="/admin/widgets/import">インポート</a>
+  <p>{{ layout.t("admin.widgets.edit_the_html_structure_of_this_widget_type") }}<code>html_template</code> {{ layout.t("admin.pages.on_the_public_site") }} <code>{{ layout.t("admin.posts.placeholder_name_html") }}</code> {{ layout.t("admin.posts.becomes_available_per_instance_settings_are_managed_on_t") }}</p>
+  <a class="button" href="/admin/widgets/new">{{ layout.t("breadcrumb.widget_new") }}</a>
+  <a class="button secondary" href="/admin/widgets/import">{{ layout.t("breadcrumb.import") }}</a>
 </div>
 
 {% if !success_message.is_empty() %}
@@ -29,10 +29,10 @@
   <table>
     <thead>
       <tr>
-        <th>タイプ</th>
-        <th>設定</th>
-        <th>更新日</th>
-        <th>操作</th>
+        <th>{{ layout.t("admin.type") }}</th>
+        <th>{{ layout.t("nav.settings") }}</th>
+        <th>{{ layout.t("admin.updated") }}</th>
+        <th>{{ layout.t("admin.actions") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -46,10 +46,10 @@
         <td>{{ widget_type.updated_at }}</td>
         <td>
           <div class="op-actions">
-            <a class="button" href="/admin/widgets/{{ widget_type.type_key }}/edit">編集</a>
-            <a class="button secondary" href="/admin/widgets/{{ widget_type.type_key }}/export">エクスポート</a>
-            <form method="post" action="/admin/widgets/{{ widget_type.type_key }}/delete" data-confirm="ウィジェット「{{ widget_type.type_label }}」を削除しますか？">
-              <button class="button danger" type="submit">削除</button>
+            <a class="button" href="/admin/widgets/{{ widget_type.type_key }}/edit">{{ layout.t("admin.edit") }}</a>
+            <a class="button secondary" href="/admin/widgets/{{ widget_type.type_key }}/export">{{ layout.t("admin.export") }}</a>
+            <form method="post" action="/admin/widgets/{{ widget_type.type_key }}/delete" data-confirm="{{ layout.t("nav.widgets") }}{{ layout.t("admin.confirm.delete_widget_type_with_label") }}">
+              <button class="button danger" type="submit">{{ layout.t("admin.delete_2") }}</button>
             </form>
           </div>
         </td>

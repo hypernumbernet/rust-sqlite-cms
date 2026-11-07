@@ -7,56 +7,56 @@
 <form method="post" action="{{ action }}">
   <div class="panel panel-spaced">
     <div class="field mb-0">
-      <label>このウィジェットタイプについて</label>
+      <label>{{ layout.t("admin.widgets.about_this_widget_type") }}</label>
       <p class="help mb-8">{{ description }}</p>
       <p class="help mb-0">
-        このHTML（MiniJinja）を編集すると、対応するプレースホルダーを使うすべてのページで
-        <code>&#123;&#123; プレースホルダー名 &#125;&#125;_html</code> として出力されます。
-        インスタンスごとの設定（表示件数など）はプレースホルダー編集側で行ってください。
+        {{ layout.t("admin.pages.editing_this_minijinja_html_updates_every_page_using_the") }}
+        <code>{{ layout.t("admin.posts.placeholder_name_html") }}</code> {{ layout.t("admin.as_output") }}
+        {{ layout.t("admin.widgets.instance_settings_on_placeholder_edit") }}
       </p>
     </div>
   </div>
 
   <div class="panel">
     <div class="field">
-      <label for="type_key">タイプキー (type_key)</label>
+      <label for="type_key">{{ layout.t("admin.type_key_type_key") }}</label>
       <input id="type_key" name="type_key" type="text" class="input-mono" value="{{ type_key }}" required pattern="[a-z0-9_]+">
-      <p class="help">英小文字・数字・アンダースコア。変更するとこのウィジェットのURLも変わります。</p>
+      <p class="help">{{ layout.t("admin.widgets.lowercase_letters_digits_underscore_changing_this_update") }}</p>
     </div>
 
     <div class="field">
-      <label for="html_template">ウィジェットを構成するHTML（MiniJinjaテンプレート）</label>
+      <label for="html_template">{{ layout.t("admin.widgets.html_composing_the_widget_minijinja_template") }}</label>
       <textarea id="html_template" name="html_template" class="code-editor code-editor--tall" spellcheck="false">{{ html_template }}</textarea>
-      <p class="help help-mt-8">このテンプレートはサーバーサイドでレンダリングされ、<code>_html</code> 変数としてページに挿入されます。</p>
+      <p class="help help-mt-8">{{ layout.t("admin.this_template_is_rendered_server_side_and") }}<code>_html</code> {{ layout.t("admin.pages.inserted_into_the_page_as_variables") }}</p>
     </div>
 
     <div class="field">
-      <label for="config_schema">インスタンス設定スキーマ定義（JSON）</label>
+      <label for="config_schema">{{ layout.t("admin.settings.instance_settings_schema_json") }}</label>
       <textarea id="config_schema" name="config_schema" class="code-editor code-editor--json" spellcheck="false">{{ config_schema }}</textarea>
       <p class="help help-mt-6">
-        このウィジェットを使うプレースホルダー（インスタンス）で持てる設定項目を定義します。<br>
-        ここで定義した内容に基づいて、プレースホルダー編集画面で入力欄が自動生成されます。
+        {{ layout.t("admin.widgets.define_settings_available_on_placeholders_instances_usin") }}<br>
+        {{ layout.t("admin.posts.based_on_this_definition_input_fields_are_auto_generated") }}
       </p>
     </div>
 
     <div class="vars-help">
-      <strong>断片テンプレート（html_template）で使う変数</strong><br>
-      プレースホルダー名に依存しないタイプ固定キーです。ページ側では <code>&#123;&#123; プレースホルダー名 &#125;&#125;_html</code> で差し込みます。<br>
+      <strong>{{ layout.t("admin.variables_for_the_fragment_template_html_template") }}</strong><br>
+      {{ layout.t("admin.pages.type_fixed_key_independent_of_placeholder_name_on_pages") }} <code>{{ layout.t("admin.posts.placeholder_name_html") }}</code> {{ layout.t("admin.to_embed") }}<br>
       {% if type_key == "news" %}
-        <code>items</code>（配列）, <code>has_items</code>, <code>item.title</code> / <code>item.excerpt</code> / <code>item.display_date</code>, <code>config</code>
+        <code>items</code>{{ layout.t("admin.array") }} <code>has_items</code>, <code>item.title</code> / <code>item.excerpt</code> / <code>item.display_date</code>, <code>config</code>
       {% elif type_key == "carousel" %}
-        <code>carousel</code>, <code>has_carousel</code>, <code>carousel.slides</code>, <code>carousel.interval</code> / <code>width</code> / <code>height</code> など, <code>config</code>
+        <code>carousel</code>, <code>has_carousel</code>, <code>carousel.slides</code>, <code>carousel.interval</code> / <code>width</code> / <code>height</code> {{ layout.t("admin.etc") }} <code>config</code>
       {% elif type_key == "image" %}
-        <code>item</code>, <code>has_item</code>, <code>item.image_url</code>, <code>item.alt</code>, <code>item.link_url</code>, <code>item.style</code>, <code>item.img_style</code>, <code>item.width</code> / <code>height</code> / <code>object_fit</code> / <code>border_radius</code> など, <code>config</code>
+        <code>item</code>, <code>has_item</code>, <code>item.image_url</code>, <code>item.alt</code>, <code>item.link_url</code>, <code>item.style</code>, <code>item.img_style</code>, <code>item.width</code> / <code>height</code> / <code>object_fit</code> / <code>border_radius</code> {{ layout.t("admin.etc") }} <code>config</code>
       {% else %}
-        タイプに応じたデータが渡されます。
+        {{ layout.t("admin.appropriate_data_is_passed_for_the_type") }}
       {% endif %}
     </div>
 
     <div class="actions mt-20">
-      <button class="button" type="submit">更新する</button>
-      <a class="button secondary" href="{{ export_url }}">JSON をダウンロード</a>
-      <a class="button secondary" href="/admin/widgets">戻る</a>
+      <button class="button" type="submit">{{ layout.t("admin.update") }}</button>
+      <a class="button secondary" href="{{ export_url }}">{{ layout.t("admin.download_json") }}</a>
+      <a class="button secondary" href="/admin/widgets">{{ layout.t("admin.back") }}</a>
     </div>
   </div>
 </form>
@@ -65,7 +65,7 @@
 <div class="notice error mt-16">{{ error_message }}</div>
 {% endif %}
 
-<form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="ウィジェット「{{ type_label }}」を削除しますか？&#10;プレースホルダーが紐付いている場合は削除できません。">
-  <button class="button danger" type="submit">削除する</button>
+<form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="{{ layout.t("nav.widgets") }}「{{ type_label }}」{{ layout.t("admin.confirm.delete_widget") }}&#10;{{ layout.t("admin.widgets.delete_blocked_by_placeholder") }}">
+  <button class="button danger" type="submit">{{ layout.t("admin.delete") }}</button>
 </form>
 {% endblock %}

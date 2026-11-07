@@ -64,22 +64,22 @@
   <section class="panel">
     {% if is_edit %}
     <div class="layout-files-header">
-      <h3>ファイル</h3>
+      <h3>{{ layout.t("admin.files") }}</h3>
       <div class="layout-files-actions">
-        <a class="button secondary" href="{{ new_file_url }}">テキストファイルを追加</a>
+        <a class="button secondary" href="{{ new_file_url }}">{{ layout.t("admin.add_text_file") }}</a>
       </div>
     </div>
 
     {% if layout_files.is_empty() %}
-    <p class="layout-files-empty">ファイルがありません。</p>
+    <p class="layout-files-empty">{{ layout.t("admin.no_files") }}</p>
     {% else %}
     <table class="layout-files-table">
       <thead>
         <tr>
-          <th>パス</th>
-          <th>種別</th>
-          <th>サイズ</th>
-          <th>公開 URL</th>
+          <th>{{ layout.t("admin.path") }}</th>
+          <th>{{ layout.t("admin.type_2") }}</th>
+          <th>{{ layout.t("admin.size") }}</th>
+          <th>{{ layout.t("admin.public_url") }}</th>
           <th></th>
         </tr>
       </thead>
@@ -93,12 +93,12 @@
           <td>
             <div class="actions-cell">
               {% if file.is_editable %}
-              <a class="button secondary" href="{{ file.edit_url }}">編集</a>
+              <a class="button secondary" href="{{ file.edit_url }}">{{ layout.t("admin.edit") }}</a>
               {% endif %}
               {% if file.is_deletable %}
-              <form method="post" action="/admin/layouts/{{ layout_id }}/static/delete" style="display:inline" data-confirm="このファイルを削除しますか？">
+              <form method="post" action="/admin/layouts/{{ layout_id }}/static/delete" style="display:inline" data-confirm="{{ layout.t("admin.confirm.delete_this") }}{{ layout.t("admin.files") }}{{ layout.t("admin.confirm.delete_widget") }}">
                 <input type="hidden" name="relative_path" value="{{ file.delete_path }}">
-                <button type="submit" class="button secondary">削除</button>
+                <button type="submit" class="button secondary">{{ layout.t("admin.delete_2") }}</button>
               </form>
               {% endif %}
             </div>
@@ -111,18 +111,18 @@
 
     <form method="post" action="{{ upload_action }}" enctype="multipart/form-data" class="static-upload-form">
       <div class="field">
-        <label for="static-upload-file">ファイルをアップロード</label>
+        <label for="static-upload-file">{{ layout.t("admin.upload_file") }}</label>
         <input id="static-upload-file" name="file" type="file" required>
       </div>
       <div class="field">
-        <label for="static-upload-path">保存パス（任意）</label>
-        <input id="static-upload-path" name="relative_path" type="text" placeholder="例: img/ または assets/logo.png">
+        <label for="static-upload-path">{{ layout.t("admin.save_path_optional") }}</label>
+        <input id="static-upload-path" name="relative_path" type="text" placeholder="{{ layout.t("admin.e_g_img_or_assets_logo_png") }}">
       </div>
-      <button type="submit" class="button secondary">アップロード</button>
+      <button type="submit" class="button secondary">{{ layout.t("admin.upload") }}</button>
     </form>
-    <p class="help" style="margin-top:8px">テキストファイル（CSS / JS 等）は「編集」から変更できます。画像・フォントはアップロードで追加します。</p>
+    <p class="help" style="margin-top:8px">{{ layout.t("admin.edit_text_files_css_js_etc_via_edit_upload_images_and_fo") }}</p>
     {% else %}
-    <p class="help">作成後、shell.html や site.css などのファイルを編集できます。既定の shell と site.css は自動で用意されます。</p>
+    <p class="help">{{ layout.t("admin.after_creation_you_can_edit_shell_html_site_css_etc_defa") }}</p>
     {% endif %}
   </section>
 
@@ -130,22 +130,22 @@
     <div class="field">
       <label for="key">key</label>
       <input id="key" name="key" type="text" value="{{ key }}" required{% if key_readonly %} readonly{% endif %}>
-      <p class="help">ディレクトリ名（例: <code>default</code>）。英数字・ハイフン・アンダースコア。</p>
+      <p class="help">{{ layout.t("admin.directory_name_e_g") }} <code>default</code>{{ layout.t("admin.alphanumeric_hyphen_underscore") }}</p>
     </div>
     <div class="field">
-      <label for="name">名前</label>
+      <label for="name">{{ layout.t("admin.name") }}</label>
       <input id="name" name="name" type="text" value="{{ name }}" required>
     </div>
     <div class="actions">
       <button class="button" type="submit">{{ submit_label }}</button>
-      <a class="button secondary" href="/admin/layouts">戻る</a>
+      <a class="button secondary" href="/admin/layouts">{{ layout.t("admin.back") }}</a>
     </div>
   </form>
 </div>
 
 {% if is_edit && !delete_action.is_empty() %}
-<form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="このレイアウトを削除しますか？">
-  <button class="button danger" type="submit">削除する</button>
+<form method="post" action="{{ delete_action }}" class="delete-form" data-confirm="{{ layout.t("admin.confirm.delete_this") }}{{ layout.t("nav.layouts") }}{{ layout.t("admin.confirm.delete_widget") }}">
+  <button class="button danger" type="submit">{{ layout.t("admin.delete") }}</button>
 </form>
 {% endif %}
 

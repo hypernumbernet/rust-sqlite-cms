@@ -1,43 +1,43 @@
 {% extends "admin/base.html" %}
 
-{% block title %}ダッシュボード{% endblock %}
+{% block title %}{{ layout.t("nav.dashboard") }}{% endblock %}
 {% block nav_dashboard %}active{% endblock %}
-{% block heading %}ダッシュボード{% endblock %}
+{% block heading %}{{ layout.t("nav.dashboard") }}{% endblock %}
 
 {% block content %}
 <section class="welcome">
-  <h2>{{ blogname }} へようこそ</h2>
+  <h2>{{ blogname }} {{ layout.t("admin.dashboard.welcome_suffix") }}</h2>
   <p>{{ blogdescription }}</p>
 </section>
 
 <div class="card-grid">
   <a class="card--link" href="/admin/posts">
-    <h3>投稿</h3>
-    <p>プレースホルダーごとに投稿（お知らせなど）を作成・編集・公開します。</p>
+    <h3>{{ layout.t("nav.posts") }}</h3>
+    <p>{{ layout.t("admin.posts.create_edit_and_publish_posts_news_etc_per_placeholder") }}</p>
   </a>
   <a class="card--link" href="/admin/pages">
-    <h3>ページ</h3>
-    <p>MiniJinja テンプレートと静的 HTML を一元管理します。</p>
+    <h3>{{ layout.t("nav.pages") }}</h3>
+    <p>{{ layout.t("admin.manage_minijinja_templates_and_static_html_in_one_place") }}</p>
   </a>
   <a class="card--link" href="/admin/widgets">
-    <h3>ウィジェット</h3>
-    <p>ウィジェットタイプの共通設定（表示件数など）を管理します。</p>
+    <h3>{{ layout.t("nav.widgets") }}</h3>
+    <p>{{ layout.t("admin.widgets.manage_shared_widget_type_settings_such_as_item_limits") }}</p>
   </a>
   <a class="card--link" href="/admin/media">
-    <h3>メディア</h3>
-    <p>画像やファイルのアップロードを管理します。</p>
+    <h3>{{ layout.t("nav.media") }}</h3>
+    <p>{{ layout.t("admin.manage_image_and_file_uploads") }}</p>
   </a>
   <a class="card--link" href="/admin/samples">
-    <h3>サンプル</h3>
-    <p>サンプルレイアウトセットをインストールして、すぐにサイト構成を試せます。</p>
+    <h3>{{ layout.t("nav.samples") }}</h3>
+    <p>{{ layout.t("admin.layouts.install_sample_layout_sets_to_try_site_structure_quickly") }}</p>
   </a>
   <a class="card--link" href="/admin/users">
-    <h3>ユーザー</h3>
-    <p>アカウントとロールを管理します。</p>
+    <h3>{{ layout.t("nav.users") }}</h3>
+    <p>{{ layout.t("admin.manage_accounts_and_roles") }}</p>
   </a>
   <a class="card--link" href="/admin/settings">
-    <h3>設定</h3>
-    <p>サイト名・説明・サイト URL を管理します。</p>
+    <h3>{{ layout.t("nav.settings") }}</h3>
+    <p>{{ layout.t("admin.manage_site_name_description_and_site_url") }}</p>
   </a>
 </div>
 {% endblock %}

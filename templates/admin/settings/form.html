@@ -1,8 +1,8 @@
 {% extends "admin/base.html" %}
 
-{% block title %}設定{% endblock %}
+{% block title %}{{ layout.t("nav.settings") }}{% endblock %}
 {% block nav_settings %}active{% endblock %}
-{% block heading %}設定{% endblock %}
+{% block heading %}{{ layout.t("nav.settings") }}{% endblock %}
 
 {% block content %}
 {% if !success_message.is_empty() %}
@@ -16,39 +16,39 @@
 <form method="post" action="/admin/settings" class="form-layout">
   <section class="panel">
     <div class="notice info">
-      サイト名と説明は公開ページ（<code>{{ blogname }}</code> など）に即時反映されます。
-      設定ファイル <code>work/config.toml</code> の <code>[site]</code> も同期して保存します。再起動は不要です。
+      {{ layout.t("admin.pages.site_name_and_description_appear_on_public_pages") }}<code>{{ blogname }}</code> {{ layout.t("admin.settings.reflect_immediately_suffix") }}
+      {{ layout.t("admin.settings.work_config_site_section") }} {{ layout.t("admin.is_saved_together_no_restart_required") }}
     </div>
 
     <div class="field">
-      <label for="blogname">サイト名</label>
+      <label for="blogname">{{ layout.t("admin.site_name") }}</label>
       <input id="blogname" name="blogname" type="text" maxlength="200" value="{{ blogname }}" required>
-      <p class="help">テンプレート変数 <code>blogname</code> として公開サイトで利用されます。</p>
+      <p class="help">{{ layout.t("admin.template_variables") }} <code>blogname</code> {{ layout.t("admin.is_used_on_the_public_site") }}</p>
     </div>
 
     <div class="field">
-      <label for="blogdescription">サイトの説明</label>
+      <label for="blogdescription">{{ layout.t("admin.site_description") }}</label>
       <input id="blogdescription" name="blogdescription" type="text" maxlength="200" value="{{ blogdescription }}" required>
-      <p class="help">テンプレート変数 <code>blogdescription</code> として利用されます。</p>
+      <p class="help">{{ layout.t("admin.template_variables") }} <code>blogdescription</code> {{ layout.t("admin.is_used") }}</p>
     </div>
 
     <div class="field">
-      <label for="siteurl">サイト URL</label>
+      <label for="siteurl">{{ layout.t("admin.site_url") }}</label>
       <input id="siteurl" name="siteurl" type="text" value="{{ siteurl }}" required>
-      <p class="help">例: <code>http://127.0.0.1:3000</code></p>
+      <p class="help">{{ layout.t("admin.en_3") }} <code>http://127.0.0.1:3000</code></p>
     </div>
   </section>
 
   <aside class="panel">
     <div class="field">
-      <label>設定ファイル</label>
+      <label>{{ layout.t("admin.settings.settings_file_2") }}</label>
       <p class="help"><code>work/config.toml</code></p>
-      <p class="help">初回起動時に <code>config.example.toml</code> から自動生成されます。</p>
+      <p class="help">{{ layout.t("admin.on_first_boot") }} <code>config.example.toml</code> {{ layout.t("admin.is_auto_generated_from") }}</p>
     </div>
 
     <div class="actions">
-      <button class="button" type="submit">変更を保存</button>
-      <a class="button secondary" href="/admin">ダッシュボード</a>
+      <button class="button" type="submit">{{ layout.t("admin.save_changes") }}</button>
+      <a class="button secondary" href="/admin">{{ layout.t("nav.dashboard") }}</a>
     </div>
   </aside>
 </form>

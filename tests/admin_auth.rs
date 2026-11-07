@@ -71,6 +71,7 @@ async fn login_with_wrong_password_shows_error() {
                 .method("POST")
                 .uri("http://localhost/admin/login")
                 .header("content-type", "application/x-www-form-urlencoded")
+                .header("accept-language", "ja")
                 .body(Body::from("login=admin&password=wrong-password"))
                 .unwrap(),
         )

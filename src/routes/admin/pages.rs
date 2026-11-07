@@ -79,6 +79,16 @@ struct PagePreviewErrorTemplate {
     file_name: String,
 }
 
+impl PagePreviewErrorTemplate {
+    fn t(&self, key: &str) -> String {
+        crate::i18n::t(key).to_string()
+    }
+
+    fn html_lang(&self) -> &str {
+        crate::i18n::current_locale().html_lang()
+    }
+}
+
 #[derive(Template)]
 #[template(path = "admin/pages/form.html")]
 struct PageFormTemplate {

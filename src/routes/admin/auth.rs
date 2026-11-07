@@ -31,6 +31,16 @@ struct LoginTemplate {
     error_message: String,
 }
 
+impl LoginTemplate {
+    fn t(&self, key: &str) -> String {
+        crate::i18n::t(key).to_string()
+    }
+
+    fn html_lang(&self) -> &str {
+        crate::i18n::current_locale().html_lang()
+    }
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/login", get(login_form).post(login_submit))
@@ -69,10 +79,10 @@ async fn login_submit(
             auth.save_to_session(&session).await?;
             Ok(Redirect::to("/admin").into_response())
         }
-        Err(DomainError::Validation(msg)) => {
+        Err(DomainError::Validation(_)) => {
             let html = LoginTemplate {
                 login: form.login,
-                error_message: msg,
+                error_message: crate::i18n::t("auth.login_failed").to_string(),
             }
             .render()?;
             Ok((StatusCode::UNAUTHORIZED, Html(html)).into_response())

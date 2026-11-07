@@ -198,7 +198,7 @@ pub fn template_usage(type_key: &str, placeholder_name: &str) -> (String, String
 }
 
 /// ウィジェット HTML 生成時のオプション。
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RenderOptions {
     /// プレビュー編集モード向けに `cms-widget-target` ラッパーを付与する。
     pub annotate_widgets: bool,
@@ -208,6 +208,20 @@ pub struct RenderOptions {
     pub contact_error: Option<String>,
     /// フォームトークン署名用シークレット。
     pub session_secret: Option<String>,
+    /// ビルトイン UI 文言の表示言語。
+    pub locale: crate::i18n::Locale,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            annotate_widgets: false,
+            contact_sent: None,
+            contact_error: None,
+            session_secret: None,
+            locale: crate::i18n::Locale::Ja,
+        }
+    }
 }
 
 /// サイト変数と全プレースホルダーを解決し、MiniJinja 用コンテキストを返す。
@@ -235,6 +249,14 @@ pub async fn build_render_context(
     ctx.insert(
         "favicon_url".into(),
         serde_json::Value::String(favicon_url),
+    );
+    ctx.insert(
+        "html_lang".into(),
+        serde_json::Value::String(options.locale.html_lang().to_string()),
+    );
+    ctx.insert(
+        "ui".into(),
+        crate::i18n::public_contact_ui(options.locale),
     );
 
     for placeholder in &placeholder_rows {
@@ -589,6 +611,8 @@ async fn resolve_placeholder(
                 cfg.show_phone = show_phone;
             }
 
+            localize_factory_contact_defaults(&mut cfg, options.locale);
+
             let sent = options
                 .contact_sent
                 .as_deref()
@@ -638,6 +662,10 @@ async fn resolve_placeholder(
                 "config".to_string(),
                 serde_json::to_value(&cfg).unwrap_or_default(),
             );
+            frag_ctx.insert(
+                "ui".to_string(),
+                crate::i18n::public_contact_ui(options.locale),
+            );
             insert_placeholder_html(ctx, placeholder, widget_type, frag_ctx, options).await;
         }
         other => {
@@ -658,6 +686,30 @@ async fn resolve_placeholder(
     }
 
     Ok(())
+}
+
+fn localize_factory_contact_defaults(
+    cfg: &mut ContactFormWidgetConfig,
+    locale: crate::i18n::Locale,
+) {
+    if locale != crate::i18n::Locale::En {
+        return;
+    }
+    const JA_HEADING: &str = "お問い合わせ";
+    const JA_SUBMIT: &str = "送信する";
+    const JA_SUCCESS: &str =
+        "お問い合わせを受け付けました。担当者より折り返しご連絡いたします。";
+    if cfg.heading == JA_HEADING {
+        cfg.heading =
+            crate::i18n::translate(locale, "public.contact.heading_default").to_string();
+    }
+    if cfg.submit_label == JA_SUBMIT {
+        cfg.submit_label = crate::i18n::translate(locale, "public.contact.submit").to_string();
+    }
+    if cfg.success_message == JA_SUCCESS {
+        cfg.success_message =
+            crate::i18n::translate(locale, "public.contact.success_default").to_string();
+    }
 }
 
 async fn insert_placeholder_html(

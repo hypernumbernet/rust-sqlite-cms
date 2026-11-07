@@ -1663,6 +1663,10 @@
     "en": "New placeholder",
     "ja": "新規プレースホルダー"
   },
+  "breadcrumb.placeholder_settings_em": {
+    "en": " — Settings",
+    "ja": " — 設定"
+  },
   "breadcrumb.posts": {
     "en": "Posts",
     "ja": "投稿"
@@ -1846,6 +1850,14 @@
   "public.contact.submit_failed": {
     "en": "Submission failed. Check your input and try again.",
     "ja": "送信に失敗しました。入力内容を確認して再度お試しください。"
+  },
+  "public.contact.submitting": {
+    "en": "Sending…",
+    "ja": "送信中…"
+  },
+  "public.contact.heading_default": {
+    "en": "Contact us",
+    "ja": "お問い合わせ"
   },
   "public.contact.success_default": {
     "en": "We received your inquiry. Our team will get back to you.",

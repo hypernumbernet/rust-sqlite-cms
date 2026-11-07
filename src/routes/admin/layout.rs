@@ -24,6 +24,15 @@ pub struct AdminLayoutCtx {
 }
 
 impl AdminLayoutCtx {
+    /// Askama テンプレートから `{{ layout.t("key") }}` で参照する。
+    pub fn t(&self, key: &str) -> String {
+        crate::i18n::t(key).to_string()
+    }
+
+    pub fn html_lang(&self) -> &str {
+        crate::i18n::current_locale().html_lang()
+    }
+
     pub fn new(auth: &AuthUser) -> Self {
         Self::with_embed(auth, false)
     }

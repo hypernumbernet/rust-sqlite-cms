@@ -55,6 +55,7 @@ fn build_widget_options(state: &AppState, page_options: RenderPageOptions) -> wi
         contact_sent: page_options.contact_sent,
         contact_error: page_options.contact_error,
         session_secret: Some(session::resolve_session_secret(&state.config)),
+        locale: crate::i18n::current_locale(),
     }
 }
 

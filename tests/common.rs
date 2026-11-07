@@ -92,6 +92,7 @@ impl TestApp {
                     .method("POST")
                     .uri("http://localhost/admin/login")
                     .header("content-type", "application/x-www-form-urlencoded")
+                    .header("accept-language", "ja")
                     .body(Body::from(body))
                     .unwrap(),
             )
@@ -118,7 +119,11 @@ impl TestApp {
         let method = method.parse::<Method>().unwrap();
         let uri = format!("http://localhost{path}");
 
-        let mut builder = Request::builder().method(method).uri(uri).header("cookie", cookie);
+        let mut builder = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("cookie", cookie)
+            .header("accept-language", "ja");
 
         let req = if let Some(body) = body {
             if let Some(ct) = content_type {
